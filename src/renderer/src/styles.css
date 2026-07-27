@@ -1,0 +1,435 @@
+/* ai-terminal のグローバルスタイル。ダークテーマ固定・素の CSS のみ。 */
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN',
+    sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------------------------------------------------------------------- */
+/* サイドバー */
+/* ---------------------------------------------------------------------- */
+
+.sidebar {
+  width: 260px;
+  min-width: 220px;
+  max-width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #191919;
+  border-right: 1px solid #2a2a2a;
+}
+
+/* macOS の信号機ボタン（hiddenInset, trafficLightPosition: 16,16）と重ならないための余白。
+   ここをドラッグ領域にして、ウィンドウをこの帯からドラッグ移動できるようにする。 */
+.sidebar__drag-region {
+  height: 40px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.sidebar__tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid #2a2a2a;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar__tabs button {
+  flex: 1;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sidebar__tabs button.is-active {
+  color: #fff;
+  border-bottom: 2px solid #4c8bf5;
+}
+
+.sidebar__content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+/* ---------------------------------------------------------------------- */
+/* メイン領域 / タブバー */
+/* ---------------------------------------------------------------------- */
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.tab-bar__tabs {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  -webkit-app-region: no-drag;
+}
+
+/* タブの並びの右側の余白部分もドラッグ領域にする */
+.tab-bar__drag-region {
+  flex: 1;
+  -webkit-app-region: drag;
+}
+
+.tab-bar__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  min-width: 90px;
+  max-width: 180px;
+  color: #999;
+  border-right: 1px solid #2a2a2a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab-bar__tab.is-active {
+  background: #262626;
+  color: #fff;
+}
+
+.tab-bar__tab.is-exited {
+  color: #d47b7b;
+}
+
+.tab-bar__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  font-size: 12px;
+}
+
+.tab-bar__exit-badge {
+  font-size: 10px;
+  color: #d47b7b;
+}
+
+.tab-bar__close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+.tab-bar__new {
+  width: 36px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* ターミナル */
+/* ---------------------------------------------------------------------- */
+
+.terminal-stack {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.terminal-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* display: none にすると ResizeObserver / fit が壊れるため visibility で切り替える。
+   非表示中も出力の書き込みは継続する。 */
+.terminal-pane--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.terminal-pane__container {
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+}
+
+.terminal-stack__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+}
+
+.terminal-search {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  background: #2a2a2a;
+  padding: 4px 6px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.terminal-search input {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  color: #d4d4d4;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.terminal-search button {
+  background: transparent;
+  border: 1px solid #444;
+  color: #d4d4d4;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 通知バナー */
+/* ---------------------------------------------------------------------- */
+
+.notice-banner {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: #4a2020;
+  color: #f4c7c7;
+  border: 1px solid #7a3030;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  z-index: 20;
+}
+
+.notice-banner button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* サイドバー共通パーツ */
+/* ---------------------------------------------------------------------- */
+
+.panel-message {
+  padding: 12px;
+  color: #888;
+  font-size: 12px;
+}
+
+.panel-message--error {
+  color: #e08a8a;
+}
+
+.task-list ul,
+.history-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #232323;
+  cursor: default;
+}
+
+.task-item--clickable {
+  cursor: pointer;
+}
+
+.task-item--clickable:hover {
+  background: #222;
+}
+
+.task-item__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+  background: #666;
+}
+
+/* busy は目立つ色、それ以外は落ち着いた色にする。
+   「今どれが自分を待っているか」を一目でわかるようにするのが最優先。 */
+.task-item--busy .task-item__status-dot {
+  background: #f5a623;
+  box-shadow: 0 0 6px #f5a623;
+}
+
+.task-item--idle .task-item__status-dot {
+  background: #4caf50;
+}
+
+.task-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-item__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ddd;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-item__badge {
+  font-size: 9px;
+  color: #4c8bf5;
+  border: 1px solid #4c8bf5;
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.task-item__meta {
+  display: flex;
+  gap: 8px;
+  color: #777;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.history-list__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #232323;
+}
+
+.history-list__providers {
+  display: flex;
+  gap: 4px;
+}
+
+.history-list__providers button {
+  background: transparent;
+  border: 1px solid #333;
+  color: #999;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.history-list__providers button.is-active {
+  color: #fff;
+  border-color: #4c8bf5;
+}
+
+.history-list__reload {
+  background: transparent;
+  border: 1px solid #333;
+  color: #999;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.history-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #232323;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.history-item:hover {
+  background: #222;
+}
+
+.history-item__title {
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item__meta {
+  display: flex;
+  gap: 8px;
+  color: #777;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.history-item__error {
+  color: #e08a8a;
+  font-size: 10px;
+  margin-top: 2px;
+}

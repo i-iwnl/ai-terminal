@@ -1,0 +1,25 @@
+# ビルドコンテキストを軽量に保つための除外設定。
+# node_modules を含めるとビルドコンテキストの転送だけで非常に重くなるため
+# 必ず除外する（依存関係はコンテナ内で npm ci により再インストールする）。
+node_modules
+out
+dist
+build
+
+.git
+.github
+
+.DS_Store
+*.log
+npm-debug.log*
+
+# エディタ / OS 由来の一時ファイル
+.vscode
+.idea
+*.swp
+
+# ドキュメント（ビルドに不要）
+docs
+
+# サンドボックス用（別ワーカー担当。本 Dockerfile では使わないが念のため除外）
+Dockerfile.sandbox

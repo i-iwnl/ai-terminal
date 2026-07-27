@@ -1,0 +1,95 @@
+# ============================================================================
+# ai-terminal - AI エージェント隔離実行用サンドボックス (Dockerfile.sandbox)
+#
+# 用途:
+#   `claude` に危険なコマンドを実行させたいとき、ホストのファイルシステムを
+#   壊さないよう、作業対象のディレクトリだけをマウントしたコンテナの中で
+#   `claude` を動かすためのイメージ。
+#   起動は scripts/sandbox.sh から行う想定（docs/SANDBOX.md 参照）。
+#
+#   ビルド/CI 用の Dockerfile（拡張子なし、リポジトリ直下）とは別物。
+#   あちらは「ホストで npm run build 等を再現する」ためのもので、
+#   こちらは「AI エージェントを隔離して動かす」ためのもの。混同しないこと。
+#
+# 認証について（重要）:
+#   このマシン（macOS）の ~/.claude/ 配下を確認したが、認証情報とみられる
+#   ファイル（.credentials.json 等）は存在しなかった。macOS 版 Claude Code は
+#   認証情報を Keychain に保存していると考えられ、Keychain の中身はファイルと
+#   して取り出せない＝コンテナに引き継げない。
+#   そのため本サンドボックスでは「~/.claude をまるごとマウントする」方式を
+#   採らず、コンテナ専用の named volume にコンテナ内でのログイン結果を
+#   永続化する方式にしている（scripts/sandbox.sh 側で volume をマウント）。
+#   これにより、ホスト側の全プロジェクトのセッション履歴がコンテナから
+#   見えてしまう問題も同時に回避できる（トレードオフの詳細は
+#   docs/SANDBOX.md を参照）。
+# ============================================================================
+
+FROM node:22-bookworm-slim
+
+# 開発に最低限必要なものだけを入れる。過剰に盛るとイメージが肥大し
+# サンドボックスを起動する心理的ハードルが上がるため最小限にとどめる。
+#   git        : リポジトリ操作
+#   ripgrep    : コード検索（AI エージェントが多用する）
+#   curl       : 動作確認・簡易な HTTP 呼び出し
+#   ca-certificates : HTTPS 通信（npm / Claude API 等）に必須
+#   less       : ページャ（git log 等で必要になる）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       git \
+       ripgrep \
+       curl \
+       ca-certificates \
+       less \
+    && rm -rf /var/lib/apt/lists/*
+
+# Claude Code CLI をグローバルインストール。
+# API キーは使わず、サブスクリプション認証の CLI をそのまま使う方針
+# （CLAUDE.md / docs/PLAN.md の方針に合わせる）。
+RUN npm install -g @anthropic-ai/claude-code
+
+# Gemini CLI はあえて入れていない。
+#   - 今回の題材（着想元の receptron/mulmoterminal の Dockerfile.sandbox 相当）が
+#     claude の隔離実行に焦点を当てている
+#   - docs/PLAN.md 時点で Gemini CLI の認証方式（サブスクリプションか API キーか）が
+#     未確認のまま残っている
+#   - 「過剰に盛らない」という要件に対し、使うかどうか不確実なものを
+#     先回りで入れる合理性が薄い
+# 必要になったら `RUN npm install -g @google/gemini-cli` を追加すればよい。
+
+# 日本語が文字化けしないための設定。
+# ロケールファイルを生成する locales パッケージを追加すると軽くないため、
+# Debian に標準で入っている C.UTF-8（UTF-8 エンコーディングのみを持つ
+# ロケール）を使う。日本語の並び替えなどは行わないため、文字化け対策としては
+# これで十分。
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV TERM=xterm-256color
+
+# ホストとの UID/GID のズレでマウントしたファイルが書けなくなる問題への対策。
+# ビルド時に呼び出し元（scripts/sandbox.sh）から `id -u` / `id -g` の値を
+# 渡してもらい、ホストユーザーと同じ UID/GID の一般ユーザーを作成する。
+# デフォルト値の 1000 は多くの Linux ディストリビューションの最初の一般
+# ユーザーに合わせてあるが、macOS の実利用では sandbox.sh が実際の
+# UID/GID を必ず渡すため、実運用でこのデフォルト値が使われることはない。
+ARG SANDBOX_UID=1000
+ARG SANDBOX_GID=1000
+
+RUN if getent group "${SANDBOX_GID}" >/dev/null; then \
+      EXISTING_GROUP=$(getent group "${SANDBOX_GID}" | cut -d: -f1); \
+    else \
+      groupadd -g "${SANDBOX_GID}" sandbox; \
+      EXISTING_GROUP=sandbox; \
+    fi \
+    && useradd -m -u "${SANDBOX_UID}" -g "${EXISTING_GROUP}" -s /bin/bash sandbox
+
+# root では動かさない。以降の RUN / CMD は非 root ユーザーで実行する。
+WORKDIR /work
+RUN chown sandbox:$(id -gn sandbox) /work
+
+USER sandbox
+
+# claude の認証情報・設定を永続化する named volume のマウント先。
+# scripts/sandbox.sh 側で -v <volume名>:/home/sandbox/.claude を付与する。
+ENV HOME=/home/sandbox
+
+CMD ["claude"]

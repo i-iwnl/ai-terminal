@@ -1,0 +1,32 @@
+# ai-terminal - ビルド/CI 検証用 compose 設定
+#
+# 使い方:
+#   docker compose run --rm verify
+#     -> typecheck / lint / build をまとめて実行する
+#
+# 注意:
+#   - GUI (Electron 本体) はこのコンテナでは起動しない。アプリの起動は
+#     常にホスト（macOS）側で `npm run dev` を使うこと。
+#   - node_modules はホストとコンテナで共有しない。macOS 向けにビルド/
+#     ダウンロードされたネイティブモジュール（node-pty など）と Linux
+#     向けのものが混ざるとロード時にクラッシュするため、named volume
+#     (node_modules) でコンテナ内の /app/node_modules を隔離している。
+#     ホストの node_modules をそのままマウントしないこと。
+
+services:
+  verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    environment:
+      - ELECTRON_SKIP_BINARY_DOWNLOAD=1
+    volumes:
+      # ソースコードはホストと同期する（編集を即座に反映するため）。
+      - .:/app
+      # node_modules だけは named volume で隔離し、ホストとは共有しない。
+      - node_modules:/app/node_modules
+    command: sh -c "npm run typecheck && npm run lint && npm run build"
+
+volumes:
+  node_modules:
