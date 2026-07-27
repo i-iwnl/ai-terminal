@@ -26,14 +26,50 @@ AI コーディングエージェント（Claude Code / Gemini CLI）を飼う�
 - 実行中セッションの一覧は `claude agents --json` のポーリングで取得する。
 - 再開は `claude --resume <sessionId>`。ここは公式サポート済みの安定インターフェース。
 
-## コマンド
+## コマンド（検証コマンドの唯一の正）
 
 ```bash
-npm run dev        # 開発起動
-npm run build      # ビルド
-npm run typecheck  # 型チェック
-npm run lint       # ESLint
+make dev           # 開発起動（DevTools が別ウィンドウで自動的に開く）
+make dev-quiet     # DevTools を開かずに起動
+make dev-debug     # Main プロセスのデバッガを有効にして起動
+make check         # typecheck + lint（変更後は必ずこれを通す）
+make build         # 本番ビルド
+make docker-verify # typecheck + lint + build を Docker コンテナ内で実行
 ```
+
+`make` を使わない場合は `npm run dev` / `npm run typecheck` / `npm run lint` / `npm run build`。
+一覧は `make` で表示できる。**skill やドキュメントに検証コマンドを再掲しない。ここを参照する。**
+
+## 作業分担の既定方針
+
+**次のいずれかに該当したら、ユーザーの明示指示を待たずに `/orchestrator` を起動する。** メインは計画・レビュー・統合に専念し、実務はワーカーサブエージェントへ委譲する。
+
+1. 3ファイル以上にまたがる修正・リファクタ
+2. 独立した調査軸が2つ以上ある調査
+3. 調査 -> 実装 -> 検証と工程が分かれるタスク
+4. 同種の機械的修正が多数あるタスク
+
+小さな単発タスクはメインが直接実行してよい。
+
+**タスクに応じて以下の skill を自動で起動してよい**（`/` 付きでユーザーが明示的に呼ぶこともできる）。
+
+| タスク | skill |
+|---|---|
+| IPC チャンネルの追加・変更、preload・contextBridge、Renderer から OS 情報を取る | `/electron-ipc` |
+| claude / gemini CLI の起動引数、タスク一覧・履歴が出ない、CLI 更新でパースが壊れた | `/ai-cli` |
+| PTY が起動しない、日本語 IME・文字幅、vim / htop の表示崩れ、ショートカット、tmux | `/terminal` |
+
+skill 一覧と設計ルールの全体像は **[.claude/README.md](.claude/README.md)** を参照。
+skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` を通すこと。
+
+## ドキュメントの地図
+
+| 知りたいこと | ファイル |
+|---|---|
+| 設計の経緯・調査結果・フェーズ計画 | `docs/PLAN.md` |
+| 起動方法・ショートカット・設定・トラブルシューティング | `README.md` |
+| Docker 環境（ビルド検証 / devcontainer） | `docs/DOCKER.md` |
+| AI エージェントの隔離実行と、その限界 | `docs/SANDBOX.md` |
 
 ## Git 操作
 
