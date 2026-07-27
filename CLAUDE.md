@@ -59,6 +59,7 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 | claude / gemini CLI の起動引数、タスク一覧・履歴が出ない、CLI 更新でパースが壊れた | `/ai-cli` |
 | PTY が起動しない、日本語 IME・文字幅、vim / htop の表示崩れ、ショートカット、tmux | `/terminal` |
 | 作業を始める / 進捗を記録する / セッションが切れて再開する | `/workspace-plan` |
+| E2E テストを追加する / 落ちた / 不安定 / スクリーンショットを撮り直す | `/e2e` |
 
 skill 一覧と設計ルールの全体像は **[.claude/README.md](.claude/README.md)** を参照。
 skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` を通すこと。
