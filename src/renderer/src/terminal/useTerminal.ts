@@ -102,15 +102,18 @@ export function useTerminal(
       }),
     );
 
+    term.open(container);
+    term.unicode.activeVersion = GRAPHEME_UNICODE_VERSION;
+
+    // WebglAddon は term.open() の**後**に読み込む（xterm.js のドキュメント通りの順序）。
+    // 先に loadAddon すると DOM 未生成の Terminal にアドオンが載る。
+    // 実測では先に読み込んでも描画は壊れなかったが、依存する保証が無いので順序を守る。
     try {
       term.loadAddon(new WebglAddon());
     } catch (err) {
       // WebGL レンダラが使えない環境では黙って DOM レンダラにフォールバックする。
       console.warn('[terminal] WebGL レンダラの初期化に失敗しました。無視して続行します。', err);
     }
-
-    term.open(container);
-    term.unicode.activeVersion = GRAPHEME_UNICODE_VERSION;
 
     // アプリのショートカットキーは xterm に処理させない。
     // 実際のアクションはウィンドウのグローバル keydown リスナー（capture フェーズ）が
