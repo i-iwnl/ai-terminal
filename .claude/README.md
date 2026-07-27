@@ -30,6 +30,7 @@ Claude Code の設定・skill を管理するディレクトリ。
 | [/ai-cli](skills/ai-cli/SKILL.md) | claude / gemini CLI の起動と出力パース。`claude agents --json`、`~/.claude/projects` の JSONL、`--session-id` / `--resume`、CLI 更新でパースが壊れたときの修復 |
 | [/terminal](skills/terminal/SKILL.md) | xterm.js と node-pty まわり。PTY が起動しない、日本語 IME、文字幅のずれ、vim / htop の表示崩れ、tmux ラップ時の終了検知、GUI 手動検証の手順 |
 | [/workspace-plan](skills/workspace-plan/SKILL.md) | 作業コンテキストの保持。`.claude/workspace/issue-<番号>/` の作成（init）、進捗の追記と Issue への同期（update）、一覧と Issue の突合（status） |
+| [/e2e](skills/e2e/SKILL.md) | Playwright による Electron の E2E テスト。シナリオの追加、実行とデバッグ、隔離ハーネス（一時 HOME と偽 CLI）の仕組み、自動テストで担保できない領域 |
 
 3本は責務が隣接しているため、SKILL.md の末尾で相互に境界をリンクしている。**どれを読むか迷ったら**「プロセス間の配線」なら `/electron-ipc`、「外部 CLI の出力」なら `/ai-cli`、「画面と子プロセス」なら `/terminal`。
 
