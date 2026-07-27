@@ -4,7 +4,7 @@
 # アプリ本体の起動は必ずホスト（macOS）で行う。GUI を Docker では動かさない。
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev build check typecheck lint format rebuild fix-electron \
+.PHONY: help install dev dev-debug dev-quiet build check typecheck lint format rebuild fix-electron \
         docker-verify docker-build sandbox sandbox-build clean clean-docker
 
 # ---------------------------------------------------------------------------
@@ -35,6 +35,14 @@ install:
 ## アプリを起動する（ホストで実行すること）
 dev:
 	npm run dev
+
+## Main プロセスのデバッガを有効にして起動する（chrome://inspect から接続）
+dev-debug:
+	npx electron-vite dev --inspect --sourcemap
+
+## DevTools を自動で開かずに起動する
+dev-quiet:
+	AI_TERMINAL_NO_DEVTOOLS=1 npm run dev
 
 ## 本番ビルドを out/ に出力する
 build:

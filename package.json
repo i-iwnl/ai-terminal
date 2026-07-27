@@ -7,6 +7,7 @@
   "main": "out/main/index.js",
   "author": "Yoshinaga-iwnl",
   "scripts": {
+    "postinstall": "node scripts/fix-node-pty.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",

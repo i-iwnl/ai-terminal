@@ -52,6 +52,21 @@ make build     # out/ に main / preload / renderer を出力
 
 ---
 
+### デバッグ
+
+開発起動（`make dev`）では **DevTools が別ウィンドウで自動的に開く**。手動で開閉する場合は `Cmd+Option+I`。
+
+```bash
+make dev-quiet   # DevTools を開かずに起動する
+make dev-debug   # Main プロセスのデバッガを有効にして起動する
+```
+
+`make dev-debug` は `--inspect --sourcemap` 付きで起動するので、Chrome の `chrome://inspect` か VS Code の Attach 構成から Main プロセスに接続できる。PTY の起動引数や `claude agents --json` のパース結果を追いたいときはこちら。
+
+**Main プロセスの `console.log` は DevTools ではなくターミナル側に出る**（`make dev` を実行している端末）。
+
+---
+
 ## キーボードショートカット
 
 | キー | 動作 |
@@ -146,6 +161,18 @@ src/
 ```bash
 make fix-electron
 ```
+
+**ターミナルが開かず `posix_spawnp failed` と出る**
+
+node-pty に同梱されている `spawn-helper` の実行権限が、npm install のときに落ちることがある。`postinstall` で自動的に復元しているが、手動で直す場合は次を実行する。
+
+```bash
+node scripts/fix-node-pty.mjs
+```
+
+**`Unable to load preload script` と出る**
+
+`package.json` が `"type": "module"` のため、electron-vite は preload を `.mjs` として出力する。`src/main/index.ts` の preload パスが `.js` になっていないか確認する。**このエラーは DevTools を開いていないと気づけない**（ターミナル側には出ない）ので、挙動がおかしいときはまず DevTools を開くこと。
 
 **`claude コマンドが見つかりません` と表示される**
 
