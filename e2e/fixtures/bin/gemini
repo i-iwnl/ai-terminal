@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# E2E 用の偽 gemini CLI。意図と設計は同ディレクトリの claude を参照。
+#
+# 本物の gemini --list-sessions は JSON ではなくプレーンテキストを返す
+# （-o json を付けても変わらない）ので、その形式を再現する。
+
+set -uo pipefail
+
+for arg in "$@"; do
+  if [ "$arg" = "--list-sessions" ]; then
+    if [ "${AI_TERMINAL_E2E_GEMINI_EMPTY:-}" = "1" ]; then
+      echo "No previous sessions found for this project."
+      exit 0
+    fi
+    cat "${AI_TERMINAL_E2E_FIXTURES}/gemini-sessions.txt"
+    exit 0
+  fi
+  if [ "$arg" = "--version" ]; then
+    echo "0.0.0-e2e-fake"
+    exit 0
+  fi
+done
+
+echo "FAKE GEMINI READY"
+echo "ARGS: $*"
+printf 'gemini> '
+
+while IFS= read -r line; do
+  case "$line" in
+    exit) echo "bye"; exit 0 ;;
+    *) echo "echo: $line"; printf 'gemini> ' ;;
+  esac
+done
