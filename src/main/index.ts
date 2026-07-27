@@ -22,7 +22,10 @@ function createWindow(): BrowserWindow {
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: '#1e1e1e',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      // package.json が "type": "module" のため、electron-vite は preload を
+      // ESM（.mjs）として出力する。拡張子を .js にすると読み込みに失敗する。
+      // ESM の preload は sandbox: false のときのみ有効（下の設定と対になっている）。
+      preload: join(__dirname, '../preload/index.mjs'),
       // Renderer は OS を直接触らない。contextIsolation を維持し、
       // 必要な IPC だけを preload の contextBridge 経由で露出する。
       contextIsolation: true,
@@ -38,6 +41,13 @@ function createWindow(): BrowserWindow {
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
+
+    // 開発時は DevTools を自動で開く。
+    // ターミナルの表示領域を狭めないよう別ウィンドウ（detach）で開く。
+    // 邪魔なときは AI_TERMINAL_NO_DEVTOOLS=1 を付けて起動すれば抑制できる。
+    if (!process.env.AI_TERMINAL_NO_DEVTOOLS) {
+      win.webContents.openDevTools({ mode: 'detach' });
+    }
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'));
   }
