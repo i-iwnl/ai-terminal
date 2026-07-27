@@ -1,0 +1,51 @@
+{
+  // ai-terminal 開発コンテナ
+  //
+  // 用途: typecheck / lint / build を行うための Node.js + TypeScript 開発環境。
+  // ルート直下の Dockerfile（ビルド/CI 検証用）をそのまま再利用している。
+  // 理由: Node のバージョンや node-pty のネイティブビルドに必要なツール
+  // チェーン（python3 / make / g++）は CI 検証用イメージと devcontainer で
+  // 全く同じものが必要なため、別ファイルに分けると二重管理になり CI と
+  // devcontainer の環境がズレる（例えば片方だけ Node のバージョンを上げ忘れる）
+  // リスクがある。差分は devcontainer CLI 側の設定（overrideCommand・mounts・
+  // 拡張機能など）で吸収する。
+  //
+  // 重要: このコンテナの中で Electron の GUI を起動することはできない
+  // （起動しても画面を表示する先が無い）。X11/VNC 転送も日本語 IME と
+  // フォント描画が壊れるため意図的に対応していない。
+  // アプリ本体の動作確認・起動は必ずホスト（macOS）側で `npm run dev` を
+  // 使うこと。このコンテナは typecheck / lint / build の実行にのみ使う。
+  "name": "ai-terminal",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+
+  // devcontainer CLI はデフォルトで Dockerfile の CMD をコンテナを起動し
+  // 続けるためのコマンドに上書きする（overrideCommand の既定値は true）ため、
+  // ルート Dockerfile の CMD（typecheck && lint && build）が devcontainer の
+  // 起動を妨げることはない。
+  "overrideCommand": true,
+
+  // node_modules はホストとコンテナで共有しない。macOS 向けにビルドされた
+  // ネイティブモジュール（node-pty）と Linux 向けのものが混ざると壊れるため、
+  // named volume でワークスペース内の node_modules だけを隔離する。
+  "mounts": [
+    "source=ai-terminal-devcontainer-node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
+  ],
+
+  "postCreateCommand": "npm ci",
+
+  "customizations": {
+    "vscode": {
+      // 最低限（ESLint 実行 + フォーマッタ）に絞る。大量の拡張機能は入れない。
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+
+  "remoteUser": "root"
+}

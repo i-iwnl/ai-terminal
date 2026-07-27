@@ -1,0 +1,45 @@
+{
+  "name": "ai-terminal",
+  "version": "0.0.1",
+  "description": "AI コーディングエージェント（Claude Code / Gemini CLI）を PTY 上で飼うことに最適化した macOS 向け自作ターミナル",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "author": "Yoshinaga-iwnl",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "lint": "eslint .",
+    "rebuild": "electron-rebuild -f -w node-pty",
+    "docker:verify": "docker compose run --rm verify"
+  },
+  "dependencies": {
+    "@xterm/addon-clipboard": "^0.2.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-unicode-graphemes": "^0.4.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.2.0",
+    "electron-vite": "^5.0.0",
+    "eslint": "^10.8.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "vite": "^7.3.6"
+  }
+}

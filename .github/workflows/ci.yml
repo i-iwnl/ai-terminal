@@ -1,0 +1,45 @@
+# ai-terminal CI
+#
+# 素の ubuntu-latest ランナー上で typecheck / lint / build を実行する。
+# Docker イメージ経由にしていないのは起動が速いため。Dockerfile はローカルで
+# 同じ検証手順を再現するためのもの（`docker compose run --rm verify`）で、
+# 役割を分けている。
+#
+# このワークフローは GUI (Electron 本体) を起動しない。typecheck / lint /
+# build の静的な検証のみを行う。
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # CI ではアプリを起動しないため、Electron バイナリ（100MB 超）の
+      # ダウンロードをスキップする。electron-vite build はこの状態でも
+      # 問題なく動作することを確認済み（Dockerfile での検証と同様）。
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
