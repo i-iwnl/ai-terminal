@@ -58,6 +58,7 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 | IPC チャンネルの追加・変更、preload・contextBridge、Renderer から OS 情報を取る | `/electron-ipc` |
 | claude / gemini CLI の起動引数、タスク一覧・履歴が出ない、CLI 更新でパースが壊れた | `/ai-cli` |
 | PTY が起動しない、日本語 IME・文字幅、vim / htop の表示崩れ、ショートカット、tmux | `/terminal` |
+| 作業を始める / 進捗を記録する / セッションが切れて再開する | `/workspace-plan` |
 
 skill 一覧と設計ルールの全体像は **[.claude/README.md](.claude/README.md)** を参照。
 skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` を通すこと。
@@ -70,6 +71,21 @@ skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` 
 | 起動方法・ショートカット・設定・トラブルシューティング | `README.md` |
 | Docker 環境（ビルド検証 / devcontainer） | `docs/DOCKER.md` |
 | AI エージェントの隔離実行と、その限界 | `docs/SANDBOX.md` |
+
+## タスク管理とコンテキストの保持
+
+**チケットは GitHub Issues が正。** リポジトリ内にチケットファイルは持たない。
+
+| 内容 | 唯一の正 |
+|---|---|
+| 何を・なぜやるか、完了条件、作業の状態（open / closed） | GitHub Issue |
+| どう作るか、設計判断、進捗の詳細、教訓 | `.claude/workspace/issue-<番号>/` |
+
+**複数セッションにまたがる作業は、着手時に `/workspace-plan init <Issue番号>` でワークスペースを作る。** Issue 本文をコピーせず、リンクと要約に留めること（二重化の禁止）。
+
+作業のたびに `worklog.md` へ追記する。**各エントリの「次に再開するとき最初に読むべきこと」は省略しない。** セッションが切れても文脈を復元できることが、このディレクトリの存在理由。
+
+再開時は `.claude/workspace/issue-<番号>/worklog.md` の最新エントリから読む。
 
 ## Git 操作
 
