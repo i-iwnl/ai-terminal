@@ -9,8 +9,12 @@ Claude Code の設定・skill を管理するディレクトリ。
 ├── skills/         ← skill 本体（インデックス型・メイン用の手順/知識）
 ├── agents/         ← サブエージェント定義（Agent ツールで隔離実行する単位）
 ├── scripts/        ← リポジトリ横断のハーネス（lint-skills.sh）
+├── workspace/      ← 作業ごとの外部記憶（issue-<番号>/ 単位。/workspace-plan が管理）
 └── README.md       ← このファイル
 ```
+
+**チケット管理は GitHub Issues が正。** リポジトリ内チケット（`.claude/tickets/`）は持たない。
+ワークスペースは Issue 番号をキーにして Issue と 1:1 に対応する（`.claude/workspace/issue-1/`）。
 
 ※ agents と skills の役割の違いは [設計ルール 5](#5-agents-と-skills-の使い分け) を参照。
 
@@ -25,6 +29,7 @@ Claude Code の設定・skill を管理するディレクトリ。
 | [/electron-ipc](skills/electron-ipc/SKILL.md) | Main / preload / Renderer 間の責務境界と IPC チャンネルの追加・変更。contextBridge、`ipcMain.handle` / `ipcRenderer.invoke`、preload が読み込まれないときの調査 |
 | [/ai-cli](skills/ai-cli/SKILL.md) | claude / gemini CLI の起動と出力パース。`claude agents --json`、`~/.claude/projects` の JSONL、`--session-id` / `--resume`、CLI 更新でパースが壊れたときの修復 |
 | [/terminal](skills/terminal/SKILL.md) | xterm.js と node-pty まわり。PTY が起動しない、日本語 IME、文字幅のずれ、vim / htop の表示崩れ、tmux ラップ時の終了検知、GUI 手動検証の手順 |
+| [/workspace-plan](skills/workspace-plan/SKILL.md) | 作業コンテキストの保持。`.claude/workspace/issue-<番号>/` の作成（init）、進捗の追記と Issue への同期（update）、一覧と Issue の突合（status） |
 
 3本は責務が隣接しているため、SKILL.md の末尾で相互に境界をリンクしている。**どれを読むか迷ったら**「プロセス間の配線」なら `/electron-ipc`、「外部 CLI の出力」なら `/ai-cli`、「画面と子プロセス」なら `/terminal`。
 
@@ -142,6 +147,8 @@ Claude Code の設定・skill を管理するディレクトリ。
 | 設計の経緯・調査結果・フェーズ計画 | `docs/PLAN.md` |
 | Docker 環境の使い方 | `docs/DOCKER.md` と `docs/SANDBOX.md` |
 | 起動方法・トラブルシューティング | ルート `README.md` |
+| 何を・なぜやるか、作業の状態（open / closed） | **GitHub Issue** |
+| どう作るか・設計判断・進捗の詳細・教訓 | `.claude/workspace/issue-<番号>/` |
 
 ### 8. メンテナンスハーネス
 
