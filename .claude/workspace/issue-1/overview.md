@@ -44,33 +44,40 @@ Issue #1 の完了条件と同一。ここでは実装観点で再掲する。
 
 | 項目 | 状態 |
 |---|---|
-| 設計 | 完了（22シナリオ・隔離方式・管理方式・CI 方針まで合意済み） |
-| 実装 | 完了（`4d96cea` / `cdd54eb` でコミット済み。`cd76001` に E2E が見つけたアプリ側のバグ修正2件） |
-| 検証 | 完了（2026-07-28 に再実行して確認。下記「検証結果」参照） |
+| 設計 | 完了（23シナリオ・隔離方式・管理方式・CI 方針まで合意済み） |
+| 実装 | 完了。`main` にマージ済み（PR #3）。S23 のみ `test/webgl-e2e-and-phase1-verify` で作業中 |
+| 検証 | 完了（下記「検証結果」参照）。Phase 1 受け入れ基準も 8項目中7項目を確認済み |
 
 ### 検証結果（2026-07-28 実測）
 
 | ゲート | 結果 |
 |---|---|
 | `make check`（typecheck + lint） | green |
-| `make e2e` | 22 passed（45.7s） |
-| `node scripts/lint-e2e.mjs` | PASS=166 FAIL=0 WARN=0 |
+| `make e2e` | 23 passed（S23 追加後） |
+| `node scripts/lint-e2e.mjs` | PASS=173 FAIL=0 WARN=0 |
 | `bash .claude/scripts/lint-skills.sh` | PASS=66 FAIL=0 |
 
 ---
 
 ## 4. 直近の次アクション
 
-Issue #1 の完了条件は全て満たしている。残るのは取り込み作業と、Issue #1 の範囲外の宿題のみ。
+Issue #1 の完了条件は全て満たしており、`main` にマージ済み（PR #3）。残るのは人手か環境整備が要る2件のみ。
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | `make dev` 描画不具合の修正を取り込む | `main.tsx` の xterm.css import（本命）と `useTerminal.ts` の WebglAddon 読み込み順。未コミット。詳細は worklog の 2026-07-28 |
-| **P0** | `CLAUDE.md` の未コミット分を取り込む | `/e2e` の導線1行が `cdd54eb` から漏れて未コミットのまま残っている |
-| P1 | WebGL レンダラを検証するシナリオの追加 | `known-issues.md` の 5 番。E2E が `--disable-gpu` 固定で描画経路に盲点がある |
-| **P0** | `origin/main` へのリベース | PR #2 がマージ済み（`fe862f3`）。現ブランチは 3 ahead / 1 behind |
-| P1 | PR の作成 | ユーザーの明示指示待ち |
-| P1 | Phase 1 受け入れ基準の手動検証 | `known-issues.md` の 1 番。Issue #1 の範囲外だが P0 のまま残っている。vim / htop の描画と macOS の実 IME は人が触るしかない |
+| P1 | PR の作成 | `test/webgl-e2e-and-phase1-verify` -> `main`。ユーザーの明示指示待ち |
+| P2 | macOS の実 IME での日本語入力の確認 | `known-issues.md` の 1 番。**人手でしか確認できない**唯一の残項目 |
+| P2 | htop を入れて本来の項目として確認する | 同上。現在は `top` の対話モードで代替している |
+
+### 片付いたもの（2026-07-28）
+
+| 項目 | 結果 |
+|---|---|
+| `make dev` 描画不具合（xterm.css の import 漏れ） | 修正して `main` にマージ済み（PR #3） |
+| `CLAUDE.md` の `/e2e` 導線漏れ | 同上 |
+| `origin/main` へのリベース | PR #3 のマージで解消 |
+| WebGL レンダラを検証するシナリオ | S23 として追加。不具合を注入すると赤くなることも確認済み |
+| Phase 1 受け入れ基準の検証 | 8項目中7項目 OK（`known-issues.md` の 1 番に結果表） |
 
 ---
 
