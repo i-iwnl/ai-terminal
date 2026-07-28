@@ -58,7 +58,7 @@ test('S15 このアプリが起動したタスクが視覚的に区別される'
 
   // このアプリから claude を実際に起動してみても、固定タスクの表示は
   // owned 扱いに変化しない（false positive が無いことの確認）
-  await window.keyboard.press('Meta+k');
+  await window.keyboard.press('Meta+Shift+C');
   await expect(window.locator('.tab-bar__title').filter({ hasText: 'claude' })).toBeVisible();
 
   await expect(items).toHaveCount(2);

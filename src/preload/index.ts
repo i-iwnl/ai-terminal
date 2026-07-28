@@ -24,6 +24,7 @@ import {
   type SoundOption,
   type TestWebhookRequest,
   type WebhookSendResult,
+  type AppAction,
   type RendererApi,
 } from '@shared/ipc';
 
@@ -91,6 +92,10 @@ const api: RendererApi = {
   },
   app: {
     paths: (): Promise<AppPaths> => ipcRenderer.invoke(IpcInvoke.appPaths) as Promise<AppPaths>,
+  },
+  menu: {
+    onAction: (listener: (action: AppAction) => void): (() => void) =>
+      subscribe<AppAction>(IpcEvent.menuAction, listener),
   },
 };
 

@@ -27,6 +27,12 @@ export interface TerminalHandle {
   focus(): void;
   /** コンテナのサイズに合わせて fit し、PTY にも resize を伝える */
   fit(): void;
+  /**
+   * 表示中のバッファとスクロールバックを消す（Cmd+K）。
+   * PTY には何も送らない。**シェルの状態は変えず、見えているものだけを消す**のが
+   * iTerm2 / Terminal.app の Cmd+K と同じ挙動。
+   */
+  clear(): void;
   toggleSearch(): void;
   closeSearch(): void;
   findNext(term: string): void;
@@ -200,6 +206,11 @@ export function useTerminal(
         return;
       }
       window.api.pty.resize({ ptyId: optionsRef.current.ptyId, cols: term.cols, rows: term.rows });
+    },
+    clear: () => {
+      // xterm の clear() は「現在行を残して、それ以外とスクロールバックを消す」。
+      // PTY には触らないので、実行中のプロセスもシェルの状態も影響を受けない。
+      termRef.current?.clear();
     },
     toggleSearch: () => {
       searchOpenRef.current = !searchOpenRef.current;
