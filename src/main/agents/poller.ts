@@ -32,8 +32,15 @@ export function markOwnedSession(sessionId: string): void {
   ownedSessionIds.add(sessionId);
 }
 
-/** Renderer から最後に渡された絞り込み対象の cwd。一度も渡されていなければ undefined。 */
-let lastKnownCwd: string | undefined;
+/**
+ * 絞り込み対象の cwd。Renderer が agents:list を呼ぶたびに更新される。
+ *
+ * 初期値はアプリを起動したディレクトリ。Renderer 側の共有 cwd
+ * （src/renderer/src/lib/cwd.ts）も window.api.app.paths() 経由でこの process.cwd() を
+ * 見ているので、出所は同じ。**ここを undefined から始めると、Renderer の最初の
+ * agents:list が届くまでのポーリングだけ絞り込みが効かず、一覧が一瞬ちらつく。**
+ */
+let lastKnownCwd: string | undefined = process.cwd();
 
 /** 直前のポーリング結果。busy -> idle の遷移検知に使う。初回ポーリング前は undefined。 */
 let previousTasks: AgentTask[] | undefined;

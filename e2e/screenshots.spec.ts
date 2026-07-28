@@ -74,7 +74,15 @@ async function annotateAndShoot(
     );
     nodes.forEach((node) => {
       node.dataset.e2eHiddenForScreenshot = '1';
-      node.style.visibility = 'hidden';
+      // visibility: hidden ではなく opacity: 0 を使う。
+      //
+      // visibility: hidden を当てた要素はフォーカスを保持できず、ブラウザが
+      // 非同期に blur する。.xterm-helper-textarea は IME の入力を受ける要素なので、
+      // blur されると composition が終了し、.composition-view から変換中の文字列が
+      // 消える。実際に S22 の画像は「枠の中が空」の状態で撮れていた（Issue #10）。
+      // 実測では hide 直後はまだ残っており、数百ミリ秒後に display: none になる。
+      // opacity: 0 ならフォーカスを保ったまま画像から消せる。
+      node.style.opacity = '0';
     });
   });
 
@@ -333,7 +341,7 @@ async function annotateAndShoot(
       '[data-e2e-hidden-for-screenshot="1"]',
     );
     nodes.forEach((node) => {
-      node.style.visibility = '';
+      node.style.opacity = '';
       delete node.dataset.e2eHiddenForScreenshot;
     });
   });
@@ -656,6 +664,11 @@ test('screenshots S22 IME の変換中表示', async () => {
   const screen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
+  // タスク一覧が埋まるまで待ってから撮る。待たないと最初のポーリングに間に合わず、
+  // サイドバーだけ空状態の画像になることがある（他の画像と揃わない）。
+  // composition を作る前に済ませる。あとから待つと焦点が動く余地を作ってしまう。
+  await expect(window.locator('.task-list .task-item')).toHaveCount(2, { timeout: 15_000 });
+
   await window.locator('.xterm-helper-textarea').first().focus();
   const cdp = await app.context().newCDPSession(window);
   await cdp.send('Input.imeSetComposition', {
@@ -676,6 +689,13 @@ test('screenshots S22 IME の変換中表示', async () => {
       side: 'below',
     },
   ]);
+
+  // 撮影を通しても composition が生きていること。
+  // 撮影の副作用で helper textarea が blur されると変換が終了し、
+  // 「枠の中が空」の画像が撮れてしまう（Issue #10 で実際に起きた）。
+  // 画像の中身は機械で見られないので、撮影後の状態で代わりに担保する。
+  await expect(composition).toHaveClass(/active/);
+  await expect(composition).toContainText('にほんご');
 });
 
 test('screenshots S31 設定パネル', async () => {

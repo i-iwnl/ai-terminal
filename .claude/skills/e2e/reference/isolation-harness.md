@@ -22,6 +22,16 @@
 
 `e2e/fixtures/bin/claude` と `gemini` は、`agents --json` / `--list-sessions` / `--version` には固定のフィクスチャ（`AI_TERMINAL_E2E_FIXTURES` 配下）を返し、それ以外（対話起動）では**受け取った引数をそのまま `ARGS: ...` として標準出力に書いてから入力を待つ**。これにより、`--session-id` に UUID が渡っているか、`--resume <sessionId>` が正しいセッション ID を指しているかを、内部実装を覗かずにターミナルの表示だけから検証できる（例: [../../../../e2e/specs/S09-launch-claude.spec.ts](../../../../e2e/specs/S09-launch-claude.spec.ts)）。
 
+### 偽 CLI が本物の挙動を真似ていない部分は、そのまま検証の穴になる
+
+偽 `claude` は当初 `agents --json` の引数を見ずに固定 JSON を返していた。そのため `--cwd` による絞り込み（`config.scopeAgentsToCwd`）が**アプリ側で完全に壊れていても、テストは書けば緑になる**状態だった。現在は `--cwd` を解釈してフィクスチャを絞る（S34 / S35）。
+
+**アプリが新しい引数を渡すようになったら、偽 CLI 側もそれを解釈するか確認する。** 素通りさせると、その引数に関する検証は原理的に成立しない。
+
+### 偽 CLI から node を使うときは `AI_TERMINAL_E2E_NODE`
+
+`PATH` は `<偽CLI>:/usr/bin:/bin:/usr/sbin:/sbin` に絞ってあり（実行環境の本物の `claude` / `gemini` を拾わないため）、**`node` は載っていない**。偽 CLI から JSON を加工したい場合は、ハーネスが渡す `AI_TERMINAL_E2E_NODE`（テストを走らせている Node の絶対パス）を使う。`PATH` に node のディレクトリを足す形にしないこと。そこに本物の CLI が同居していると隔離が崩れる。
+
 ## `launchApp(options)` のオプション
 
 | オプション | 効果 |

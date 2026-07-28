@@ -28,6 +28,33 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const FIXTURES_DIR = join(REPO_ROOT, 'e2e/fixtures');
 
+/** app.close() の完了を待つ上限。これを過ぎたら SIGKILL に切り替える。 */
+const CLOSE_GRACE_MS = 5_000;
+
+/**
+ * Electron を、決まった時間で必ず終わる形で終了させる。
+ *
+ * ウィンドウを出さないまま固まった Electron に app.close() を投げると、実測で
+ * 10 秒近く戻ってこない。後始末がテストの制限時間に食い込むと、リトライで
+ * 緑になったあとでも Playwright が「どのテストにも属さないエラー」
+ * （Worker teardown timeout）を出し、`make e2e` の終了コードが 1 になる。
+ *
+ * 後始末はテスト対象ではないので、待つのをやめて確実に殺す方を選ぶ。
+ */
+async function forceClose(app: ElectronApplication): Promise<void> {
+  const graceful = app.close().catch(() => undefined);
+  await Promise.race([
+    graceful,
+    new Promise<void>((r) => setTimeout(r, CLOSE_GRACE_MS).unref?.()),
+  ]);
+  // close() が間に合っていれば、この kill は既に終了したプロセスへの空振りになる。
+  try {
+    app.process().kill('SIGKILL');
+  } catch {
+    // 既に居ない場合など。後始末の失敗で実行結果を汚さない。
+  }
+}
+
 /** 起動したアプリと、その隔離環境の情報 */
 export interface LaunchedApp {
   app: ElectronApplication;
@@ -287,6 +314,11 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       ZDOTDIR: home,
       PATH: path,
       AI_TERMINAL_E2E_FIXTURES: runtimeFixtures,
+      // 偽 CLI が JSON を加工するために使う node の絶対パス。
+      // PATH には最小限のシステムパスしか残していないので node は載っていない。
+      // PATH に足すのではなく明示的に渡すことで、隔離（本物の claude / gemini を
+      // 拾わない）を崩さずに済ませる。
+      AI_TERMINAL_E2E_NODE: process.execPath,
       AI_TERMINAL_E2E_AGENTS_FAIL: options.agentsFail ? '1' : '',
       AI_TERMINAL_E2E_AGENTS_EMPTY: options.agentsEmpty ? '1' : '',
       AI_TERMINAL_E2E_GEMINI_EMPTY: options.geminiEmpty ? '1' : '',
@@ -331,18 +363,29 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   }
 
   try {
-    // firstWindow の既定タイムアウトは 30 秒。1回のフル実行で Electron の起動が
-    // spec の本数だけ走るため、マシンが混んでいるとコールドスタートがこれを超える。
-    // 起動が「失敗」しているのではなく単に遅いだけなので、明示的に長めに取る。
-    // ここでリトライしてはいけない（2回分の待ち時間がテスト全体の予算を食い潰し、
-    // 30秒で1回失敗するより悪くなる）。再試行は playwright.config.ts の retries に委ねる。
-    const window = await app.firstWindow({ timeout: 60_000 });
+    // 以前は 60 秒だった（ウィンドウを表示していた頃、マシンが混んでいると
+    // コールドスタートが既定の 30 秒を超えたため）。非表示化のあと実測し直した。
+    //
+    // フル実行3回・99起動で計測した firstWindow の所要時間は
+    // 最小 101ms / 中央 119ms / **最大 421ms**。分布は二極で、成功する起動は
+    // 必ず 0.5 秒以内に返り、**失敗する起動は 60 秒待ってもウィンドウが出ない**
+    // （99回中2回。待ち時間を伸ばしても救えない種類の失敗）。
+    // 実測最大の約35倍に当たる 15 秒を上限とする。ここを長くしても、
+    // 失敗した起動の判明が遅れるだけで成功率は上がらない。
+    //
+    // この値は失敗時の後始末（最大 CLOSE_GRACE_MS）と合わせて
+    // playwright.config.ts の timeout に収まっていること。収まらないと、
+    // リトライで緑になってもテスト全体が異常終了する。
+    //
+    // ここでリトライしてはいけない（2回分の待ち時間がテスト全体の予算を食い潰す）。
+    // 再試行は playwright.config.ts の retries に委ねる。
+    const window = await app.firstWindow({ timeout: 15_000 });
     await window.waitForLoadState('domcontentloaded');
     return { app, window, home, workDir };
   } catch (err) {
     // ウィンドウが出ないまま失敗した Electron は、呼び出し側が LaunchedApp を
     // 受け取れないため誰にも close されない。ここで確実に始末する。
-    await app.close().catch(() => undefined);
+    await forceClose(app);
     rmSync(home, { recursive: true, force: true });
     throw err;
   }
@@ -360,11 +403,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
  */
 export async function closeApp(launched: LaunchedApp | undefined): Promise<void> {
   if (!launched) return;
-  try {
-    await launched.app.close();
-  } catch {
-    // 既にプロセスが落ちている場合など。後片付けの失敗で実行結果を汚さない。
-  }
+  await forceClose(launched.app);
   // 一時 HOME を消す。消さないと1テスト1ディレクトリで溜まり続ける
   // （実際に 864 個溜まっていた）。中身はこのファイルが決定的に生成するもので、
   // 失敗の調査には Playwright の trace / screenshot を使えばよい。

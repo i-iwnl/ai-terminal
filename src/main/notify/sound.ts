@@ -25,27 +25,53 @@ const SOUND_EXTENSIONS = new Set(['.aiff', '.aif', '.wav', '.m4a', '.mp3', '.caf
 export const DEFAULT_SOUND_ID = '';
 
 /**
- * サウンド識別子を再生可能な絶対パスに解決する。
+ * サウンド識別子を、存在確認にかける候補パスの列に展開する（純粋関数）。
  *
- * - 空文字（既定）: undefined（自前では鳴らさず OS に任せる）
- * - '/' 始まり: ユーザー指定の絶対パスとしてそのまま使う
- * - それ以外: 音源名とみなし、探索先ディレクトリから拡張子違いを含めて探す
+ * - 空文字（既定）: 候補なし（自前では鳴らさず OS に任せる）
+ * - '/' 始まり: ユーザー指定の絶対パスとしてそのまま使う（1件だけ）
+ * - それ以外: 音源名とみなし、探索先ディレクトリ × 拡張子の総当たり
+ *
+ * ファイルの存在は見ない。「どこを・どの順で探すか」という規則だけをここに置き、
+ * fs に触る部分と分けてある（規則そのものは test/unit/sound.test.ts が固定する）。
+ */
+export function soundCandidatePaths(
+  soundId: string,
+  dirs: readonly string[] = SOUND_DIRS,
+): string[] {
+  if (soundId === DEFAULT_SOUND_ID) return [];
+  if (soundId.startsWith('/')) return [soundId];
+
+  const candidates: string[] = [];
+  for (const dir of dirs) {
+    for (const ext of SOUND_EXTENSIONS) {
+      candidates.push(join(dir, `${soundId}${ext}`));
+    }
+  }
+  return candidates;
+}
+
+/**
+ * ディレクトリの中身（ファイル名の列）を、一覧に出す音源名へ畳む（純粋関数）。
+ * 扱えない拡張子を落とし、拡張子を外し、重複を除いて昇順に並べる。
+ */
+export function toSoundNames(files: readonly string[]): string[] {
+  const seen = new Set<string>();
+  for (const file of files) {
+    const ext = extname(file);
+    if (!SOUND_EXTENSIONS.has(ext.toLowerCase())) continue;
+    seen.add(basename(file, ext));
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * サウンド識別子を再生可能な絶対パスに解決する。
  *
  * 存在しないファイルは undefined を返す。設定に古い音源名が残っていても
  * 「鳴らない」だけで済ませ、例外にしない。
  */
 export function resolveSoundPath(soundId: string): string | undefined {
-  if (soundId === DEFAULT_SOUND_ID) return undefined;
-  if (soundId.startsWith('/')) {
-    return existsSync(soundId) ? soundId : undefined;
-  }
-  for (const dir of SOUND_DIRS) {
-    for (const ext of SOUND_EXTENSIONS) {
-      const candidate = join(dir, `${soundId}${ext}`);
-      if (existsSync(candidate)) return candidate;
-    }
-  }
-  return undefined;
+  return soundCandidatePaths(soundId).find((candidate) => existsSync(candidate));
 }
 
 /**
@@ -56,24 +82,16 @@ export function listSounds(): SoundOption[] {
   const options: SoundOption[] = [{ id: DEFAULT_SOUND_ID, label: 'OS 既定' }];
   if (process.platform !== 'darwin') return options;
 
-  const seen = new Set<string>();
+  const files: string[] = [];
   for (const dir of SOUND_DIRS) {
-    let files: string[];
     try {
-      files = readdirSync(dir);
+      files.push(...readdirSync(dir));
     } catch {
       // 存在しないディレクトリ（~/Library/Sounds が無い等）は黙って飛ばす
-      continue;
-    }
-    for (const file of files) {
-      if (!SOUND_EXTENSIONS.has(extname(file).toLowerCase())) continue;
-      const name = basename(file, extname(file));
-      if (seen.has(name)) continue;
-      seen.add(name);
     }
   }
 
-  for (const name of [...seen].sort((a, b) => a.localeCompare(b))) {
+  for (const name of toSoundNames(files)) {
     options.push({ id: name, label: name });
   }
   return options;

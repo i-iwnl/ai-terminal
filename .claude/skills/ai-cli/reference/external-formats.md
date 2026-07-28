@@ -8,7 +8,7 @@
 
 - `pid`（数値） / `cwd`（文字列） / `kind`（文字列、例 `"interactive"`） / `startedAt`（数値・epoch ms） / `sessionId`（文字列） / `name`（文字列） / `status`（文字列、例 `"busy"`）
 
-- `--cwd <path>` でその作業ディレクトリのセッションだけに絞り込める
+- `--cwd <path>` でその作業ディレクトリのセッションだけに絞り込める。**`--help` は "Show only background sessions started under `<path>`" と書いているが、実機では `kind: "interactive"` のセッションにも効く**（v2.1.220 で確認。指定パス配下のみが返り、無関係なパスを渡すと `[]`）。ここでも help ではなく実機の観測を正とする
 - `--all` を付けると終了済みセッションも含めて返る
 - **Web 上の二次情報は「バックグラウンド agent しか返さない」と説明しているが、実機では対話セッション（人間が PTY で使っている `claude` 本体）も `kind: "interactive"` として一覧に含まれた。実機の観測を正とし、二次情報を信用しない**
 
