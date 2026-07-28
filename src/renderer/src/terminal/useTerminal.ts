@@ -16,8 +16,9 @@ import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes';
 import { SearchAddon } from '@xterm/addon-search';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import type { PtyDataEvent, PtyExitEvent, TerminalTheme } from '@shared/ipc';
+import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import { matchShortcut } from '../lib/shortcuts';
+import { subscribePty } from './ptyStream';
 
 /** unicode-graphemes アドオンが登録する Unicode バージョン文字列 */
 const GRAPHEME_UNICODE_VERSION = '15-graphemes';
@@ -101,15 +102,18 @@ export function useTerminal(
       }),
     );
 
+    term.open(container);
+    term.unicode.activeVersion = GRAPHEME_UNICODE_VERSION;
+
+    // WebglAddon は term.open() の**後**に読み込む（xterm.js のドキュメント通りの順序）。
+    // 先に loadAddon すると DOM 未生成の Terminal にアドオンが載る。
+    // 実測では先に読み込んでも描画は壊れなかったが、依存する保証が無いので順序を守る。
     try {
       term.loadAddon(new WebglAddon());
     } catch (err) {
       // WebGL レンダラが使えない環境では黙って DOM レンダラにフォールバックする。
       console.warn('[terminal] WebGL レンダラの初期化に失敗しました。無視して続行します。', err);
     }
-
-    term.open(container);
-    term.unicode.activeVersion = GRAPHEME_UNICODE_VERSION;
 
     // アプリのショートカットキーは xterm に処理させない。
     // 実際のアクションはウィンドウのグローバル keydown リスナー（capture フェーズ）が
@@ -126,20 +130,23 @@ export function useTerminal(
       window.api.pty.input({ ptyId, data });
     });
 
-    const unsubscribeData = window.api.pty.onData((e: PtyDataEvent) => {
-      if (e.ptyId !== ptyId) return;
-      // PTY 出力は加工しない。そのまま書き込む。
-      term.write(e.data);
-    });
-
-    const unsubscribeExit = window.api.pty.onExit((e: PtyExitEvent) => {
-      if (e.ptyId !== ptyId) return;
-      const label = e.signal
-        ? `シグナル ${e.signal} で終了しました`
-        : `終了しました（コード ${e.exitCode}）`;
-      term.write(`\r\n\x1b[2m[プロセスは${label}]\x1b[0m\r\n`);
-      optionsRef.current.onExit(e);
-    });
+    // 直接 window.api.pty.onData を購読すると、spawn 直後から購読開始までの
+    // 出力を取りこぼす（AI CLI の起動バナーが消える）。ハブ経由で購読し、
+    // 購読前に届いていた分をフラッシュしてもらう。
+    const unsubscribeStream = subscribePty(
+      ptyId,
+      (data: string) => {
+        // PTY 出力は加工しない。そのまま書き込む。
+        term.write(data);
+      },
+      (e: PtyExitEvent) => {
+        const label = e.signal
+          ? `シグナル ${e.signal} で終了しました`
+          : `終了しました（コード ${e.exitCode}）`;
+        term.write(`\r\n\x1b[2m[プロセスは${label}]\x1b[0m\r\n`);
+        optionsRef.current.onExit(e);
+      },
+    );
 
     const doFit = (): void => {
       if (container.clientWidth === 0 || container.clientHeight === 0) return;
@@ -160,8 +167,7 @@ export function useTerminal(
       window.cancelAnimationFrame(initialFitId);
       resizeObserver.disconnect();
       onDataDisposable.dispose();
-      unsubscribeData();
-      unsubscribeExit();
+      unsubscribeStream();
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;

@@ -187,10 +187,13 @@ async function extractClaudePreview(filePath: string): Promise<ClaudePreview> {
   const lines = chunk.split('\n').slice(0, CLAUDE_PREVIEW_MAX_LINES);
 
   const preview: ClaudePreview = {};
+  let nonEmptyLines = 0;
+  let parsedLines = 0;
 
   for (const line of lines) {
     if (allPreviewFieldsFound(preview)) break;
     if (line.trim().length === 0) continue;
+    nonEmptyLines += 1;
 
     let row: unknown;
     try {
@@ -199,7 +202,15 @@ async function extractClaudePreview(filePath: string): Promise<ClaudePreview> {
       // この行が壊れている（読み込み境界での途中切れも含む）だけ。ファイル全体は諦めない。
       continue;
     }
+    parsedLines += 1;
     applyClaudeRow(preview, row);
+  }
+
+  // 1行も解釈できなかった場合はファイルが壊れているとみなし、呼び出し側に伝える。
+  // ここで黙って空のプレビューを返すと、壊れたセッションが「中身の無い正常なセッション」と
+  // 区別できなくなる（壊れたエントリを隠さないことが設計方針）。
+  if (nonEmptyLines > 0 && parsedLines === 0) {
+    throw new Error('JSONL として解釈できる行が1行もありません');
   }
 
   return preview;

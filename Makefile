@@ -5,7 +5,8 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help install dev dev-debug dev-quiet build check typecheck lint format rebuild fix-electron \
-        docker-verify docker-build sandbox sandbox-build clean clean-docker
+        docker-verify docker-build sandbox sandbox-build clean clean-docker \
+        e2e e2e-lint e2e-report e2e-screenshots
 
 # ---------------------------------------------------------------------------
 # ヘルプ
@@ -62,6 +63,26 @@ lint:
 ## Prettier で整形する
 format:
 	npx prettier --write "src/**/*.{ts,tsx,css}" "*.{json,md}"
+
+# ---------------------------------------------------------------------------
+# E2E テスト（Playwright）
+# ---------------------------------------------------------------------------
+
+## E2E テストを実行する（ビルド済みの out/ を使うため build に依存）
+e2e: build
+	npx playwright test
+
+## scenarios.yml と e2e/specs/ の 1:1 対応を検査する（実行前提なし）
+e2e-lint:
+	node scripts/lint-e2e.mjs
+
+## 直近の E2E 実行の HTML レポートを開く
+e2e-report:
+	npx playwright show-report e2e/report
+
+## README の使い方ガイド用スクリーンショットを撮る（docs/images/ に出力。make e2e には含まれない）
+e2e-screenshots: build
+	npx playwright test --config=e2e/screenshots.playwright.config.ts
 
 # ---------------------------------------------------------------------------
 # ネイティブモジュール / Electron

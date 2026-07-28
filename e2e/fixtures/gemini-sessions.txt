@@ -1,0 +1,3 @@
+Available sessions for this project (2):
+  1. タブ機能の実装 (5 minutes ago) [cccccccc-cccc-4ccc-8ccc-cccccccccccc]
+  2. 履歴パネルの調査 (Yesterday) [dddddddd-dddd-4ddd-8ddd-dddddddddddd]
