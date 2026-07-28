@@ -53,8 +53,8 @@ Issue #1 の完了条件と同一。ここでは実装観点で再掲する。
 | ゲート | 結果 |
 |---|---|
 | `make check`（typecheck + lint） | green |
-| `make e2e` | 23 passed（S23 追加後） |
-| `node scripts/lint-e2e.mjs` | PASS=173 FAIL=0 WARN=0 |
+| `make e2e` | **25 passed（1.2 分・flaky 0・exit 0）** |
+| `node scripts/lint-e2e.mjs` | PASS=187 FAIL=0 WARN=0 |
 | `bash .claude/scripts/lint-skills.sh` | PASS=66 FAIL=0 |
 
 ---
@@ -66,7 +66,6 @@ Issue #1 の完了条件は全て満たしており、`main` にマージ済み�
 | 優先度 | アクション | 詳細 |
 |---|---|---|
 | P1 | PR #4 のレビューとマージ | https://github.com/Yoshinaga-iwnl/ai-terminal/pull/4 （`test/webgl-e2e-and-phase1-verify` -> `main`） |
-| P1 | マシンが空いた状態で `make e2e` を再確認 | 検証時は VM が CPU 282% を占有しており、`beforeEach` のタイムアウトで exit 1 になった。テストの問題と切り分けること |
 | P2 | macOS の実 IME での日本語入力の確認 | `known-issues.md` の 1 番。**人手でしか確認できない**唯一の残項目 |
 | P2 | htop を入れて本来の項目として確認する | 同上。現在は `top` の対話モードで代替している |
 
