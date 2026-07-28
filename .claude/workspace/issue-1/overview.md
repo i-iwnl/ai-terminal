@@ -65,7 +65,8 @@ Issue #1 の完了条件は全て満たしており、`main` にマージ済み�
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| P1 | PR の作成 | `test/webgl-e2e-and-phase1-verify` -> `main`。ユーザーの明示指示待ち |
+| P1 | PR #4 のレビューとマージ | https://github.com/Yoshinaga-iwnl/ai-terminal/pull/4 （`test/webgl-e2e-and-phase1-verify` -> `main`） |
+| P1 | マシンが空いた状態で `make e2e` を再確認 | 検証時は VM が CPU 282% を占有しており、`beforeEach` のタイムアウトで exit 1 になった。テストの問題と切り分けること |
 | P2 | macOS の実 IME での日本語入力の確認 | `known-issues.md` の 1 番。**人手でしか確認できない**唯一の残項目 |
 | P2 | htop を入れて本来の項目として確認する | 同上。現在は `top` の対話モードで代替している |
 
