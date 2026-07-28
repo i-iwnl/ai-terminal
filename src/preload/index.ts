@@ -15,9 +15,15 @@ import {
   type ListHistoryRequest,
   type ListHistoryResult,
   type SetSessionTitleRequest,
+  type ListMemosResult,
+  type SetMemoRequest,
   type AppConfig,
   type AppPaths,
   type NotifyRequest,
+  type PlaySoundRequest,
+  type SoundOption,
+  type TestWebhookRequest,
+  type WebhookSendResult,
   type RendererApi,
 } from '@shared/ipc';
 
@@ -62,6 +68,12 @@ const api: RendererApi = {
     setTitle: (req: SetSessionTitleRequest): Promise<void> =>
       ipcRenderer.invoke(IpcInvoke.historySetTitle, req) as Promise<void>,
   },
+  memo: {
+    list: (): Promise<ListMemosResult> =>
+      ipcRenderer.invoke(IpcInvoke.memoList) as Promise<ListMemosResult>,
+    set: (req: SetMemoRequest): Promise<ListMemosResult> =>
+      ipcRenderer.invoke(IpcInvoke.memoSet, req) as Promise<ListMemosResult>,
+  },
   config: {
     get: (): Promise<AppConfig> => ipcRenderer.invoke(IpcInvoke.configGet) as Promise<AppConfig>,
     set: (patch: Partial<AppConfig>): Promise<AppConfig> =>
@@ -70,6 +82,12 @@ const api: RendererApi = {
   notify: {
     show: (req: NotifyRequest): Promise<void> =>
       ipcRenderer.invoke(IpcInvoke.notifyShow, req) as Promise<void>,
+    listSounds: (): Promise<SoundOption[]> =>
+      ipcRenderer.invoke(IpcInvoke.notifyListSounds) as Promise<SoundOption[]>,
+    playSound: (req: PlaySoundRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcInvoke.notifyPlaySound, req) as Promise<void>,
+    testWebhook: (req: TestWebhookRequest): Promise<WebhookSendResult> =>
+      ipcRenderer.invoke(IpcInvoke.notifyTestWebhook, req) as Promise<WebhookSendResult>,
   },
   app: {
     paths: (): Promise<AppPaths> => ipcRenderer.invoke(IpcInvoke.appPaths) as Promise<AppPaths>,

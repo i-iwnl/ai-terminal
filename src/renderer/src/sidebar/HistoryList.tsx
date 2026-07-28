@@ -17,12 +17,15 @@ import {
 import type { HistoryProvider, SessionHistoryEntry } from '@shared/ipc';
 import { formatRelativeTime, sessionDisplayTitle } from '../lib/format';
 import { getSharedCwd, isSharedCwdResolved, resolveSharedCwd, subscribeSharedCwd } from '../lib/cwd';
+import type { MemoTarget } from './MemoPanel';
 
 export interface HistoryListProps {
   onResume: (entry: SessionHistoryEntry) => void;
+  /** そのセッションのメモをメモタブで開く */
+  onOpenMemo: (target: MemoTarget) => void;
 }
 
-export default function HistoryList({ onResume }: HistoryListProps) {
+export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) {
   const [provider, setProvider] = useState<HistoryProvider>('claude');
   const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -133,21 +136,42 @@ export default function HistoryList({ onResume }: HistoryListProps) {
         />
       );
     }
+    // stableId を局所の const に写しておく。プロパティのままだと、
+    // コールバックの中では「undefined ではない」という絞り込みが維持されない。
+    const stableId = entry.stableId;
     return (
       <div className="history-item__title-row">
         <div className="history-item__title">{displayTitle}</div>
-        {entry.stableId !== undefined && (
-          <button
-            type="button"
-            className="history-item__edit"
-            aria-label="タイトルを編集"
-            onClick={(e: MouseEvent<HTMLButtonElement>) => {
-              e.stopPropagation();
-              startEditing(entry, displayTitle);
-            }}
-          >
-            編集
-          </button>
+        {stableId !== undefined && (
+          <>
+            <button
+              type="button"
+              className="history-item__action"
+              aria-label="メモを開く"
+              onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                // メモを開くだけで resume は走らせない。
+                e.stopPropagation();
+                onOpenMemo({
+                  provider: entry.provider,
+                  stableId,
+                  title: displayTitle,
+                });
+              }}
+            >
+              メモ
+            </button>
+            <button
+              type="button"
+              className="history-item__action"
+              aria-label="タイトルを編集"
+              onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                e.stopPropagation();
+                startEditing(entry, displayTitle);
+              }}
+            >
+              編集
+            </button>
+          </>
         )}
       </div>
     );
