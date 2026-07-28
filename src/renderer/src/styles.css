@@ -149,6 +149,21 @@ body {
   font-size: 12px;
 }
 
+.tab-bar__title-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  background: #333;
+  border: 1px solid #4a4a4a;
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0;
+  outline: none;
+}
+
 .tab-bar__exit-badge {
   font-size: 10px;
   color: #d47b7b;
@@ -171,6 +186,23 @@ body {
   color: #999;
   cursor: pointer;
   font-size: 16px;
+}
+
+/* 設定ボタンはタブバー右端。ドラッグ領域の上に乗るので no-drag を明示する。 */
+.tab-bar__settings {
+  flex-shrink: 0;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid #2a2a2a;
+  color: #999;
+  cursor: pointer;
+  font-size: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.tab-bar__settings:hover {
+  color: #fff;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -413,11 +445,54 @@ body {
   background: #222;
 }
 
+.history-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .history-item__title {
   color: #ddd;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 行のホバー時だけ出す操作ボタン（メモ / 編集）。
+   常時表示するとタイトルの表示幅を食うため、普段は透明にしておく。 */
+.history-item__action {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #333;
+  color: #999;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.history-item:hover .history-item__action,
+.history-item__action:focus {
+  opacity: 1;
+}
+
+.history-item__title-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  background: #333;
+  border: 1px solid #4a4a4a;
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0;
+  outline: none;
 }
 
 .history-item__meta {
@@ -432,4 +507,288 @@ body {
   color: #e08a8a;
   font-size: 10px;
   margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* メモパネル */
+/* ---------------------------------------------------------------------- */
+
+.memo-panel {
+  padding: 8px 12px 16px;
+  /* 入力欄はテキスト選択できないと使えないので、body の user-select: none を戻す */
+  user-select: text;
+}
+
+.memo-panel__section + .memo-panel__section {
+  margin-top: 16px;
+}
+
+.memo-panel__heading {
+  margin: 0 0 6px;
+  color: #999;
+  font-size: 11px;
+  font-weight: normal;
+}
+
+.memo-panel__textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 120px;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #ddd;
+  background: #202020;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 6px;
+  outline: none;
+}
+
+.memo-panel__textarea:focus {
+  border-color: #4c8bf5;
+}
+
+.memo-panel__target {
+  margin-bottom: 10px;
+}
+
+.memo-panel__target-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.memo-panel__target-title {
+  flex: 1;
+  min-width: 0;
+  color: #ddd;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memo-panel__close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.memo-panel__hint {
+  margin: 0 0 8px;
+  color: #777;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.memo-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.memo-item {
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-bottom-color: #232323;
+  cursor: pointer;
+}
+
+.memo-item:hover {
+  background: #222;
+}
+
+.memo-item.is-open {
+  border-color: #4c8bf5;
+  border-radius: 3px;
+}
+
+.memo-item__title {
+  color: #ddd;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memo-item__preview {
+  color: #888;
+  font-size: 11px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memo-item__meta {
+  display: flex;
+  gap: 8px;
+  color: #777;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 設定パネル（モーダル） */
+/* ---------------------------------------------------------------------- */
+
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.settings {
+  width: 100%;
+  max-width: 520px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #232323;
+  border: 1px solid #383838;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  /* 入力欄を扱うため、body の user-select: none をこの中だけ戻す */
+  user-select: text;
+}
+
+.settings__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.settings__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #eee;
+}
+
+.settings__close {
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+}
+
+.settings__body {
+  padding: 12px 16px 16px;
+  overflow-y: auto;
+}
+
+.settings__section + .settings__section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #303030;
+}
+
+.settings__heading {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: normal;
+  color: #999;
+}
+
+.settings__note {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #777;
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.settings__label {
+  flex-shrink: 0;
+  width: 120px;
+  color: #999;
+}
+
+.settings__text,
+.settings__number,
+.settings__select {
+  font: inherit;
+  font-size: 12px;
+  color: #ddd;
+  background: #1c1c1c;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  padding: 3px 6px;
+  outline: none;
+}
+
+.settings__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings__number {
+  width: 100px;
+}
+
+.settings__select {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings__text:focus,
+.settings__number:focus,
+.settings__select:focus {
+  border-color: #4c8bf5;
+}
+
+.settings__button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+.settings__button:hover:not(:disabled) {
+  border-color: #4c8bf5;
+  color: #fff;
+}
+
+.settings__button:disabled {
+  color: #666;
+  cursor: default;
+}
+
+.settings__webhook {
+  margin-bottom: 12px;
+}
+
+.settings__status {
+  font-size: 11px;
+  color: #999;
 }

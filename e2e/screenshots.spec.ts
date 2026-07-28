@@ -677,3 +677,40 @@ test('screenshots S22 IME の変換中表示', async () => {
     },
   ]);
 });
+
+test('screenshots S31 設定パネル', async () => {
+  launched = await launchApp({
+    config: {
+      // ハーネスの既定は notifySound: false。そのまま撮るとサウンド欄が
+      // 無効表示（灰色）になり、注釈を付けた要素が使えない欄に見える。
+      notifySound: true,
+      // 撮影用に Webhook 欄を埋めておく（実在しないホストなので送信はしない）。
+      // 空欄のまま撮ると「何を入れる欄なのか」が画像から読み取れない。
+      slack: { enabled: true, url: 'https://hooks.slack.com/services/T000/B000/xxxx' },
+      discord: { enabled: false, url: '' },
+    },
+  });
+  const { window } = launched;
+
+  const screen = window.locator('.terminal-pane__container .xterm-screen').first();
+  await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000 });
+
+  await window.locator('button[aria-label="設定を開く"]').click();
+  await expect(window.locator('[role="dialog"][aria-label="設定"]')).toBeVisible();
+
+  await annotateAndShoot(window, 'S31-settings-panel.png', [
+    {
+      selector: '.settings__select',
+      number: 1,
+      caption: '通知音を選んでその場で試聴',
+      side: 'right',
+    },
+    {
+      selector: 'input[aria-label="Slack の Webhook URL"]',
+      number: 2,
+      caption: 'Slack / Discord へ完了通知を転送',
+      // below だと直下の「テスト送信」ボタンを覆ってしまう
+      side: 'right',
+    },
+  ]);
+});

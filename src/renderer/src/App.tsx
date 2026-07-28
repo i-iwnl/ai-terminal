@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type { AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import Sidebar from './sidebar/Sidebar';
+import SettingsPanel from './settings/SettingsPanel';
 import TabBar from './tabs/TabBar';
 import TerminalPane from './terminal/TerminalPane';
 import type { TerminalHandle } from './terminal/useTerminal';
@@ -8,6 +9,7 @@ import { startPtyStream } from './terminal/ptyStream';
 import { useTabs } from './tabs/useTabs';
 import { matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
+import { sessionDisplayTitle } from './lib/format';
 
 // window.api.config.get() が失敗した場合の既定値。
 // src/main/config.ts の DEFAULT_CONFIG と揃えてある。
@@ -19,6 +21,9 @@ const FALLBACK_CONFIG: AppConfig = {
   useTmux: true,
   notifyOnIdle: true,
   notifySound: true,
+  notifySoundId: '',
+  slack: { enabled: false, url: '' },
+  discord: { enabled: false, url: '' },
   scopeAgentsToCwd: false,
   theme: {
     background: '#1e1e1e',
@@ -31,6 +36,7 @@ const FALLBACK_CONFIG: AppConfig = {
 export default function App(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(FALLBACK_CONFIG);
   const [notice, setNotice] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const showError = useCallback((message: string) => {
     setNotice(message);
@@ -99,6 +105,9 @@ export default function App(): ReactElement {
           if (id) handlesRef.current.get(id)?.toggleSearch();
           break;
         }
+        case 'toggle-settings':
+          setSettingsOpen((open) => !open);
+          break;
       }
     };
 
@@ -120,16 +129,30 @@ export default function App(): ReactElement {
     if (tab) tabsApiRef.current.setActiveTabId(tab.id);
   }, []);
 
+  // 設定の変更。Main が正規化した結果（範囲制限など）を state に反映する。
+  // 保存に失敗しても画面は開いたままにし、理由だけを通知バナーに出す。
+  const changeConfig = useCallback((patch: Partial<AppConfig>) => {
+    window.api.config
+      .set(patch)
+      .then((next) => setConfig(next))
+      .catch((err: unknown) => {
+        showError(`設定の保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+      });
+  }, [showError]);
+
   const resumeHistory = useCallback((entry: SessionHistoryEntry) => {
+    const title = sessionDisplayTitle(entry);
     if (entry.provider === 'claude') {
       void tabsApiRef.current.newAgentTab('claude', {
         resumeSessionId: entry.sessionId,
         cwd: entry.cwd,
+        title,
       });
     } else {
       void tabsApiRef.current.newAgentTab('gemini', {
         geminiResumeTarget: entry.sessionId,
         cwd: entry.cwd,
+        title,
       });
     }
   }, []);
@@ -148,6 +171,8 @@ export default function App(): ReactElement {
           onSelect={tabsApi.setActiveTabId}
           onClose={(id) => void tabsApi.closeTab(id)}
           onNewShell={() => void tabsApi.newShellTab()}
+          onRename={tabsApi.renameTab}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <div className="terminal-stack">
           {tabsApi.tabs.map((tab) => (
@@ -167,6 +192,13 @@ export default function App(): ReactElement {
           ))}
           {tabsApi.tabs.length === 0 && <div className="terminal-stack__empty">タブがありません</div>}
         </div>
+        {settingsOpen && (
+          <SettingsPanel
+            config={config}
+            onChange={changeConfig}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
         {notice && (
           <div className="notice-banner">
             <span>{notice}</span>
