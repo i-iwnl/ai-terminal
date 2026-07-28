@@ -51,6 +51,6 @@
 
 ### 次に再開するとき最初に読むべきこと
 
-- **完了条件はすべて達成済み**（overview.md 参照）。コード変更はワークツリー `.claude/worktrees/issue-27-stable-package/`（ブランチ worktree-issue-27-stable-package）に未コミットで置かれている
-- 残タスクは commit / PR 作成のみで、これは**ユーザーの明示指示待ち**（CLAUDE.md の Git 操作ルール）
-- アプリアイコン未設定は known-issues.md 1番 → GitHub Issue に起票済み（番号は known-issues.md のリンクを参照）
+- **完了条件はすべて達成済み**（overview.md 参照）
+- ユーザー指示を受けてコミット（429e5f5）・push・**PR [#32](https://github.com/i-iwnl/ai-terminal/pull/32) 作成済み**（ブランチは feat/issue-27-stable-package にリネーム。Closes #27 付き）
+- 残タスクは PR のレビュー・マージ（ユーザー判断）。アプリアイコン未設定は [#31](https://github.com/i-iwnl/ai-terminal/issues/31)

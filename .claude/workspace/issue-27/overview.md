@@ -21,8 +21,8 @@
 | カテゴリ | 対象 |
 |---|---|
 | 対象トラック | 単一（main + ビルド設定。renderer は触らない） |
-| ブランチ | worktree-issue-27-stable-package（`.claude/worktrees/issue-27-stable-package/` のワークツリー） |
-| 関連PR | 未作成 |
+| ブランチ | feat/issue-27-stable-package（`.claude/worktrees/issue-27-stable-package/` のワークツリー） |
+| 関連PR | [#32](https://github.com/i-iwnl/ai-terminal/pull/32) |
 
 ---
 
@@ -50,5 +50,5 @@
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | commit / PR 作成 | **ユーザーの明示指示待ち**（ワークツリーに未コミットで置いてある） |
-| P3 | アプリアイコンの追加 | known-issues.md 1番（GitHub Issue 起票済み） |
+| **P0** | PR #32 のレビュー・マージ | ユーザーの判断（マージされたら Issue #27 も閉じられる想定。Closes 済み） |
+| P3 | アプリアイコンの追加 | [#31](https://github.com/i-iwnl/ai-terminal/issues/31) |
