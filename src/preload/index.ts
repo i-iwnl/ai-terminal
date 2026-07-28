@@ -101,6 +101,10 @@ const api: RendererApi = {
     onAction: (listener: (action: AppAction) => void): (() => void) =>
       subscribe<AppAction>(IpcEvent.menuAction, listener),
   },
+  session: {
+    onFocus: (listener: (agentSessionId: string) => void): (() => void) =>
+      subscribe<string>(IpcEvent.focusSession, listener),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

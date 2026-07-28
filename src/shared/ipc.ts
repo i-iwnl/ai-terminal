@@ -396,6 +396,7 @@ export const IpcEvent = {
   agentTasks: 'agents:tasks',
   menuAction: 'menu:action',
   accessibilitySupportChanged: 'app:accessibility-support-changed',
+  focusSession: 'session:focus',
 } as const;
 
 /**
@@ -451,5 +452,12 @@ export interface RendererApi {
   menu: {
     /** メニューから選ばれた操作の購読。購読解除関数を返す */
     onAction(listener: (action: AppAction) => void): () => void;
+  };
+  session: {
+    /**
+     * 「このセッションのタブを前に出せ」という指示の購読。
+     * OS 通知をクリックしたときに Main から飛んでくる。購読解除関数を返す。
+     */
+    onFocus(listener: (agentSessionId: string) => void): () => void;
   };
 }

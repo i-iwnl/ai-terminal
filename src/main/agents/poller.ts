@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow } from 'electron';
+import { app, ipcMain, type BrowserWindow } from 'electron';
 import { basename } from 'node:path';
 
 import {
@@ -8,6 +8,8 @@ import {
   type AgentTasksEvent,
   type ListAgentsRequest,
 } from '@shared/ipc';
+// 状態の意味の単一の正。表示（TaskList）と同じ判定を使う。
+import { becameYourTurn, countYourTurn } from '@shared/agent-status';
 
 import { getConfig } from '../config';
 import { notify } from '../notify';
@@ -104,6 +106,7 @@ async function runPollCycle(): Promise<void> {
     // 完了通知の判定はスキップする（previousTasks も更新しない = 次に成功したときに正しく比較できる）。
     if (!event.error) {
       detectAndNotifyCompletions(event.tasks);
+      updateDockBadge(event.tasks);
     }
 
     sendToRenderer(event);
@@ -125,6 +128,35 @@ async function runPollCycle(): Promise<void> {
 function sendToRenderer(event: AgentTasksEvent): void {
   if (!targetWindow || targetWindow.isDestroyed()) return;
   targetWindow.webContents.send(IpcEvent.agentTasks, event);
+}
+
+/**
+ * Dock バッジに「あなたの番」の件数を出す。
+ *
+ * **クロームのピクセルを1つも使わずに伝えられる唯一の面。** ウィンドウ内の表現は
+ * すべて「アプリを見ている」ことが前提だが、実利用ではエディタやブラウザを
+ * 見ている時間のほうが長い。
+ *
+ * `notifyOnIdle`（通知の有無）とは独立させる。通知を切った人がバッジも失うと、
+ * 「静かに使いたいが件数は知りたい」ができなくなる。
+ */
+function updateDockBadge(tasks: AgentTask[]): void {
+  if (typeof app.setBadgeCount !== 'function') return;
+  app.setBadgeCount(countYourTurn(tasks));
+}
+
+/**
+ * 通知をクリックしたときに、そのセッションのタブを前に出す。
+ *
+ * ここが無いと「通知が来た -> アプリを探す -> タブバーを目で舐める ->
+ * サイドバーを開く -> 行をクリック」を毎回踏むことになる。
+ */
+function focusSession(agentSessionId: string): void {
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+  if (targetWindow.isMinimized()) targetWindow.restore();
+  targetWindow.show();
+  targetWindow.focus();
+  targetWindow.webContents.send(IpcEvent.focusSession, agentSessionId);
 }
 
 /**
@@ -154,13 +186,14 @@ function detectAndNotifyCompletions(current: AgentTask[]): void {
 
   for (const task of current) {
     const prev = prevById.get(task.sessionId);
-    if (prev && prev.status === 'busy' && task.status !== 'busy') {
+    if (prev && becameYourTurn(prev.status, task.status)) {
       notifyCompletion(task);
     }
   }
 
   for (const prev of previousTasks) {
-    if (!currentIds.has(prev.sessionId) && prev.status === 'busy') {
+    // 一覧から消えた（プロセスが終わった）ものは「作業中でなくなった」とみなす
+    if (!currentIds.has(prev.sessionId) && becameYourTurn(prev.status, undefined)) {
       notifyCompletion(prev);
     }
   }
@@ -171,8 +204,17 @@ function detectAndNotifyCompletions(current: AgentTask[]): void {
 function notifyCompletion(task: AgentTask): void {
   const label =
     task.name ?? (task.cwd ? basename(task.cwd) : undefined) ?? task.sessionId.slice(0, 8);
-  notify({
-    title: 'Claude の作業が完了しました',
-    body: label,
-  });
+  notify(
+    {
+      title: 'Claude の作業が完了しました',
+      body: label,
+    },
+    { onClick: () => focusSession(task.sessionId) },
+  );
+
+  // ウィンドウが前に無いときだけ Dock を弾ませる。
+  // 見ている最中に弾ませても意味が無く、うるさいだけ。
+  if (app.dock && targetWindow && !targetWindow.isFocused()) {
+    app.dock.bounce('informational');
+  }
 }

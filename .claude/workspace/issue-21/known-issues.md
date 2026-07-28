@@ -36,7 +36,8 @@ P2
 
 ### ステータス
 
-未対処（この Issue のスコープ外。現時点では CLI が `busy` / `idle` しか返さないため実害は出ていない）
+**対処済み**（Issue #24 で `src/shared/agent-status.ts` に共通化した。表示・通知・Dock バッジが
+同じ判定を参照する。詳細は `.claude/workspace/issue-24/architecture.md`）
 
 ---
 
