@@ -63,6 +63,21 @@ export interface LaunchOptions {
    * テキストによる検証はできない。ピクセルを見ること（e2e/fixtures/pixels.ts）。
    */
   gpu?: boolean;
+  /**
+   * ウィンドウを画面に出さずに実行する（`make e2e-headless`）。
+   *
+   * Electron に真のヘッドレスモードは無い（BrowserWindow はネイティブウィンドウを要求する）。
+   * ここでやっているのは「起動直後に BrowserWindow.hide() する」ことで、
+   * ウィンドウは存在するが画面に現れない。テストを流している間に画面を占有されない。
+   *
+   * 実測（macOS / Electron 43）では、隠したウィンドウでも
+   * requestAnimationFrame は 60fps で回り続け、WebGL レンダラの描画も
+   * capturePage で取れるピクセルまで表示時と一致した。つまり **描画を見る
+   * シナリオも隠したまま検証できる**。
+   *
+   * 既定は環境変数 AI_TERMINAL_E2E_HIDDEN を見る。spec 側は何も書かなくてよい。
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -281,6 +296,15 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     // 30秒で1回失敗するより悪くなる）。再試行は playwright.config.ts の retries に委ねる。
     const window = await app.firstWindow({ timeout: 60_000 });
     await window.waitForLoadState('domcontentloaded');
+
+    // ヘッドレス実行。アプリ本体は変更せず、テスト側からウィンドウを隠す
+    // （隔離ハーネスの前提「アプリのコードには手を入れない」を崩さないため）。
+    if (options.hidden ?? process.env.AI_TERMINAL_E2E_HIDDEN === '1') {
+      await app.evaluate(({ BrowserWindow }) => {
+        for (const win of BrowserWindow.getAllWindows()) win.hide();
+      });
+    }
+
     return { app, window, home, workDir };
   } catch (err) {
     // ウィンドウが出ないまま失敗した Electron は、呼び出し側が LaunchedApp を
