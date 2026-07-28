@@ -129,3 +129,36 @@ scenarios:
       Chromium の DevTools Protocol の Input.imeSetComposition で変換中の状態を作る。
       担保できるのは xterm.js 側の composition 処理までで、macOS の入力メソッドとの
       実際の相互作用は再現していない。OS レベルの確認は手動チェックリストに残す
+
+  # --- 描画（WebGL レンダラ） -----------------------------------------------
+  - id: S23
+    title: GPU 有効時に WebGL レンダラで実際に描画される
+    spec: S23-webgl-rendering.spec.ts
+    readme: false
+    note: >-
+      他の全シナリオは --disable-gpu で起動するため DOM レンダラ経路しか通らない。
+      DOM レンダラは文字を実 DOM のテキストノードとして描くので、xterm.css の
+      読み込みを忘れていても表示されてしまい、実際にその不具合を全22シナリオ green の
+      まま見逃した。このシナリオだけ GPU を有効にし、canvas のピクセルを直接数えて
+      「本当に描画されているか」を検証する
+
+  # --- TUI とマウス ---------------------------------------------------------
+  - id: S24
+    title: 全画面 TUI が描画され、終了するとプロンプトに戻る
+    spec: S24-fullscreen-tui.spec.ts
+    readme: false
+    note: >-
+      代替画面（alternate screen）の出入りを検証する。題材は vim。htop ではなく
+      macOS に標準で入っている vim を使うのは、隔離ハーネスの PATH を
+      /usr/bin:/bin:/usr/sbin:/sbin に絞っており、brew で入れたコマンドに
+      依存させたくないため。確かめたいのは特定のコマンドではなく
+      「全画面を書き換える TUI が崩れず、抜けたらプロンプトに戻る」こと
+  - id: S25
+    title: マウスでテキストを選択してコピーできる
+    spec: S25-mouse-selection.spec.ts
+    readme: false
+    note: >-
+      マウス操作はこれまでどのシナリオでも触れていなかった。選択範囲は
+      DOM から読みにくいので、選択したうえで Cmd+C し、Electron の
+      clipboard に文字列が入ることで判定する。事前に番兵を書き込んでおき、
+      前の実行の残りで誤って緑にならないようにする
