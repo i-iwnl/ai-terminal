@@ -129,3 +129,15 @@ scenarios:
       Chromium の DevTools Protocol の Input.imeSetComposition で変換中の状態を作る。
       担保できるのは xterm.js 側の composition 処理までで、macOS の入力メソッドとの
       実際の相互作用は再現していない。OS レベルの確認は手動チェックリストに残す
+
+  # --- 描画（WebGL レンダラ） -----------------------------------------------
+  - id: S23
+    title: GPU 有効時に WebGL レンダラで実際に描画される
+    spec: S23-webgl-rendering.spec.ts
+    readme: false
+    note: >-
+      他の全シナリオは --disable-gpu で起動するため DOM レンダラ経路しか通らない。
+      DOM レンダラは文字を実 DOM のテキストノードとして描くので、xterm.css の
+      読み込みを忘れていても表示されてしまい、実際にその不具合を全22シナリオ green の
+      まま見逃した。このシナリオだけ GPU を有効にし、canvas のピクセルを直接数えて
+      「本当に描画されているか」を検証する
