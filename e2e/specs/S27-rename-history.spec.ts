@@ -30,7 +30,7 @@ test('S27 履歴のタイトルをインライン編集できる', async () => {
   const normal = items.nth(2);
 
   const titleEl = normal.locator('.history-item__title');
-  const editButton = normal.locator('button.history-item__edit');
+  const editButton = normal.locator('button[aria-label="タイトルを編集"]');
   const input = normal.locator('input.history-item__title-input');
 
   const originalTitle = ((await titleEl.textContent()) ?? '').trim();
@@ -82,7 +82,7 @@ test('S27 履歴のタイトルをインライン編集できる', async () => {
   // Escape でキャンセルすると、入力中の下書きは捨てられ直前に確定した
   // タイトルのまま表示に戻る（＝ renamedTitle から変化しない）。
   await normalAfterReload.hover();
-  await normalAfterReload.locator('button.history-item__edit').click();
+  await normalAfterReload.locator('button[aria-label="タイトルを編集"]').click();
   await expect(inputAfterReload).toBeVisible();
   await inputAfterReload.fill('DISCARDED-BY-ESCAPE');
   await inputAfterReload.press('Escape');
@@ -92,7 +92,7 @@ test('S27 履歴のタイトルをインライン編集できる', async () => {
 
   // 編集中の行をクリックしても resume は発火しない
   // （input の外、同じ行内の要素＝メタ情報部分をクリックして blur させるケース）。
-  await normalAfterReload.locator('button.history-item__edit').click();
+  await normalAfterReload.locator('button[aria-label="タイトルを編集"]').click();
   await expect(inputAfterReload).toBeVisible();
   await normalAfterReload.locator('.history-item__meta').click();
   await expect(inputAfterReload).toHaveCount(0);

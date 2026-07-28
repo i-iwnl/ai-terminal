@@ -31,7 +31,7 @@ test('S28 gemini の履歴もタイトル編集が更新後も維持される', 
   const target = items.nth(0);
 
   const titleEl = target.locator('.history-item__title');
-  const editButton = target.locator('button.history-item__edit');
+  const editButton = target.locator('button[aria-label="タイトルを編集"]');
   const input = target.locator('input.history-item__title-input');
 
   const originalTitle = ((await titleEl.textContent()) ?? '').trim();
