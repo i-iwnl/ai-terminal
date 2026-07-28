@@ -21,6 +21,19 @@ import { launchApp, closeApp, type LaunchedApp } from './fixtures/harness';
  * 注入し、撮影後に取り除く方式。
  */
 
+// ⚠ 撮影はウィンドウを表示したまま行う必要がある。
+//
+// ハーネスの既定はウィンドウ非表示（マウスとキー入力を奪われないため）だが、
+// Playwright の page.screenshot() は CDP の Page.captureScreenshot を使っており、
+// **隠したウィンドウではフレームが返らずタイムアウトする**（実測で確認済み）。
+// Electron 自前の capturePage()（e2e/fixtures/pixels.ts）は隠したままでも動くが、
+// 経路が違うので置き換えは効かない。
+//
+// 設定ファイル経由ではなくここで環境変数を立てるのは、`npx playwright test
+// --config=...` を直接叩かれても撮影が壊れないようにするため。
+// launchApp() より前に評価される必要があるので、import 直後に置いている。
+process.env.AI_TERMINAL_E2E_SHOW = '1';
+
 // package.json が "type": "module" のため __dirname は使えない
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const IMAGES_DIR = join(REPO_ROOT, 'docs', 'images');

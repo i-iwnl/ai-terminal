@@ -217,8 +217,8 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 ```bash
 make check           # typecheck + lint + 単体テスト（ホストで実行）
 make unit            # 単体テストのみ（vitest）
-make e2e             # E2E（Playwright で Electron を起動）
-make e2e-headless    # E2E をウィンドウを表示せずに実行
+make e2e             # E2E（Playwright で Electron を起動。ウィンドウは表示しない）
+make e2e-visible     # E2E をウィンドウを表示して実行（挙動を目で追いたいときだけ）
 make docker-verify   # typecheck + lint + build を Docker コンテナ内で実行
 ```
 
@@ -229,7 +229,11 @@ make docker-verify   # typecheck + lint + build を Docker コンテナ内で実
 | 単体（vitest） | `test/unit/` | 外部に触れない純粋関数（設定の正規化・メモの更新・Webhook のペイロード・PTY の起動引数・表示整形・ショートカット判定） |
 | E2E（Playwright） | `e2e/specs/` | 実際に Electron を起動して確かめる振る舞い（全32シナリオ） |
 
-`make e2e-headless` は**ウィンドウを画面に出さずに**全シナリオを走らせる。作業を続けながら回せる。Electron に真のヘッドレスモードは無いため、やっているのは起動直後に `BrowserWindow.hide()` を呼ぶことだが、実測では描画（WebGL のピクセル）・マウス選択・IME まで表示時と同じ結果になる。**ただし macOS の GUI セッションは必要**（ヘッドレスな Linux CI で回すには別途 `xvfb` が要る）。
+**`make e2e` はウィンドウを画面に出さずに走る。** 表示したままだとテスト中のキー入力とマウス操作を Electron のウィンドウが奪い、実行中は他の作業ができなくなるため。
+
+Electron に真のヘッドレスモードは無いので（`BrowserWindow` はネイティブウィンドウを要求する）、テスト側から `show()` を無効化し、macOS では Dock アイコンも隠している。ウィンドウは一度も可視にならず、フォーカスも奪わない。実測では描画（WebGL のピクセル）・マウス選択・IME まで表示時と同じ結果になる。**ただし macOS の GUI セッションは必要**（ヘッドレスな Linux CI で回すには別途 `xvfb` が要る）。
+
+挙動を目で追いたいときだけ `make e2e-visible` を使う。`make e2e-screenshots` は撮影の都合で常にウィンドウを表示する（Playwright の `page.screenshot()` は非表示ウィンドウでは動かないため）。
 
 `make docker-verify` はマシン依存を排除した再現確認用。`node_modules` は named volume でホストと隔離してあるので、macOS 側のネイティブモジュールを壊すことはない。
 

@@ -34,7 +34,7 @@
 - [x] 設定パネルから変更した内容が即座にアプリへ反映される -> E2E S31
 - [x] 単体テスト層が存在し、`make check` の一部として回る -> `test/unit/` 54 ケース
 - [x] 新機能に対応する E2E シナリオが追加され、`make e2e-lint` が FAIL=0 -> S29〜S32、全32シナリオ
-- [x] ウィンドウ非表示で全 E2E シナリオが green になり、その結果が記録されている -> `make e2e-headless` 32/32
+- [x] ウィンドウ非表示で全 E2E シナリオが green になり、その結果が記録されている -> `make e2e` 32/32（ウィンドウ非表示が既定）
 - [x] 開発ループの手順が skill として存在し、`lint-skills.sh` が FAIL=0 -> `/workspace-plan loop`
 - [x] README に新機能の使い方が載っている
 - [x] 型チェック通過（`make check`）
@@ -48,7 +48,7 @@
 |---|---|
 | 設計 | 完了 |
 | 実装 | 完了 |
-| 検証 | 完了（`make check` / `make e2e-headless` 32/32 / `make e2e-lint` FAIL=0 / `lint-skills` FAIL=0） |
+| 検証 | 完了（`make check` / `make e2e` 32/32・flaky 0・27.2 秒 / `make e2e-lint` FAIL=0 / `lint-skills` FAIL=0） |
 
 ---
 
