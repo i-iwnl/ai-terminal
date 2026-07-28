@@ -21,11 +21,11 @@ test('S09 claude を起動すると session-id が渡る', async () => {
 
   // 起動直後は React のマウントとグローバルショートカットの登録に一瞬かかる。
   // 最初のシェルタブのプロンプトが出るまで待ってから操作することで、
-  // ショートカットの取りこぼし（早すぎる Meta+k）を避ける。
+  // ショートカットの取りこぼし（早すぎる Meta+Shift+C）を避ける。
   const initialScreen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(initialScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
-  await window.keyboard.press('Meta+k');
+  await window.keyboard.press('Meta+Shift+C');
 
   // claude タブが開き、アクティブになること
   await expect(window.locator('.tab-bar__title').filter({ hasText: 'claude' })).toBeVisible();

@@ -251,6 +251,19 @@ scenarios:
       チェックボックスは config:set の往復後に再描画されるため check() は使えない
 
   # --- 設定と通知 -------------------------------------------------------------
+  - id: S36
+    title: アプリケーションメニューが定義され、再読み込みが含まれない
+    spec: S36-application-menu.spec.ts
+    readme: false
+    note: >-
+      ネイティブメニューは Renderer から見えないため、electronApp.evaluate() で
+      Main プロセス側の Menu を直接読む。既定メニューのままだと View > Reload
+      （Cmd+R）が生き、押すと全タブの xterm とスクロールバックが消える（PTY は
+      Main で生きているので表示だけが失われる）。あわせて、メニューの accelerator が
+      二重発火（メニューと matchShortcut の両方が同じキーを登録している状態）は
+      Playwright の合成キーがネイティブメニューを通らないため検出できない。
+      そちらは実機での手動確認に依存する（issue-22/known-issues.md）
+
   - id: S31
     title: 設定パネルから変更するとターミナルに反映される
     spec: S31-settings-panel.spec.ts

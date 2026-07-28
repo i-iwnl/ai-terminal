@@ -329,6 +329,30 @@ export interface WebhookSendResult {
 }
 
 // ---------------------------------------------------------------------------
+// アプリ操作（メニューとキーボードで共有する語彙）
+// ---------------------------------------------------------------------------
+
+/**
+ * アプリに対する操作の語彙。
+ *
+ * **メニューとキーボードショートカットは、同じ操作を別の入口から呼ぶだけ**なので、
+ * 語彙をここで1つにしておく。片方にだけ操作が増えると、メニューに載っていない
+ * ショートカット（＝発見できない機能）や、キーが振られていないメニュー項目ができる。
+ *
+ * 実際に押されるキーの定義は Main 側のメニュー（`src/main/menu.ts`）が唯一の正。
+ * Renderer 側の `matchShortcut()` は、メニューが載せていないキーだけを拾う。
+ */
+export type AppAction =
+  | { type: 'new-shell-tab' }
+  | { type: 'close-tab' }
+  | { type: 'switch-tab'; index: number }
+  | { type: 'new-claude-tab' }
+  | { type: 'new-gemini-tab' }
+  | { type: 'toggle-search' }
+  | { type: 'toggle-settings' }
+  | { type: 'clear-terminal' };
+
+// ---------------------------------------------------------------------------
 // チャンネル定義
 // ---------------------------------------------------------------------------
 
@@ -361,6 +385,7 @@ export const IpcEvent = {
   ptyData: 'pty:data',
   ptyExit: 'pty:exit',
   agentTasks: 'agents:tasks',
+  menuAction: 'menu:action',
 } as const;
 
 /**
@@ -405,5 +430,9 @@ export interface RendererApi {
   };
   app: {
     paths(): Promise<AppPaths>;
+  };
+  menu: {
+    /** メニューから選ばれた操作の購読。購読解除関数を返す */
+    onAction(listener: (action: AppAction) => void): () => void;
   };
 }

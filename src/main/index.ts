@@ -9,6 +9,7 @@ import { registerMemoHandlers } from './memo/store';
 import { registerConfigHandlers } from './config';
 import { registerNotifyHandlers } from './notify';
 import { registerAppPathHandlers } from './app-paths';
+import { registerApplicationMenu } from './menu';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -60,6 +61,10 @@ function createWindow(): BrowserWindow {
 void app.whenReady().then(() => {
   mainWindow = createWindow();
 
+  // 既定メニューを自前のものに差し替える。
+  // 差し替えないと View > Reload（Cmd+R）が生き、押すと全タブの表示が消える。
+  registerApplicationMenu(mainWindow);
+
   // 各モジュールの IPC ハンドラ登録。
   registerPtyHandlers();
   registerAgentHandlers(mainWindow);
@@ -73,6 +78,9 @@ void app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow();
+      // メニュー項目は生成時のウィンドウを掴んでいるので、作り直したら張り直す。
+      // 忘れると、再表示後にメニューから何を選んでも無反応になる。
+      registerApplicationMenu(mainWindow);
     }
   });
 });

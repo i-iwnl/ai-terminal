@@ -35,7 +35,7 @@ test('S11 CLI が見つからないときに日本語のエラーが表示され
     await expect(taskError).toContainText('claude コマンドが見つかりません');
 
     // claude タブを開こうとしてもアプリが落ちないこと
-    await window.keyboard.press('Meta+k');
+    await window.keyboard.press('Meta+Shift+C');
 
     // アプリが壊れていないこと（サイドバー・タブバーは引き続き表示される）
     await expect(window.locator('.app')).toBeVisible();
