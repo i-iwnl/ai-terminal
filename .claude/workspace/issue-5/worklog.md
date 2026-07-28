@@ -215,3 +215,85 @@ Chromium は表示済みのウィンドウが隠れると occluded 扱いにし�
 ---
 
 <!-- 以降、作業のたびにセクションを追記 -->
+
+## 2026-07-28 - 残 Issue を優先度順に4件（#8 / #12 / #11 / #10 / #14）片付けた
+
+### 実施内容
+
+「issues を確認して、優先度が高いものから対応して」を受け、`/workspace-plan loop` を3周回した。
+手を動かせるものは全部消化した。残るのは `manual-only`（#7 / #9）と `deferred`（#13 / #15 / #16）のみ。
+
+| 周 | Issue | やったこと |
+|---|---|---|
+| 1 | #8 (P1) | README の「日本語を入力する」に、**入力側の IME は自動テストの対象外**であることと `verify-terminal.md` への導線を書いた。ヘッドレスの節の「IME まで表示時と同じ」も `IME の composition イベントまで` に限定し、`limitations.md` への導線を足した |
+| 2 | #12 (P2) | メモの終了時フラッシュ。**再現テスト S33 を先に書いて、実際に取りこぼすことを確認してから直した** |
+| 2 | #11 (P2) | `test/unit/sound.test.ts`（9件）。探索規則を純粋関数として切り出してから固定した |
+| 3 | #10 (P2) | S22 の画像に「にほんご」が写らない原因を特定して直し、全12枚を撮り直した |
+| 3 | #14 (P3) | `timeout: 120_000 -> 30_000` / `firstWindow: 60_000 -> 15_000`。根拠を実測でコメントに残した |
+
+最終状態: `make check` 63件 green / `make e2e` 33/33 green（29.6 秒）/ `make e2e-lint` FAIL=0 WARN=0 / `lint-skills` PASS=70 FAIL=0。
+
+### 設計判断
+
+- **#12 は「未検証」ではなく本物の不具合だった。** 先に S33 を書いたら `memos.json` が一切作られず、書いた内容が丸ごと消えていた。修正は2箇所要る。**アンマウント時の flush だけでは足りない**（ウィンドウを閉じる経路では React のアンマウントが走らない）ので `beforeunload` にも同じ flush を張った。Main 側が `writeFileSync` なので、届きさえすれば終了までに書き終わる
+- **#11 は fs に触る関数をそのままテストしなかった。** `resolveSoundPath` は `existsSync` を呼ぶので、素直に書くと vitest の「外部に触れない純粋関数だけ」という方針が崩れる。**存在確認の手前（どこを・どの順で探すか）を `soundCandidatePaths()` / `toSoundNames()` に切り出し**、そこだけを対象にした。テスト用の引数を足すより、規則と副作用を分ける方が筋がよい
+- **#10 の原因はアプリではなく撮影ハーネスだった。** `annotateAndShoot()` が `.xterm-helper-textarea` に当てていた `visibility: hidden` が blur を誘発し、IME の composition を終了させていた。`opacity: 0` はフォーカスを保つので、これに替えるだけで直る。**画像の中身は機械で検査できない**ので、撮影後に composition が生きていることを spec の後置条件として置いた
+- **#14 の値は「速くなったから下げる」ではなく計測して決めた。** `firstWindow` を 60 秒のまま3回フル実行して所要時間を99件集め、最大 421ms を確認してから 15 秒（約35倍）にした
+
+### 教訓
+
+- **タイムアウトを下げると、それまで隠れていた後始末の遅さが表に出る。** 30 秒に下げた直後、リトライで緑になっているのに `make e2e` が exit 1 になった。`firstWindow` の 20 秒待ちと `app.close()` の約10秒がテストの制限時間に衝突し、後始末の途中で打ち切られて Worker teardown timeout になっていた。**タイムアウトは単独の数字ではなく、失敗時の内訳の合計として決める**（`firstWindow` 15 秒 + 後始末の猶予 5 秒 < 30 秒）
+- **「自分の変更が原因」と決めつけかけた。** 毎回1件 flaky が出るようになり、下げた値が短すぎたと考えた。実際は計測してみると成功時の `firstWindow` は最大 421ms で、失敗するものは 60 秒待っても返らない**二極分布**だった。値は正しく、既存の一過性失敗が可視化されただけ。**flaky を見たら、まず分布を測る**
+- **「〜できる」という書き方が未実施を隠す。** #11 の元になった記述は「音源パスの解決規則は単体テストで担保できる」だった。可能性を書いただけなのに、読み返すと対処済みに見える。**known-issues には能力ではなく状態を書く**
+- **1枚の画像が「示せていない」ことに、E2E は気づかない。** S22 は `toContainText('にほんご')` で緑のまま、README の画像だけが空だった。撮影の副作用は spec の緑とは無関係に起きる
+
+### 次に再開するとき最初に読むべきこと
+
+1. ブランチは `feat/memo-notify-settings-dev-loop`、PR は [#6](https://github.com/Yoshinaga-iwnl/ai-terminal/pull/6)
+2. 検証の状態: `make check` 63件 green、`make e2e` 33/33（29.6 秒）、`make e2e-lint` FAIL=0 WARN=0、`lint-skills` PASS=70 FAIL=0
+3. **手を動かせる残 Issue はもう無い。** 残りは #7 / #9（`manual-only`。実機の IME と通知音を人が確かめる）と #13 / #15 / #16（`deferred`）だけ。**#7 / #9 はユーザーにしかできないので、勝手に closed 扱いにしない**
+4. **今周で新しく 8 番 / 9 番を `known-issues.md` に足し、[#17](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/17) / [#18](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/18) として起票済み。** #17（Electron の起動が 99 回に 2 回ウィンドウを出さない）は計測だけ済んでいて未対処。**`make e2e` に flaky が1件並ぶのはこれ**なので、テストの書き方を疑わないこと
+5. **タイムアウトを触るときは `playwright.config.ts` と `harness.ts` を必ずセットで見る。** 片方だけ縮めると、リトライで緑でも `make e2e` が失敗する
+
+## 2026-07-29 - 「タスク一覧を現在のディレクトリに絞り込む」が一度も効いていなかった
+
+> **この作業は Issue #5 の範囲外。** ユーザーからの直接報告で、対応する GitHub Issue はまだ無い。
+> 設定パネルの当該行は #5 で作ったものなので、記録先としてこのワークスペースを使っている。
+
+### 実施内容
+
+`config.scopeAgentsToCwd` を true にしてもタスク一覧が絞り込まれない、という報告。**設定は実装当初から一度も効いていなかった。**
+
+原因は `src/renderer/src/sidebar/TaskList.tsx` が `window.api.agents.list({})` と**空の引数**で呼んでいたこと。Main 側（`poller.ts`）の絞り込み対象 `lastKnownCwd` はこの引数からしか更新されないため、永久に `undefined` のままで、`fetchTasks()` は設定に関わらず常に `listClaudeAgents(undefined)` を呼んでいた。
+
+| 直したもの | 内容 |
+|---|---|
+| `TaskList.tsx` | `list({ cwd: getSharedCwd() })` に変更。cwd は起動直後に非同期解決されるので `subscribeSharedCwd` で解決後に伝え直す |
+| `poller.ts` | `lastKnownCwd` の初期値を Main の `process.cwd()` に。無いと初回ポーリングだけ絞り込み前の一覧が出る |
+| `e2e/fixtures/bin/claude` | 偽 CLI が `--cwd` を解釈するようにした（素通りしていた） |
+| `harness.ts` | 偽 CLI 用に `AI_TERMINAL_E2E_NODE`（node の絶対パス）を渡す |
+| S34 / S35 | 起動時の絞り込みと、設定パネルからの切り替え（往復）を追加 |
+
+検証: `make check` 63件 green / `make e2e` 35/35 green / `make e2e-lint` FAIL=0 WARN=0 / `lint-skills` PASS=70 FAIL=0
+
+### 設計判断
+
+- **CLI 側を先に実機で確認した。** `claude agents --help` は `--cwd` を "Show only background sessions started under `<path>`" と説明しており、対話セッションには効かない可能性があった。実機（v2.1.220）で叩いたところ `kind: "interactive"` にも効き、無関係なパスでは `[]` が返った。**アプリ側を疑う前に、前提が成立しているかを確かめた**（成立していなければ直し方がまるで変わる）
+- **偽 CLI に `--cwd` を実装した。** これが無いと、絞り込みが完全に壊れていてもテストは緑になる。**偽物が本物を真似ていない部分は、そのまま検証の穴になる**
+- **node を PATH に足さず、絶対パスを環境変数で渡した。** 偽 CLI で JSON を絞るのに node が要るが、PATH は「本物の claude / gemini を拾わない」ために `/usr/bin:/bin:/usr/sbin:/sbin` へ絞ってある。node のディレクトリを足すと、そこに本物の CLI が同居していたときに隔離が崩れる
+- **`/usr/bin/python3` を使わなかった。** PATH 上にあり json も使えるが、Xcode CLT が未導入のマシンでは実行時に導入プロンプトが出る。E2E の途中でそれが起きるのは避けた
+
+### 教訓
+
+- **設定項目は「保存できる」と「効く」が別。** チェックボックスは動き、`config.json` にも書かれ、Main も読んでいた。**繋がっていなかったのは Renderer -> Main へ渡す引数1つだけ**で、経路のどこにもエラーが出ない。UI とファイルだけ見ていると正常に見える
+- **`{}` を渡すのは、渡し忘れと区別が付かない。** `list({})` は型エラーにならない（`cwd?: string`）。optional なフィールドは「渡さない」が正常系にも異常系にもなりうるので、**型では守れない**
+- **修正が二重になったら、テストがどちらを固定しているか確かめる。** `TaskList` と `poller` の変更は**どちらか一方だけでも直る**。片方ずつ戻して確認したところ S34 は両方戻したときしか赤くならなかった。テストが固定しているのは振る舞いであって実装ではないので、**将来どちらかが「使われていないコード」に見えて消される**危険がある。`/ai-cli` skill にその旨を書いた
+- **偽物を疑うのが遅れた。** アプリを直した後もテストが赤で、原因は偽 CLI が `--cwd` を無視していたこと、さらにその修正が PATH に node が無くて動いていなかったこと。**ハーネスは検証対象ではないという前提が、ハーネスの不具合を見えにくくする**
+
+### 次に再開するとき最初に読むべきこと
+
+1. ブランチは `feat/memo-notify-settings-dev-loop`、PR は [#6](https://github.com/Yoshinaga-iwnl/ai-terminal/pull/6)
+2. 検証の状態: `make check` 63件、`make e2e` **35/35**、`make e2e-lint` FAIL=0 WARN=0、`lint-skills` PASS=70 FAIL=0
+3. **この修正には対応する GitHub Issue が無い。** 追跡が要るなら起票する（ユーザー判断待ち）
+4. `TaskList.tsx` の `getSharedCwd()` 渡しと `poller.ts` の `process.cwd()` 初期値は**冗長だが両方残している**。理由は `/ai-cli` の `reference/cli-flags.md` の「`--cwd` は設定が true だけでは付かない」に書いた。**片方を消すときはそこを読むこと**
+5. `make e2e` の flaky 1件は既知（[#17](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/17)）。テストの書き方の問題ではない
