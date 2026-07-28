@@ -352,15 +352,28 @@ body {
   background: #666;
 }
 
-/* busy は目立つ色、それ以外は落ち着いた色にする。
-   「今どれが自分を待っているか」を一目でわかるようにするのが最優先。 */
-.task-item--busy .task-item__status-dot {
+/* 強調するのは「あなたの番」の側。
+   CLI の busy は「エージェントが動いている」= 人間は待たなくてよい状態なので、
+   ここを光らせると放っておいてよい行だけが一日中光ることになる（実際そうなっていた）。
+   状態の対応は TaskList.tsx の toTaskState() が唯一の正。
+   未知の状態（--unknown）は上の既定色 #666 のままにする。 */
+.task-item--your-turn .task-item__status-dot {
   background: #f5a623;
   box-shadow: 0 0 6px #f5a623;
 }
 
-.task-item--idle .task-item__status-dot {
+.task-item--working .task-item__status-dot {
   background: #4caf50;
+}
+
+/* 状態は色だけでなく語でも示す。色覚特性によっては橙と緑が区別できない */
+.task-item__state {
+  color: #bbb;
+}
+
+/* CLI が返した生の値。翻訳ラベルより一段弱く見せる */
+.task-item__raw-status {
+  color: #8f8f8f;
 }
 
 .task-item__body {
@@ -390,10 +403,17 @@ body {
 
 .task-item__meta {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
   color: #777;
   font-size: 11px;
   margin-top: 2px;
+}
+
+/* 幅 260px のサイドバーに4項目が並ぶので、折り返しは避けられない。
+   ただし折り返す単位は項目であって語ではない（「あなたの / 番」と割れさせない）。 */
+.task-item__meta > span {
+  white-space: nowrap;
 }
 
 .history-list__toolbar {

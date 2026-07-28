@@ -562,16 +562,18 @@ test('screenshots S12 実行中タスク一覧', async () => {
   await expect(items).toHaveCount(2, { timeout: 15_000 });
 
   await annotateAndShoot(window, 'S12-task-list.png', [
+    // 番号と配置は行の並び順に合わせる（フィクスチャは busy の行が先）。
+    // 意味と番号を優先して入れ替えると、吹き出しが下の行に重なって隠す。
     {
-      selector: '.task-item--busy',
+      selector: '.task-item--working',
       number: 1,
-      caption: 'busy: 応答待ちのタスク',
+      caption: '作業中: エージェントが動いているタスク',
       side: 'right',
     },
     {
-      selector: '.task-item--idle',
+      selector: '.task-item--your-turn',
       number: 2,
-      caption: 'idle: 待機中のタスク',
+      caption: 'あなたの番: 入力を待っているタスク（強調される側）',
       side: 'below',
     },
   ]);

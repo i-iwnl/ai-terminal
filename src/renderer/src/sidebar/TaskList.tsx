@@ -1,11 +1,33 @@
 // 実行中タスク一覧（Phase 3）。
 // window.api.agents.onTasks の push 購読 + 初回の list() 呼び出しで一覧を表示する。
-// 「今どれが自分を待っているか」が一目でわかることを最優先にする（busy を目立つ色にする）。
+// 「今どれが自分を待っているか」が一目でわかることを最優先にする。
 
 import { useEffect, useState } from 'react';
 import type { AgentTask, AgentTasksEvent } from '@shared/ipc';
 import { basename, formatElapsed } from '../lib/format';
 import { getSharedCwd, subscribeSharedCwd } from '../lib/cwd';
+
+// CLI の語と、人間から見た意味は逆になりやすいので注意する。
+//   busy = エージェントが動いている  -> 人間は待たなくてよい
+//   idle = エージェントが止まっている -> 人間の入力待ち（あなたの番）
+// 根拠は src/main/agents/poller.ts の遷移検知（busy -> 非busy を「作業完了」として通知している）。
+//
+// **未知の値を既知の2値に丸めない。** status は「CLI が返した値をそのまま持つ」ため
+// （src/shared/ipc.ts）、二値分岐にすると CLI が新しい状態を返し始めた瞬間に全件が
+// どちらか片側へ誤訳される。分からないものは分からないと表示する（鉄則5）。
+type TaskState = 'working' | 'your-turn' | 'unknown';
+
+function toTaskState(status: string | undefined): TaskState {
+  if (status === 'busy') return 'working';
+  if (status === 'idle') return 'your-turn';
+  return 'unknown';
+}
+
+const TASK_STATE_LABEL: Record<TaskState, string> = {
+  working: '作業中',
+  'your-turn': 'あなたの番',
+  unknown: '不明',
+};
 
 export interface TaskListProps {
   /** ownedByApp なタスクをクリックしたときに、対応するタブへフォーカスする */
@@ -78,13 +100,13 @@ export default function TaskList({ onFocusTab, canFocus }: TaskListProps) {
       <ul>
         {tasks.map((task) => {
           const clickable = task.ownedByApp && canFocus(task.sessionId);
-          const statusClass = task.status === 'busy' ? 'task-item--busy' : 'task-item--idle';
+          const state = toTaskState(task.status);
           return (
             <li
               key={task.sessionId}
               className={[
                 'task-item',
-                statusClass,
+                `task-item--${state}`,
                 task.ownedByApp ? 'task-item--owned' : '',
                 clickable ? 'task-item--clickable' : '',
               ]
@@ -100,7 +122,12 @@ export default function TaskList({ onFocusTab, canFocus }: TaskListProps) {
                 </div>
                 <div className="task-item__meta">
                   <span>{basename(task.cwd)}</span>
-                  <span>{task.status ?? '不明'}</span>
+                  <span className="task-item__state">{TASK_STATE_LABEL[state]}</span>
+                  {/* CLI が返した生の値も残す。翻訳で潰すと、CLI 側の仕様変更に
+                      気づく手がかりが画面から消える（鉄則4/5） */}
+                  {task.status !== undefined && (
+                    <span className="task-item__raw-status">{task.status}</span>
+                  )}
                   {task.startedAt !== undefined && <span>{formatElapsed(task.startedAt, now)}</span>}
                 </div>
               </div>
