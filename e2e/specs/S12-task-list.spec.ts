@@ -12,10 +12,16 @@ test.afterEach(async () => {
 });
 
 /**
- * 固定の agents.json は demo-project-busy（busy）と other-project-idle（idle）の
- * 2件を返す（harness.ts）。TaskList.tsx は task-item--busy / task-item--idle の
- * クラスを付け、styles.css がそれぞれ異なる色（busy: オレンジ + box-shadow,
- * idle: 緑）を .task-item__status-dot に当てて視覚的に区別している。
+ * 固定の agents.json は demo-project-busy（status: busy）と other-project-idle（status: idle）の
+ * 2件を返す（harness.ts）。
+ *
+ * CLI の語と、人間から見た意味は逆になる:
+ *   busy = エージェントが動いている  -> 人間は待たなくてよい -> task-item--working
+ *   idle = エージェントが止まっている -> あなたの番           -> task-item--your-turn
+ *
+ * このテストの主眼は「2件が区別されること」ではなく、**強調されているのが
+ * 「あなたの番」の側であること**。ここが逆転すると、放っておいてよい行だけが
+ * 光る状態に戻る（Issue #21）。
  */
 test('S12 実行中タスクが一覧に表示され、状態で区別される', async () => {
   const { window } = launched;
@@ -26,28 +32,45 @@ test('S12 実行中タスクが一覧に表示され、状態で区別される'
   const items = window.locator('.task-list .task-item');
   await expect(items).toHaveCount(2, { timeout: 15_000 });
 
-  const busyItem = window.locator('.task-item--busy');
-  const idleItem = window.locator('.task-item--idle');
-  await expect(busyItem).toHaveCount(1);
-  await expect(idleItem).toHaveCount(1);
+  const yourTurnItem = window.locator('.task-item--your-turn');
+  const workingItem = window.locator('.task-item--working');
+  await expect(yourTurnItem).toHaveCount(1);
+  await expect(workingItem).toHaveCount(1);
 
-  await expect(busyItem.locator('.task-item__name')).toContainText('demo-project-busy');
-  await expect(idleItem.locator('.task-item__name')).toContainText('other-project-idle');
+  // CLI の status と、アプリ側の意味の対応が逆になっていないこと
+  await expect(workingItem.locator('.task-item__name')).toContainText('demo-project-busy');
+  await expect(yourTurnItem.locator('.task-item__name')).toContainText('other-project-idle');
 
-  // 状態を表す文字列自体も表示されていること
-  await expect(busyItem.locator('.task-item__meta')).toContainText('busy');
-  await expect(idleItem.locator('.task-item__meta')).toContainText('idle');
+  // 状態が日本語の語でも示されていること（色だけに依存しない）
+  await expect(yourTurnItem.locator('.task-item__state')).toHaveText('あなたの番');
+  await expect(workingItem.locator('.task-item__state')).toHaveText('作業中');
 
-  // 視覚的な区別: status-dot の背景色が busy / idle で異なること
-  const busyColor = await busyItem
+  // CLI が返した生の値も残っていること（鉄則4/5: CLI が言ったことを隠さない）
+  await expect(yourTurnItem.locator('.task-item__raw-status')).toHaveText('idle');
+  await expect(workingItem.locator('.task-item__raw-status')).toHaveText('busy');
+
+  // 視覚的な区別: status-dot の背景色が異なること
+  const yourTurnColor = await yourTurnItem
     .locator('.task-item__status-dot')
     .evaluate((el) => getComputedStyle(el).backgroundColor);
-  const idleColor = await idleItem
+  const workingColor = await workingItem
     .locator('.task-item__status-dot')
     .evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(busyColor).not.toBe(idleColor);
+  expect(yourTurnColor).not.toBe(workingColor);
+
+  // **強調されているのは「あなたの番」の側**であること。
+  // グロー（box-shadow）を持つのは your-turn だけで、working は持たない。
+  // 色を入れ替えて戻すと、ここが赤くなる。
+  const yourTurnShadow = await yourTurnItem
+    .locator('.task-item__status-dot')
+    .evaluate((el) => getComputedStyle(el).boxShadow);
+  const workingShadow = await workingItem
+    .locator('.task-item__status-dot')
+    .evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(yourTurnShadow).not.toBe('none');
+  expect(workingShadow).toBe('none');
 
   // クラス名自体でも区別されていること
-  await expect(busyItem).not.toHaveClass(/task-item--idle/);
-  await expect(idleItem).not.toHaveClass(/task-item--busy/);
+  await expect(yourTurnItem).not.toHaveClass(/task-item--working/);
+  await expect(workingItem).not.toHaveClass(/task-item--your-turn/);
 });
