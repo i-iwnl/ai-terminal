@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import type { AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
+import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import Sidebar from './sidebar/Sidebar';
 import SettingsPanel from './settings/SettingsPanel';
 import TabBar from './tabs/TabBar';
@@ -73,6 +73,47 @@ export default function App(): ReactElement {
     });
   }, []);
 
+  // アプリ操作の実行。キーボード（matchShortcut）とメニュー（menu:action）が
+  // 同じ AppAction を流してくるので、処理はここ1本に集約する。
+  const runAction = useCallback((action: AppAction) => {
+    const api = tabsApiRef.current;
+    switch (action.type) {
+      case 'new-shell-tab':
+        void api.newShellTab();
+        break;
+      case 'close-tab':
+        if (api.activeTabId) void api.closeTab(api.activeTabId);
+        break;
+      case 'switch-tab': {
+        const target = api.tabs[action.index];
+        if (target) api.setActiveTabId(target.id);
+        break;
+      }
+      case 'new-claude-tab':
+        void api.newAgentTab('claude');
+        break;
+      case 'new-gemini-tab':
+        void api.newAgentTab('gemini');
+        break;
+      case 'toggle-search': {
+        const id = api.activeTabId;
+        if (id) handlesRef.current.get(id)?.toggleSearch();
+        break;
+      }
+      case 'clear-terminal': {
+        const id = api.activeTabId;
+        if (id) handlesRef.current.get(id)?.clear();
+        break;
+      }
+      case 'toggle-settings':
+        setSettingsOpen((open) => !open);
+        break;
+    }
+  }, []);
+
+  const runActionRef = useRef(runAction);
+  runActionRef.current = runAction;
+
   // グローバルショートカット。capture フェーズで先取りし、xterm に渡る前に処理する。
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -80,39 +121,17 @@ export default function App(): ReactElement {
       if (!action) return;
       e.preventDefault();
       e.stopPropagation();
-
-      const api = tabsApiRef.current;
-      switch (action.type) {
-        case 'new-shell-tab':
-          void api.newShellTab();
-          break;
-        case 'close-tab':
-          if (api.activeTabId) void api.closeTab(api.activeTabId);
-          break;
-        case 'switch-tab': {
-          const target = api.tabs[action.index];
-          if (target) api.setActiveTabId(target.id);
-          break;
-        }
-        case 'new-claude-tab':
-          void api.newAgentTab('claude');
-          break;
-        case 'new-gemini-tab':
-          void api.newAgentTab('gemini');
-          break;
-        case 'toggle-search': {
-          const id = api.activeTabId;
-          if (id) handlesRef.current.get(id)?.toggleSearch();
-          break;
-        }
-        case 'toggle-settings':
-          setSettingsOpen((open) => !open);
-          break;
-      }
+      runActionRef.current(action);
     };
 
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
+  // メニューから選ばれた操作。キーは Main 側では登録していない（表示のみ）ので、
+  // ここに来るのはメニューを実際にクリックした場合だけ。
+  useEffect(() => {
+    return window.api.menu.onAction((action) => runActionRef.current(action));
   }, []);
 
   const handleExit = useCallback((event: PtyExitEvent) => {

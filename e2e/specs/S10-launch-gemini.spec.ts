@@ -19,7 +19,7 @@ test('S10 gemini を起動できる', async () => {
   const initialScreen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(initialScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
-  await window.keyboard.press('Meta+Shift+K');
+  await window.keyboard.press('Meta+Shift+G');
 
   // gemini タブが開き、アクティブになること
   await expect(window.locator('.tab-bar__title').filter({ hasText: 'gemini' })).toBeVisible();

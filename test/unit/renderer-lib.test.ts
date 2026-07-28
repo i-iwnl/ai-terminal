@@ -47,17 +47,26 @@ describe('matchShortcut', () => {
     });
   });
 
-  it('Cmd+K は shift の有無で claude / gemini を分ける', () => {
+  // Cmd+K は iTerm2 / Terminal.app / Ghostty のいずれでも「画面を消去」。
+  // ここを AI CLI の起動に使うと、クリアのつもりで押した人が claude を1本余計に起動する。
+  it('Cmd+K は画面の消去に割り当てる（AI CLI の起動ではない）', () => {
     expect(matchShortcut(keyEvent({ key: 'k', metaKey: true }))).toEqual({
+      type: 'clear-terminal',
+    });
+  });
+
+  it('AI CLI の起動は Cmd+Shift 系に置く', () => {
+    expect(matchShortcut(keyEvent({ key: 'c', metaKey: true, shiftKey: true }))).toEqual({
       type: 'new-claude-tab',
     });
-    expect(matchShortcut(keyEvent({ key: 'k', metaKey: true, shiftKey: true }))).toEqual({
+    expect(matchShortcut(keyEvent({ key: 'g', metaKey: true, shiftKey: true }))).toEqual({
       type: 'new-gemini-tab',
     });
   });
 
-  it('Cmd+K 以外は shift 併用を対象外にする', () => {
+  it('Cmd+Shift 系に割り当てていないキーは対象外にする', () => {
     expect(matchShortcut(keyEvent({ key: 't', metaKey: true, shiftKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'k', metaKey: true, shiftKey: true }))).toBeNull();
   });
 
   it('Cmd+, で設定を開く', () => {

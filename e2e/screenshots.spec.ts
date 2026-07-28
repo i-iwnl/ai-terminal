@@ -501,7 +501,7 @@ test('screenshots S09 claude を起動する', async () => {
   const initialScreen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(initialScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
-  await window.keyboard.press('Meta+k');
+  await window.keyboard.press('Meta+Shift+C');
   await expect(window.locator('.tab-bar__title').filter({ hasText: 'claude' })).toBeVisible();
 
   const activeRows = window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-rows').first();
@@ -512,7 +512,7 @@ test('screenshots S09 claude を起動する', async () => {
     {
       selector: '.tab-bar__tab.is-active .tab-bar__title',
       number: 1,
-      caption: 'Cmd+K で claude が新しいタブに起動',
+      caption: 'Cmd+Shift+C で claude が新しいタブに起動',
       side: 'right',
     },
     {
