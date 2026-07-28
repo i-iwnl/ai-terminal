@@ -6,7 +6,7 @@
 
 ## トリガー
 
-- 作業の節目（実装完了 / PR 作成 / 作業完了）。[loop.md](loop.md) の「5. 記録」から呼ばれる
+- 作業の節目に達したとき（**節目の定義は [update.md](update.md) の表が唯一の正**）。[loop.md](loop.md) の「5. 記録」から呼ばれる
 - `known-issues.md` に未対処の項目が溜まってきたとき
 - ユーザーが「known-issues を Issue にして」と言ったとき
 
