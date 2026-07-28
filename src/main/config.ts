@@ -1,10 +1,10 @@
-// 設定（~/.ai-terminal/config.json）の読み書き。
+// 設定（config.json）の読み書き。保存先の決定は data-dir.ts が正
+// （dev 起動は ~/.ai-terminal-dev、安定版は ~/.ai-terminal）。
 //
 // このモジュールは Main プロセスの他モジュール（pty / agents / notify）から
 // getConfig() で参照される共有モジュール。壊すと全体に波及するので変更は慎重に。
 
 import { BrowserWindow, ipcMain } from 'electron';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -17,8 +17,10 @@ import {
 } from '@shared/ipc';
 // 既定値の唯一の正。Renderer 側の初期値も同じものを見る。
 import { DEFAULT_CONFIG, DEFAULT_THEME, DEFAULT_WEBHOOK } from '@shared/defaults';
+// 保存先の決定は data-dir.ts に集約する（dev と安定版で別ディレクトリになる）。
+import { dataDir } from './data-dir';
 
-const CONFIG_DIR = join(homedir(), '.ai-terminal');
+const CONFIG_DIR = dataDir();
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
 
 let cached: AppConfig | null = null;

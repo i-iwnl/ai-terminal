@@ -20,3 +20,11 @@ export const Notification = {
     return false;
   },
 };
+
+/**
+ * data-dir.ts がトップレベルで参照する最小の値。関数は持たせない
+ * （保存先の決定規則そのものは純粋関数 resolveDataDir で検証する）。
+ */
+export const app = {
+  isPackaged: false,
+};

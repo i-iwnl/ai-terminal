@@ -4,7 +4,7 @@
 # アプリ本体の起動は必ずホスト（macOS）で行う。GUI を Docker では動かさない。
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev dev-debug dev-quiet build check typecheck lint unit unit-watch format \
+.PHONY: help install dev dev-debug dev-quiet build package check typecheck lint unit unit-watch format \
         rebuild fix-electron docker-verify docker-build sandbox sandbox-build clean clean-docker \
         e2e e2e-visible e2e-lint e2e-report e2e-screenshots css-substitution-check
 
@@ -48,6 +48,10 @@ dev-quiet:
 ## 本番ビルドを out/ に出力する
 build:
 	npm run build
+
+## 安定版の .app と dmg を dist/ に生成する（ローカル用。署名は ad-hoc）
+package:
+	npm run package
 
 ## typecheck と lint と単体テストをまとめて実行する
 check: typecheck lint unit

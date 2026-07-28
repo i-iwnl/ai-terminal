@@ -1,0 +1,24 @@
+# 安定版 .app のパッケージング設定（make package）。
+#
+# 目的はローカルでの並走運用（安定版でエージェントを飼い、開発は make dev）。
+# App Store / notarization は対象外。署名は electron-builder の既定に任せる
+# （identity が無いマシンでは ad-hoc 署名になり、ローカルビルドの起動には十分）。
+appId: com.iwnl.ai-terminal
+productName: ai-terminal
+directories:
+  output: dist
+
+# out/ は electron-vite build の成果物。src や e2e を同梱しない。
+files:
+  - out/**
+  - package.json
+
+# node-pty はネイティブモジュールのため asar の外に展開する。
+# asar 内のままだと spawn-helper（子プロセス起動用バイナリ）を実行できない。
+asarUnpack:
+  - node_modules/node-pty/**
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg

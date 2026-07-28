@@ -13,6 +13,14 @@ import { registerApplicationMenu } from './menu';
 import { registerAccessibilityHandlers } from './accessibility';
 import { registerSettingsWindowHandlers } from './settings-window';
 
+// dev 起動（非パッケージ実行）と安定版 .app の userData を分離する。
+// 同じ productName を共有するため、分けないと同時起動時に localStorage や
+// GPU キャッシュのロックを取り合う。E2E は --user-data-dir でテストごとの
+// 一時ディレクトリを指定してくるので、その場合は尊重して触らない。
+if (!app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', `${app.getPath('userData')}-dev`);
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): BrowserWindow {

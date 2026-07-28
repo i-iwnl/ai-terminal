@@ -50,6 +50,19 @@ make build     # out/ に main / preload / renderer を出力
 
 開発時は Vite の dev server（`localhost:5173`）経由で Renderer を読み込むが、**ビルド後はポートを一切使わない**（ローカルファイルを直接読む）。
 
+### 安定版（パッケージ済み .app）を作る
+
+`make dev` で常用していると、コード変更や再起動のたびに PTY ごとセッションが途切れる。**日常のエージェント飼育は安定版の .app、開発は `make dev`** と分けるためのビルドがこれ。
+
+```bash
+make package   # dist/ に ai-terminal.app と dmg を生成
+```
+
+- 生成物は `dist/mac-arm64/ai-terminal.app`（そのまま起動できる）と `dist/ai-terminal-<version>-arm64.dmg`（/Applications に入れるならこちら）。
+- 署名は ad-hoc（ローカルビルドの起動には十分。配布は想定しない）。
+- 安定版と `make dev` は**同時に起動できる**。データ保存先が分かれているため互いの設定・メモを壊さない（下の「設定」を参照）。
+- 開発版を再起動しても安定版の PTY は無傷。安定版自体を更新したいときだけ `make package` し直し、途切れた Claude セッションは履歴一覧（`--resume`）から復帰する。
+
 ---
 
 ### デバッグ
@@ -197,6 +210,8 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 **通知・サウンド・フォントはアプリ内の設定ウィンドウ（`Cmd+,`）から変更できる。** ここに書くのは、パネルに出していない項目も含めたファイルの全体像。
 
 `~/.ai-terminal/config.json` を置くと反映される。ファイルが無ければ既定値で動く。**壊れた JSON を置いてもアプリは落ちず、既定値に縮退する。**
+
+> **保存先は実行形態で分かれる。** パッケージ済みの安定版（`make package` で作った .app）は `~/.ai-terminal/`、`make dev` などの開発起動は `~/.ai-terminal-dev/` を使う（config / memos / session-titles すべて）。同時起動しても互いの設定・メモを壊さないための分離で、dev 側に設定を引き継ぎたいときは `cp -r ~/.ai-terminal ~/.ai-terminal-dev` する。環境変数 `AI_TERMINAL_DATA_DIR` で保存先を絶対パス指定に上書きすることもできる（E2E の隔離ハーネスが使用）。
 
 ```jsonc
 {

@@ -314,6 +314,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       ZDOTDIR: home,
       PATH: path,
       AI_TERMINAL_E2E_FIXTURES: runtimeFixtures,
+      // E2E は out/ を electron バイナリで起動するため isPackaged が false になり、
+      // アプリの既定では保存先が ~/.ai-terminal-dev に化ける（dev/安定版の分離）。
+      // 上で敷いた config.json 等のフィクスチャを読ませるため、絶対パスで固定する。
+      AI_TERMINAL_DATA_DIR: join(home, '.ai-terminal'),
       // 偽 CLI が JSON を加工するために使う node の絶対パス。
       // PATH には最小限のシステムパスしか残していないので node は載っていない。
       // PATH に足すのではなく明示的に渡すことで、隔離（本物の claude / gemini を
