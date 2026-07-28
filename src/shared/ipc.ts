@@ -138,6 +138,12 @@ export interface SessionHistoryEntry {
   gitBranch?: string;
   /** プレビューのパースに失敗した場合の理由 */
   parseError?: string;
+  /**
+   * タイトル上書きの保存キー。claude は sessionId と同じ。
+   * gemini は --list-sessions 行末の内部 UUID（取れなければ undefined = 編集不可）。
+   * sessionId は gemini では行番号由来で並び替わりに弱いため、保存キーには使わない。
+   */
+  stableId?: string;
 }
 
 export interface ListHistoryRequest {
@@ -152,6 +158,18 @@ export interface ListHistoryResult {
   entries: SessionHistoryEntry[];
   /** 一覧取得そのものに失敗した場合の理由 */
   error?: string;
+}
+
+/**
+ * 履歴タイトルの上書き。CLI 側のファイル（JSONL 等）は書き換えず、
+ * アプリ側の ~/.ai-terminal/session-titles.json に保存して表示時に重ねる。
+ */
+export interface SetSessionTitleRequest {
+  provider: HistoryProvider;
+  /** SessionHistoryEntry.stableId と同じ値 */
+  stableId: string;
+  /** 上書きするタイトル。trim 後に空なら上書きを解除する */
+  title: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +238,7 @@ export const IpcInvoke = {
   ptyKill: 'pty:kill',
   agentsList: 'agents:list',
   historyList: 'history:list',
+  historySetTitle: 'history:set-title',
   configGet: 'config:get',
   configSet: 'config:set',
   notifyShow: 'notify:show',
@@ -260,6 +279,7 @@ export interface RendererApi {
   };
   history: {
     list(req: ListHistoryRequest): Promise<ListHistoryResult>;
+    setTitle(req: SetSessionTitleRequest): Promise<void>;
   };
   config: {
     get(): Promise<AppConfig>;

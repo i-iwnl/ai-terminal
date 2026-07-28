@@ -8,6 +8,7 @@ import { startPtyStream } from './terminal/ptyStream';
 import { useTabs } from './tabs/useTabs';
 import { matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
+import { sessionDisplayTitle } from './lib/format';
 
 // window.api.config.get() が失敗した場合の既定値。
 // src/main/config.ts の DEFAULT_CONFIG と揃えてある。
@@ -121,15 +122,18 @@ export default function App(): ReactElement {
   }, []);
 
   const resumeHistory = useCallback((entry: SessionHistoryEntry) => {
+    const title = sessionDisplayTitle(entry);
     if (entry.provider === 'claude') {
       void tabsApiRef.current.newAgentTab('claude', {
         resumeSessionId: entry.sessionId,
         cwd: entry.cwd,
+        title,
       });
     } else {
       void tabsApiRef.current.newAgentTab('gemini', {
         geminiResumeTarget: entry.sessionId,
         cwd: entry.cwd,
+        title,
       });
     }
   }, []);
@@ -148,6 +152,7 @@ export default function App(): ReactElement {
           onSelect={tabsApi.setActiveTabId}
           onClose={(id) => void tabsApi.closeTab(id)}
           onNewShell={() => void tabsApi.newShellTab()}
+          onRename={tabsApi.renameTab}
         />
         <div className="terminal-stack">
           {tabsApi.tabs.map((tab) => (
