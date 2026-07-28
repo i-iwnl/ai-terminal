@@ -1,6 +1,8 @@
 // 相対時刻・経過時間・パスの表示整形（日本語）。
 // このファイルに閉じ込めておき、表記を変えたくなったらここだけ直せばよいようにする。
 
+import type { SessionHistoryEntry } from '@shared/ipc';
+
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
@@ -48,4 +50,16 @@ export function basename(path: string | undefined): string {
 /** セッション ID の先頭8文字を表示用に切り出す。 */
 export function shortId(id: string): string {
   return id.slice(0, 8);
+}
+
+/**
+ * 履歴一覧に表示するタイトルを決める。
+ * 上書きタイトル（Main が title に重ねて返す）> firstPrompt（正常時のみ）> フォールバック
+ * の優先順位で、HistoryList と再開後のタブタイトルの両方から参照する単一の正。
+ */
+export function sessionDisplayTitle(entry: SessionHistoryEntry): string {
+  if (entry.parseError) {
+    return entry.title ?? `セッション ${shortId(entry.sessionId)}`;
+  }
+  return entry.title ?? entry.firstPrompt ?? `セッション ${shortId(entry.sessionId)}`;
 }

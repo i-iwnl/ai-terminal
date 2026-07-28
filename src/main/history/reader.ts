@@ -25,6 +25,7 @@ import {
 } from '@shared/ipc';
 
 import { projectHistoryDir } from './paths';
+import { getTitleOverride } from './titles';
 
 const execFileAsync = promisify(execFile);
 
@@ -162,6 +163,9 @@ async function buildClaudeEntry(file: StatedJsonlFile): Promise<SessionHistoryEn
     provider: 'claude',
     sessionId: file.sessionId,
     updatedAt: Math.round(file.mtimeMs),
+    // claude はタイトル上書きの保存キーに sessionId をそのまま使える。
+    // parseError で縮退するパスでも sessionId は分かるため、ここで先に付けておく。
+    stableId: file.sessionId,
   };
 
   try {
@@ -312,7 +316,8 @@ const GEMINI_EXEC_TIMEOUT_MS = 5000;
 
 const GEMINI_NO_SESSIONS_RE = /no previous sessions/i;
 // 例: "  1. reply with just the word: pong (1 minute ago) [043d0e46-...]"
-const GEMINI_LINE_RE = /^\s*(\d+)\.\s+(.*)\s\(([^)]*)\)\s\[[0-9a-fA-F-]+\]\s*$/;
+// 行末の [UUID] はタイトル上書きの保存キー（stableId）に使うためキャプチャする。
+const GEMINI_LINE_RE = /^\s*(\d+)\.\s+(.*)\s\(([^)]*)\)\s\[([0-9a-fA-F-]+)\]\s*$/;
 
 async function listGeminiHistory(req: ListHistoryRequest): Promise<ListHistoryResult> {
   const limit = normalizeLimit(req.limit);
@@ -342,13 +347,15 @@ function parseGeminiListSessions(stdout: string, limit: number): ListHistoryResu
   for (const line of trimmed.split('\n')) {
     const match = GEMINI_LINE_RE.exec(line);
     if (!match) continue; // ヘッダ行（"Available sessions..."）等は無視する
-    const [, index, title, relativeTime] = match;
+    const [, index, title, relativeTime, uuid] = match;
 
     entries.push({
       provider: 'gemini',
       sessionId: index,
       updatedAt: approximateEpochFromRelativeTime(relativeTime) ?? Date.now(),
       title: truncateForPreview(title),
+      // 行末の内部 UUID。resume には使えないが、タイトル上書きの保存キーには使える。
+      stableId: uuid,
     });
 
     if (entries.length >= limit) break;
@@ -438,8 +445,9 @@ export function registerHistoryHandlers(): void {
       }
 
       try {
-        if (req.provider === 'claude') return await listClaudeHistory(req);
-        return await listGeminiHistory(req);
+        const result =
+          req.provider === 'claude' ? await listClaudeHistory(req) : await listGeminiHistory(req);
+        return { ...result, entries: result.entries.map((entry) => applyTitleOverride(entry)) };
       } catch (err) {
         // listClaudeHistory / listGeminiHistory は例外を投げない設計だが、念のための最終防衛ライン。
         const message = err instanceof Error ? err.message : '不明なエラー';
@@ -447,4 +455,12 @@ export function registerHistoryHandlers(): void {
       }
     },
   );
+}
+
+/** stableId に対する上書きタイトルがあれば title を差し替える。 */
+function applyTitleOverride(entry: SessionHistoryEntry): SessionHistoryEntry {
+  if (entry.stableId === undefined) return entry;
+  const override = getTitleOverride(entry.provider, entry.stableId);
+  if (override === undefined) return entry;
+  return { ...entry, title: override };
 }

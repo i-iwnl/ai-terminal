@@ -14,6 +14,7 @@ import {
   type AgentTasksEvent,
   type ListHistoryRequest,
   type ListHistoryResult,
+  type SetSessionTitleRequest,
   type AppConfig,
   type AppPaths,
   type NotifyRequest,
@@ -58,6 +59,8 @@ const api: RendererApi = {
   history: {
     list: (req: ListHistoryRequest): Promise<ListHistoryResult> =>
       ipcRenderer.invoke(IpcInvoke.historyList, req) as Promise<ListHistoryResult>,
+    setTitle: (req: SetSessionTitleRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcInvoke.historySetTitle, req) as Promise<void>,
   },
   config: {
     get: (): Promise<AppConfig> => ipcRenderer.invoke(IpcInvoke.configGet) as Promise<AppConfig>,

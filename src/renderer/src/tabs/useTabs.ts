@@ -24,6 +24,8 @@ export interface SpawnOpts {
   resumeSessionId?: string;
   geminiResumeTarget?: string;
   cwd?: string;
+  /** 指定があればタブタイトルにそのまま使う（履歴からの再開で、履歴一覧の表示名を引き継ぐ用途）。 */
+  title?: string;
 }
 
 export interface UseTabsResult {
@@ -34,6 +36,7 @@ export interface UseTabsResult {
   newAgentTab: (kind: 'claude' | 'gemini', opts?: SpawnOpts) => Promise<void>;
   closeTab: (id: string) => Promise<void>;
   markExited: (ptyId: string, exit: { exitCode: number; signal?: number }) => void;
+  renameTab: (id: string, title: string) => void;
 }
 
 // 初期の桁数/行数。マウント後すぐに fitAddon.fit() で実サイズに補正される。
@@ -97,7 +100,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   const newAgentTab = useCallback(
     (kind: 'claude' | 'gemini', opts?: SpawnOpts): Promise<void> => {
       const isResume = Boolean(opts?.resumeSessionId ?? opts?.geminiResumeTarget);
-      const title = isResume ? `${kind} (再開)` : kind;
+      const title = opts?.title ?? (isResume ? `${kind} (再開)` : kind);
       // 現在アクティブなタブの cwd を引き継ぐ。MVP では全タブ共通の cwd だが、
       // 将来タブごとに cwd を追跡するようになっても自然に動くようにしてある。
       const currentCwd = tabsRef.current.find((t) => t.id === activeTabIdRef.current)?.cwd;
@@ -139,5 +142,21 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     setTabs((prev) => prev.map((t) => (t.ptyId === ptyId ? { ...t, exit } : t)));
   }, []);
 
-  return { tabs, activeTabId, setActiveTabId, newShellTab, newAgentTab, closeTab, markExited };
+  // タイトルの手動編集。空文字（trim 後）は既存タイトルを維持する。
+  const renameTab = useCallback((id: string, title: string) => {
+    const trimmed = title.trim();
+    if (trimmed === '') return;
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title: trimmed } : t)));
+  }, []);
+
+  return {
+    tabs,
+    activeTabId,
+    setActiveTabId,
+    newShellTab,
+    newAgentTab,
+    closeTab,
+    markExited,
+    renameTab,
+  };
 }
