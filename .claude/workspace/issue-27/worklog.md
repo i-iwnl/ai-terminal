@@ -54,3 +54,28 @@
 - **完了条件はすべて達成済み**（overview.md 参照）
 - ユーザー指示を受けてコミット（429e5f5）・push・**PR [#32](https://github.com/i-iwnl/ai-terminal/pull/32) 作成済み**（ブランチは feat/issue-27-stable-package にリネーム。Closes #27 付き）
 - 残タスクは PR のレビュー・マージ（ユーザー判断）。アプリアイコン未設定は [#31](https://github.com/i-iwnl/ai-terminal/issues/31)
+
+---
+
+## 2026-07-29 - アプリアイコンの作成と反映（Issue #31）
+
+### 実施内容
+
+- SVG でアイコン候補3案を作成（A: プロンプト+緑カーソル / B: ターミナルウィンドウ+信号機 / C: プロンプト+AI スパーク）。Playwright の Chromium で 1024x1024 透過 PNG にレンダリングし、ユーザーが C 案を選定
+- `build/icon.png` に配置（electron-builder が自動検出して icns へ変換。`electron-builder.yml` の変更は不要）。SVG 原本を `build/icon.svg` として同梱
+- `make package` を再実行し、`default Electron icon is used` 警告の消失と、生成された `Contents/Resources/icon.icns`（sips で PNG 化して目視）を確認
+
+### 設計判断
+
+- macOS Big Sur 以降の作法（角丸スクワークル・約10%の余白・影を画像に焼き込む）に従った。squircle は 824x824 / rx=185、色はアプリのテーマ（#1e1e1e 系）に揃えた
+- `/design-review` は起動しない: SKILL.md の起動条件（styles.css・画面文言・パネル構造・状態表現）のいずれにも該当しないため。代わりにユーザー本人に3案から選んでもらう確認ゲートを踏んだ
+
+### 教訓（該当する場合）
+
+- E2E は Electron 直起動のため Playwright の Chromium は未ダウンロードだった。SVG レンダリングに使うなら `npx playwright install chromium-headless-shell` が必要（約95MB）
+- icns の中身の確認は `sips -s format png <icon.icns> --out check.png` が手軽
+
+### 次に再開するとき最初に読むべきこと
+
+- アイコンは PR #32 に積んで反映済み。残タスクは PR のレビュー・マージ（ユーザー判断）のみ
+- アイコンを差し替えたいときは `build/icon.svg` を編集 → PNG 化して `build/icon.png` を上書き → `make package`
