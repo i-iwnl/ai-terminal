@@ -42,8 +42,12 @@ export default function MemoPanel({ target, onSelectTarget }: MemoPanelProps) {
   const [sessionDraft, setSessionDraft] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
 
-  // 自動保存のタイマー。アンマウント時と次の入力時に必ず解除する。
+  // 自動保存のタイマー。次の入力時と、フラッシュ・アンマウント時に必ず解除する。
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // タイマーが焼ける前の保存内容。アンマウント時とウィンドウ終了時に、
+  // ここに残っているものを書き出す（デバウンス待ちの入力を捨てないため）。
+  const pendingRef = useRef<SetMemoRequest | null>(null);
 
   const applyResult = useCallback((result: ListMemosResult) => {
     setMemos(result);
@@ -98,8 +102,10 @@ export default function MemoPanel({ target, onSelectTarget }: MemoPanelProps) {
   const scheduleSave = useCallback(
     (req: SetMemoRequest) => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      pendingRef.current = req;
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
+        pendingRef.current = null;
         save(req);
       }, AUTOSAVE_DELAY_MS);
     },
@@ -113,17 +119,44 @@ export default function MemoPanel({ target, onSelectTarget }: MemoPanelProps) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
+      pendingRef.current = null;
       save(req);
     },
     [save],
   );
 
-  // アンマウント時に保留中のタイマーを解除する（消えたパネルの保存を走らせない）。
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+  /**
+   * 保留中の保存を、待たずに書き出す。
+   *
+   * 画面が消える直前に呼ばれるので、結果を state に戻さない（戻す先が無い）。
+   * 失敗しても報告先が無いため握り潰す。
+   */
+  const flushPending = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const req = pendingRef.current;
+    if (!req) return;
+    pendingRef.current = null;
+    window.api.memo.set(req).catch(() => {
+      // ここで表示できる場所が既に無い。保存の取りこぼし自体はこれ以上防げない。
+    });
   }, []);
+
+  // アンマウント時に保留分を書き出す。
+  // 以前は解除するだけだったため、blur を伴わずにパネルが消えると入力が失われた。
+  useEffect(() => {
+    return () => flushPending();
+  }, [flushPending]);
+
+  // ウィンドウを閉じる / アプリを終了する経路では React のアンマウントが走らない。
+  // beforeunload の時点ではまだ IPC が生きているので、ここで書き出す
+  // （Main 側は writeFileSync なので、届きさえすれば終了までに書き終わる）。
+  useEffect(() => {
+    window.addEventListener('beforeunload', flushPending);
+    return () => window.removeEventListener('beforeunload', flushPending);
+  }, [flushPending]);
 
   const globalRequest = (body: string): SetMemoRequest => ({ scope: 'global', body });
 

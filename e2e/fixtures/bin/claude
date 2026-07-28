@@ -22,6 +22,34 @@ if [ "${1:-}" = "agents" ]; then
     echo "[]"
     exit 0
   fi
+
+  # --cwd <path>: そのパス配下で開始されたセッションだけに絞る。
+  # 本物の claude も同じ挙動（help には "background sessions" とあるが、
+  # 実機では interactive なセッションにも効くことを確認済み）。
+  # ここを素通りさせると、絞り込みが壊れていてもテストが緑になる。
+  scope=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--cwd" ]; then
+      scope="${2:-}"
+      break
+    fi
+    shift
+  done
+
+  if [ -n "$scope" ]; then
+    # node は PATH に載っていない（隔離のため最小限のシステムパスしか残していない）。
+    # ハーネスが絶対パスを AI_TERMINAL_E2E_NODE で渡す。
+    "${AI_TERMINAL_E2E_NODE:-node}" -e '
+      const [file, scope] = process.argv.slice(1);
+      const all = JSON.parse(require("node:fs").readFileSync(file, "utf8"));
+      // scope 自身と、その配下を採用する（前方一致だけだと /tmp/other が /tmp に混ざる）
+      const under = (cwd) =>
+        typeof cwd === "string" && (cwd === scope || cwd.startsWith(scope.replace(/\/$/, "") + "/"));
+      process.stdout.write(JSON.stringify(all.filter((a) => under(a.cwd)), null, 2) + "\n");
+    ' "${AI_TERMINAL_E2E_FIXTURES}/agents.json" "$scope"
+    exit 0
+  fi
+
   cat "${AI_TERMINAL_E2E_FIXTURES}/agents.json"
   exit 0
 fi

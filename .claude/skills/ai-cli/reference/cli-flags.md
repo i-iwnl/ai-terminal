@@ -9,8 +9,21 @@
 | `--session-id <uuid>` | 新規セッションを**アプリ側が採番した UUID** で起動する | `buildClaudePlan` が `resumeSessionId` 未指定時に `randomUUID()` で採番。この ID を後から `claude agents --json` の `sessionId` と突き合わせて自分が起動したセッションを判別する（`markOwnedSession`） |
 | `--resume <sessionId>` | 既存セッションを再開する | **公式サポート済みの安定インターフェース。** JSONL のプレビューパースが CLI 更新で壊れても、この再開機能自体は影響を受けない |
 | `agents --json` | 実行中セッション一覧を取得する | ポーリング対象。形式の詳細は [external-formats.md](external-formats.md) |
-| `--cwd <path>` | `agents --json` を作業ディレクトリで絞り込む | アプリの設定 `scopeAgentsToCwd` が有効なときのみ付与する |
+| `--cwd <path>` | `agents --json` を作業ディレクトリで絞り込む | アプリの設定 `scopeAgentsToCwd` が有効なときのみ付与する。**設定だけでは足りない**（下の注意を参照） |
 | `--all` | `agents --json` に終了済みセッションも含める | 現状の実装では未使用（将来、終了済み一覧を出す場合の拡張余地） |
+
+### ⚠ `--cwd` は「設定が true」だけでは付かない
+
+付与の条件は2つあり、**両方揃わないと絞り込みは効かない**。
+
+1. `config.scopeAgentsToCwd` が true であること
+2. `poller.ts` の `lastKnownCwd` に値が入っていること
+
+2つ目が落とし穴。`lastKnownCwd` は **Renderer が `agents:list` に `cwd` を添えて呼んだときにしか更新されない**。実際に `TaskList.tsx` が `list({})` と空で呼んでおり、設定を true にしても一度も効いていなかった（S34 / S35 で塞いだ）。
+
+現在は初期値として Main の `process.cwd()` を入れてあるので、Renderer が渡さなくても既定では動く。ただし**将来「ユーザーが cd した先を追跡する」を実装したときは、Renderer から渡す経路が唯一の正になる**（`src/renderer/src/lib/cwd.ts` が共有 cwd の単一の管理場所）。Renderer 側を消してよいコードだと判断しないこと。
+
+`--cwd` の実機での挙動は [external-formats.md](external-formats.md) を参照（help の文言に反して interactive なセッションにも効く）。
 
 ## Gemini CLI
 
