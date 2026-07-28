@@ -63,6 +63,31 @@ export interface LaunchOptions {
    * テキストによる検証はできない。ピクセルを見ること（e2e/fixtures/pixels.ts）。
    */
   gpu?: boolean;
+  /**
+   * ウィンドウを画面に出さずに実行するか。**既定は true（出さない）。**
+   *
+   * 表示したまま走らせると、テスト中のキー入力とマウス操作を Electron の
+   * ウィンドウが奪う。ローカルで E2E を回している間、他の作業ができなくなるため
+   * 既定を非表示にしてある。
+   *
+   * Electron に真のヘッドレスモードは無い（BrowserWindow はネイティブウィンドウを
+   * 要求する）。ここでやっているのは「起動直後に BrowserWindow.hide() する」ことで、
+   * ウィンドウは存在するが画面に現れない。
+   *
+   * 実測（macOS / Electron 43）では、隠したウィンドウでも requestAnimationFrame は
+   * 60fps で回り続け、WebGL レンダラの描画も capturePage で取れるピクセルまで
+   * 表示時と一致した。README 用の撮影（page.screenshot）も表示時と同じ画像になる。
+   * つまり **描画を見るシナリオも撮影も、隠したまま成立する**。
+   *
+   * ⚠ ただしそれは「一度も show() していない」場合に限る。**一度表示してから
+   * hide() したウィンドウでは page.screenshot() が 30 秒でタイムアウトする**
+   * （実測）。Chromium は表示済みのウィンドウが隠れると occluded 扱いにして
+   * 合成を止めるためと思われる。show() を最初から無効化しているのはこのため。
+   *
+   * 省略時は環境変数 AI_TERMINAL_E2E_SHOW を見る（`=1` なら表示する）。
+   * spec 側は通常なにも書かなくてよい。
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -273,6 +298,38 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   };
 
   const app = await electron.launch(launchOptions);
+
+  // ウィンドウを一度も画面に出さない（既定）。
+  //
+  // アプリは `show: false` で BrowserWindow を作り、'ready-to-show' で show() を
+  // 呼ぶ。**起動してから隠すのでは間に合わない**（一瞬ウィンドウが現れてフォーカスを
+  // 奪い、テストの本数だけそれが繰り返される）。そこで show() 自体を無効化する。
+  //
+  // BrowserWindow.prototype を書き換えるので、この時点でまだ作られていない
+  // ウィンドウにも効く。electron.launch() は Main プロセスに接続した直後に返り、
+  // app.whenReady() より先に評価できるとは限らないため、
+  // 既に作られてしまったウィンドウは hide() で取り消す（保険）。
+  const hidden = options.hidden ?? process.env.AI_TERMINAL_E2E_SHOW !== '1';
+  if (hidden) {
+    await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+      const proto = BrowserWindow.prototype;
+      // show / showInactive / focus / moveTop はいずれもウィンドウを前面に出す。
+      // 無効化しても webContents は生きているので、DOM 操作・CDP 入力・
+      // capturePage は従来どおり動く。
+      proto.show = function noop() {};
+      proto.showInactive = function noop() {};
+      proto.focus = function noop() {};
+      proto.moveTop = function noop() {};
+      for (const win of BrowserWindow.getAllWindows()) win.hide();
+
+      // macOS では、ウィンドウを出さなくてもアプリの起動そのものが
+      // アプリケーションをアクティブにし、編集中のエディタからキーボード
+      // フォーカスを奪う。Dock アイコンを消すとアクセサリ扱いになり、
+      // アクティブ化も Cmd+Tab への出現もしなくなる。
+      electronApp.dock?.hide();
+    });
+  }
+
   try {
     // firstWindow の既定タイムアウトは 30 秒。1回のフル実行で Electron の起動が
     // spec の本数だけ走るため、マシンが混んでいるとコールドスタートがこれを超える。

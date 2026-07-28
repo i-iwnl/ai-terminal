@@ -16,6 +16,11 @@ test.afterEach(async () => {
  * claude が --resume <sessionId> 付きで起動される。
  * 偽 claude は対話起動時に受け取った引数を "ARGS: ..." として出力するので、
  * それを画面上で確認する。
+ *
+ * さらに、再開で開いたタブのタイトルが「履歴一覧でクリックした行に表示されていた
+ * タイトルと同じもの」になることを検証する。固有のタイトル文字列に依存させず、
+ * クリック前に読んだ .history-item__title のテキストと、再開後のアクティブタブの
+ * .tab-bar__title を突き合わせる性質ベースの検証にする。
  */
 test('S19 履歴をクリックすると resume 付きでタブが開く', async () => {
   const { window } = launched;
@@ -27,6 +32,8 @@ test('S19 履歴をクリックすると resume 付きでタブが開く', async
 
   const normal = window.locator('.history-item', { hasText: 'サイドバーのレイアウト修正' });
   await expect(normal).toHaveCount(1);
+  const historyTitle = ((await normal.locator('.history-item__title').textContent()) ?? '').trim();
+  expect(historyTitle.length).toBeGreaterThan(0);
   await normal.click();
 
   // 新しいタブが開くこと
@@ -36,4 +43,8 @@ test('S19 履歴をクリックすると resume 付きでタブが開く', async
   await expect(screen).toContainText('FAKE CLAUDE READY', { timeout: 20_000 });
   await expect(screen).toContainText(/ARGS:.*--resume/, { timeout: 20_000 });
   await expect(screen).toContainText('11111111-1111-4111-8111-111111111111');
+
+  // 再開で開いたタブのタイトルが、クリックした履歴行のタイトルと一致すること。
+  const activeTabTitle = window.locator('.tab-bar__tab.is-active .tab-bar__title');
+  await expect(activeTabTitle).toHaveText(historyTitle);
 });

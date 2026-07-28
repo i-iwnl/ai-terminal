@@ -4,9 +4,9 @@
 # アプリ本体の起動は必ずホスト（macOS）で行う。GUI を Docker では動かさない。
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev dev-debug dev-quiet build check typecheck lint format rebuild fix-electron \
-        docker-verify docker-build sandbox sandbox-build clean clean-docker \
-        e2e e2e-lint e2e-report e2e-screenshots
+.PHONY: help install dev dev-debug dev-quiet build check typecheck lint unit unit-watch format \
+        rebuild fix-electron docker-verify docker-build sandbox sandbox-build clean clean-docker \
+        e2e e2e-visible e2e-lint e2e-report e2e-screenshots
 
 # ---------------------------------------------------------------------------
 # ヘルプ
@@ -49,16 +49,24 @@ dev-quiet:
 build:
 	npm run build
 
-## typecheck と lint をまとめて実行する
-check: typecheck lint
+## typecheck と lint と単体テストをまとめて実行する
+check: typecheck lint unit
 
-## 型チェック（main / renderer 両方）
+## 型チェック（main / renderer / test）
 typecheck:
 	npm run typecheck
 
 ## ESLint
 lint:
 	npm run lint
+
+## 単体テスト（vitest。純粋関数のみ。アプリは起動しない）
+unit:
+	npm run unit
+
+## 単体テストを watch モードで実行する
+unit-watch:
+	npm run unit:watch
 
 ## Prettier で整形する
 format:
@@ -68,9 +76,13 @@ format:
 # E2E テスト（Playwright）
 # ---------------------------------------------------------------------------
 
-## E2E テストを実行する（ビルド済みの out/ を使うため build に依存）
+## E2E テストを実行する（ウィンドウは表示しない。ビルド済みの out/ を使うため build に依存）
 e2e: build
 	npx playwright test
+
+## E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ。マウスを奪われる）
+e2e-visible: build
+	AI_TERMINAL_E2E_SHOW=1 npx playwright test
 
 ## scenarios.yml と e2e/specs/ の 1:1 対応を検査する（実行前提なし）
 e2e-lint:
