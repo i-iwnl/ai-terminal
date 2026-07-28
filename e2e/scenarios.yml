@@ -1,0 +1,131 @@
+# E2E テストシナリオの唯一の正。
+#
+# ここに書いたシナリオと e2e/specs/ のファイルは 1:1 でなければならない。
+# 突合は `make e2e-lint`（scripts/lint-e2e.mjs）が機械検査する。
+#
+# - id: S<番号>。spec のファイル名の接頭辞と一致させる
+# - title: test() のタイトルに必ず含める（lint が検査する）
+# - spec: e2e/specs/ からの相対パス
+# - screenshot: README の使い方ガイドに載せる画像名（不要なら省略）
+# - readme: true のものが README の使い方ガイドに掲載される
+
+scenarios:
+  # --- 起動と描画 -----------------------------------------------------------
+  - id: S01
+    title: アプリが起動し、サイドバーとターミナルが表示される
+    spec: S01-launch.spec.ts
+    screenshot: S01-launch.png
+    readme: true
+  - id: S02
+    title: シェルが起動してプロンプトが表示される
+    spec: S02-shell-prompt.spec.ts
+    readme: false
+    note: preload の読み込み失敗を検出する。実際にこの不具合を作り込んだことがある
+  - id: S03
+    title: コマンドを入力すると出力が返る
+    spec: S03-shell-echo.spec.ts
+    screenshot: S03-shell-echo.png
+    readme: true
+  - id: S04
+    title: 日本語と絵文字を含む出力で文字幅がずれない
+    spec: S04-wide-chars.spec.ts
+    screenshot: S04-wide-chars.png
+    readme: true
+  - id: S05
+    title: 色付き出力が反映される
+    spec: S05-ansi-color.spec.ts
+    readme: false
+
+  # --- タブ -----------------------------------------------------------------
+  - id: S06
+    title: 新しいシェルタブを開ける
+    spec: S06-new-tab.spec.ts
+    screenshot: S06-new-tab.png
+    readme: true
+  - id: S07
+    title: タブを切り替えても各タブの内容が保持される
+    spec: S07-tab-switch.spec.ts
+    readme: false
+    note: Terminal インスタンスを破棄せず表示切替で扱っていることの担保
+  - id: S08
+    title: タブを閉じられ、最後の1枚を閉じると新しいシェルが開く
+    spec: S08-close-tab.spec.ts
+    readme: false
+
+  # --- AI CLI 連携 ----------------------------------------------------------
+  - id: S09
+    title: claude を起動すると session-id が渡る
+    spec: S09-launch-claude.spec.ts
+    screenshot: S09-launch-claude.png
+    readme: true
+  - id: S10
+    title: gemini を起動できる
+    spec: S10-launch-gemini.spec.ts
+    readme: false
+  - id: S11
+    title: CLI が見つからないときに日本語のエラーが表示され、アプリが落ちない
+    spec: S11-cli-missing.spec.ts
+    screenshot: S11-cli-missing.png
+    readme: true
+
+  # --- サイドバー（実行中タスク一覧） ---------------------------------------
+  - id: S12
+    title: 実行中タスクが一覧に表示され、状態で区別される
+    spec: S12-task-list.spec.ts
+    screenshot: S12-task-list.png
+    readme: true
+  - id: S13
+    title: 実行中タスクが0件のとき空状態が表示される
+    spec: S13-task-empty.spec.ts
+    readme: false
+  - id: S14
+    title: タスク一覧の取得に失敗してもエラー表示になり画面が壊れない
+    spec: S14-task-error.spec.ts
+    readme: false
+  - id: S15
+    title: このアプリが起動したタスクが視覚的に区別される
+    spec: S15-task-owned.spec.ts
+    readme: false
+
+  # --- 履歴 / resume --------------------------------------------------------
+  - id: S16
+    title: 履歴が更新時刻の降順で表示される
+    spec: S16-history-order.spec.ts
+    screenshot: S16-history-order.png
+    readme: true
+  - id: S17
+    title: タイトルが無い履歴は最初のプロンプトで表示される
+    spec: S17-history-fallback.spec.ts
+    readme: false
+  - id: S18
+    title: 壊れた履歴も縮退表示され、一覧から消えない
+    spec: S18-history-broken.spec.ts
+    screenshot: S18-history-broken.png
+    readme: true
+    note: 外部フォーマットが壊れうる前提の防御的パースの本丸
+  - id: S19
+    title: 履歴をクリックすると resume 付きでタブが開く
+    spec: S19-history-resume.spec.ts
+    screenshot: S19-history-resume.png
+    readme: true
+
+  # --- その他 ---------------------------------------------------------------
+  - id: S20
+    title: 検索 UI を開ける
+    spec: S20-search.spec.ts
+    readme: false
+  - id: S21
+    title: 設定のフォントサイズとテーマが反映される
+    spec: S21-config.spec.ts
+    readme: false
+
+  # --- 日本語入力 -----------------------------------------------------------
+  - id: S22
+    title: IME の変換中テキストが表示され、確定するとシェルに渡る
+    spec: S22-ime-composition.spec.ts
+    screenshot: S22-ime-composition.png
+    readme: true
+    note: >-
+      Chromium の DevTools Protocol の Input.imeSetComposition で変換中の状態を作る。
+      担保できるのは xterm.js 側の composition 処理までで、macOS の入力メソッドとの
+      実際の相互作用は再現していない。OS レベルの確認は手動チェックリストに残す

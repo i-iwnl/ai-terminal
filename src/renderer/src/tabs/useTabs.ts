@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { PtyKind, SpawnPtyRequest } from '@shared/ipc';
 import { getSharedCwd } from '../lib/cwd';
+import { forgetPty } from '../terminal/ptyStream';
 
 export interface TabState {
   /** タブ / PTY を一意に識別する ID（ptyId をそのまま使う） */
@@ -115,6 +116,8 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
         // 既に終了している場合などは失敗しうる。タブは閉じてよいので無視する。
         console.warn('[tabs] PTY の終了に失敗しました', err);
       }
+      // 購読者がいないまま溜まった出力を破棄する（閉じたタブの分を残さない）。
+      forgetPty(tab.ptyId);
 
       const remaining = tabsRef.current.filter((t) => t.id !== id);
       setTabs(remaining);

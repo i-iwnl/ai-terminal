@@ -4,6 +4,7 @@ import Sidebar from './sidebar/Sidebar';
 import TabBar from './tabs/TabBar';
 import TerminalPane from './terminal/TerminalPane';
 import type { TerminalHandle } from './terminal/useTerminal';
+import { startPtyStream } from './terminal/ptyStream';
 import { useTabs } from './tabs/useTabs';
 import { matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
@@ -58,6 +59,9 @@ export default function App(): ReactElement {
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
+    // PTY 出力のハブは、最初の spawn より前に立てる必要がある
+    // （spawn 直後の出力を取りこぼさないため）。
+    startPtyStream();
     void resolveSharedCwd().then(() => {
       void tabsApiRef.current.newShellTab();
     });

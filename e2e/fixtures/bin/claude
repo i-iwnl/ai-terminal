@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# E2E 用の偽 claude CLI。
+#
+# 本物の claude を呼ぶとテストが非決定的になり（実行中の実セッションを拾う）、
+# スクリーンショットに実プロジェクト名や実プロンプトが写り込む。
+# PATH の先頭にこのスクリプトを置いて差し替える。
+#
+# 重要: 対話起動時は受け取った引数をそのまま出力する。
+# これによりアプリが --session-id / --resume を正しく渡したかを検証できる。
+
+set -uo pipefail
+
+# agents --json: 実行中セッション一覧（固定）
+if [ "${1:-}" = "agents" ]; then
+  # 取得失敗を再現したいテスト向けのスイッチ
+  if [ "${AI_TERMINAL_E2E_AGENTS_FAIL:-}" = "1" ]; then
+    echo "fake claude: agents の取得に失敗しました" >&2
+    exit 1
+  fi
+  # 0件を再現したいテスト向けのスイッチ
+  if [ "${AI_TERMINAL_E2E_AGENTS_EMPTY:-}" = "1" ]; then
+    echo "[]"
+    exit 0
+  fi
+  cat "${AI_TERMINAL_E2E_FIXTURES}/agents.json"
+  exit 0
+fi
+
+if [ "${1:-}" = "--version" ]; then
+  echo "0.0.0-e2e-fake (Claude Code)"
+  exit 0
+fi
+
+# 対話モード: 受け取った引数を出力してから、入力を待ち続ける
+echo "FAKE CLAUDE READY"
+echo "ARGS: $*"
+printf 'claude> '
+
+while IFS= read -r line; do
+  case "$line" in
+    exit) echo "bye"; exit 0 ;;
+    *) echo "echo: $line"; printf 'claude> ' ;;
+  esac
+done

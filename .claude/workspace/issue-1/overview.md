@@ -10,18 +10,18 @@
 > - `worklog.md` - 時系列の作業ログ・次に再開するとき最初に読むべきこと
 > - `known-issues.md` - 判明した問題・未解決事項・先送りしたもの
 >
-> **最終更新**: 2026-07-27
+> **最終更新**: 2026-07-28
 
 ---
 
 ## 1. ゴール
 
-ビルド済みの Electron アプリを Playwright で駆動し、実 OS への依存を隔離した状態で21シナリオを自動検証できるようにする。あわせて、シナリオとテストファイルの 1:1 を機械的に強制し、撮影したスクリーンショットから README の使い方ガイドを生成する。
+ビルド済みの Electron アプリを Playwright で駆動し、実 OS への依存を隔離した状態で22シナリオを自動検証できるようにする。あわせて、シナリオとテストファイルの 1:1 を機械的に強制し、撮影したスクリーンショットから README の使い方ガイドを生成する。
 
 | カテゴリ | 対象 |
 |---|---|
-| 対象トラック | 単一（テストコードのみ。アプリ本体 `src/` は変更しない） |
-| ブランチ | 未作成（現状 main で作業） |
+| 対象トラック | 単一（テストコードが主。E2E が見つけたアプリ本体のバグ修正2件のみ `src/` に入った） |
+| ブランチ | `feat/e2e-playwright`（`origin/main` に対し 3 commits ahead / 1 behind） |
 | 関連PR | 未作成 |
 
 ---
@@ -30,13 +30,13 @@
 
 Issue #1 の完了条件と同一。ここでは実装観点で再掲する。
 
-- [ ] 隔離ハーネス（一時 HOME + 偽 CLI + フィクスチャ）が動作し、実データに依存しない
-- [ ] S01 から S21 まで全 spec が green
-- [ ] `scripts/lint-e2e.mjs` がシナリオと spec の 1:1 を検査し exit 0
-- [ ] README に画像付きの使い方ガイドが追加されている
-- [ ] `.claude/skills/e2e/` が生成されている
-- [ ] 型チェックと Lint 通過（`make check`）
-- [ ] `bash .claude/scripts/lint-skills.sh` が exit 0
+- [x] 隔離ハーネス（一時 HOME + 偽 CLI + フィクスチャ）が動作し、実データに依存しない
+- [x] S01 から S22 まで全 spec が green（当初21件 + IME の S22 を追加）
+- [x] `scripts/lint-e2e.mjs` がシナリオと spec の 1:1 を検査し exit 0
+- [x] README に画像付きの使い方ガイドが追加されている
+- [x] `.claude/skills/e2e/` が生成されている
+- [x] 型チェックと Lint 通過（`make check`）
+- [x] `bash .claude/scripts/lint-skills.sh` が exit 0
 
 ---
 
@@ -44,22 +44,33 @@ Issue #1 の完了条件と同一。ここでは実装観点で再掲する。
 
 | 項目 | 状態 |
 |---|---|
-| 設計 | 完了（21シナリオ・隔離方式・管理方式・CI 方針まで合意済み） |
-| 実装 | 進行中（`@playwright/test@1.62.0` の導入のみ。未コミット） |
-| 検証 | 未着手 |
+| 設計 | 完了（22シナリオ・隔離方式・管理方式・CI 方針まで合意済み） |
+| 実装 | 完了（`4d96cea` / `cdd54eb` でコミット済み。`cd76001` に E2E が見つけたアプリ側のバグ修正2件） |
+| 検証 | 完了（2026-07-28 に再実行して確認。下記「検証結果」参照） |
+
+### 検証結果（2026-07-28 実測）
+
+| ゲート | 結果 |
+|---|---|
+| `make check`（typecheck + lint） | green |
+| `make e2e` | 22 passed（45.7s） |
+| `node scripts/lint-e2e.mjs` | PASS=166 FAIL=0 WARN=0 |
+| `bash .claude/scripts/lint-skills.sh` | PASS=66 FAIL=0 |
 
 ---
 
 ## 4. 直近の次アクション
 
+Issue #1 の完了条件は全て満たしている。残るのは取り込み作業と、Issue #1 の範囲外の宿題のみ。
+
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | 隔離ハーネスの実装 | `e2e/fixtures/` に偽 `claude` / `gemini`、一時 HOME の生成、`config.json` と JSONL フィクスチャ。ここが全 spec の共通基盤なので直列で作る |
-| **P0** | `e2e/scenarios.yml` の作成 | シナリオの唯一の正。spec より先に確定させる |
-| P1 | spec の実装（S01-S21） | ハーネス確定後に3グループへ並列委譲できる（起動/タブ、AI CLI/サイドバー、履歴/その他） |
-| P1 | `scripts/lint-e2e.mjs` | シナリオと spec の 1:1 検査 |
-| P2 | スクリーンショット撮影と README 更新 | spec が green になってから |
-| P2 | `.claude/skills/e2e/` の生成 | 最後。確定した運用を記録する |
+| **P0** | `make dev` 描画不具合の修正を取り込む | `main.tsx` の xterm.css import（本命）と `useTerminal.ts` の WebglAddon 読み込み順。未コミット。詳細は worklog の 2026-07-28 |
+| **P0** | `CLAUDE.md` の未コミット分を取り込む | `/e2e` の導線1行が `cdd54eb` から漏れて未コミットのまま残っている |
+| P1 | WebGL レンダラを検証するシナリオの追加 | `known-issues.md` の 5 番。E2E が `--disable-gpu` 固定で描画経路に盲点がある |
+| **P0** | `origin/main` へのリベース | PR #2 がマージ済み（`fe862f3`）。現ブランチは 3 ahead / 1 behind |
+| P1 | PR の作成 | ユーザーの明示指示待ち |
+| P1 | Phase 1 受け入れ基準の手動検証 | `known-issues.md` の 1 番。Issue #1 の範囲外だが P0 のまま残っている。vim / htop の描画と macOS の実 IME は人が触るしかない |
 
 ---
 
