@@ -66,6 +66,7 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 | claude / gemini CLI の起動引数、タスク一覧・履歴が出ない、CLI 更新でパースが壊れた | `/ai-cli` |
 | PTY が起動しない、日本語 IME・文字幅、vim / htop の表示崩れ、ショートカット、tmux | `/terminal` |
 | E2E テストを追加する / 落ちた / 不安定 / スクリーンショットを撮り直す | `/e2e` |
+| UI の見た目・文言・配色・状態表現を変える（5ペルソナのレビューを差し込む） | `/design-review` |
 
 **実装を伴う依頼は、既定で `/workspace-plan loop` を通す。** 計画の確認ゲートと、検証・文書更新・記録の停止条件がここに集約されている。1ファイルで完結する自明な修正だけは直接実行してよい。
 
