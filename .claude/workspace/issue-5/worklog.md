@@ -292,8 +292,8 @@ Chromium は表示済みのウィンドウが隠れると occluded 扱いにし�
 
 ### 次に再開するとき最初に読むべきこと
 
-1. ブランチは `feat/memo-notify-settings-dev-loop`、PR は [#6](https://github.com/Yoshinaga-iwnl/ai-terminal/pull/6)
+1. **PR #6 はマージ済み（`main` に入った）。** 今回の分は新ブランチ `fix/task-scope-cwd-and-remaining-issues` に1コミットでまとめ、PR [#19](https://github.com/i-iwnl/ai-terminal/pull/19)（base: `main`）として出してある
 2. 検証の状態: `make check` 63件、`make e2e` **35/35**、`make e2e-lint` FAIL=0 WARN=0、`lint-skills` PASS=70 FAIL=0
-3. **この修正には対応する GitHub Issue が無い。** 追跡が要るなら起票する（ユーザー判断待ち）
+3. **cwd 絞り込みの不具合に対応する GitHub Issue は無い**（ユーザーからの直接報告）。経緯は PR #19 の本文に書いた
 4. `TaskList.tsx` の `getSharedCwd()` 渡しと `poller.ts` の `process.cwd()` 初期値は**冗長だが両方残している**。理由は `/ai-cli` の `reference/cli-flags.md` の「`--cwd` は設定が true だけでは付かない」に書いた。**片方を消すときはそこを読むこと**
 5. `make e2e` の flaky 1件は既知（[#17](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/17)）。テストの書き方の問題ではない

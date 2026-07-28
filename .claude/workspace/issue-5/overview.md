@@ -58,14 +58,15 @@
 
 | Issue | 優先度 | アクション |
 |---|---|---|
-| （PR #6） | **P0** | PR #6 のレビューとマージ。未マージだったセッションタイトル編集のコミット（`3caf03c`）を巻き込んでいる -> `known-issues.md` の 1 番 |
+| （PR #19） | **P0** | PR [#19](https://github.com/i-iwnl/ai-terminal/pull/19) のレビューとマージ。**PR #6 は 2026-07-28 にマージ済み**（`known-issues.md` の 1 番は解消） |
 | [#7](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/7) | P2 | 実機の IME で日本語入力を確認する（`manual-only`。**ユーザーにしかできない**） |
 | [#9](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/9) | P2 | 通知音が実際に鳴ることを手動で確認する（`manual-only`。**ユーザーにしかできない**） |
 | [#13](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/13) | P2 | Webhook URL を safeStorage へ移す（`deferred`） |
 | [#15](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/15) | P3 | tmux 永続化の検証手段が無い（`deferred`） |
 | [#16](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/16) | P3 | macOS 通知の発火を検証する手段が無い（`deferred`） |
 
-**2026-07-28 に #8 / #10 / #11 / #12 / #14 を対処した**（詳細は `worklog.md` の同日エントリ）。
+**2026-07-28 に #8 / #10 / #11 / #12 / #14 を対処し、2026-07-29 に cwd 絞り込みの不具合を直した**
+（詳細は `worklog.md` の各エントリ）。いずれも PR #19 に入っている。
 手を動かせる残 Issue は無く、残りは `manual-only` と `deferred` のみ。
 
 今周で `known-issues.md` に追加した2件は起票済み:
