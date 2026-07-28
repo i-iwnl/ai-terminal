@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { launchApp, closeApp, type LaunchedApp } from './fixtures/harness';
+import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from './fixtures/harness';
 
 /**
  * README の「使い方ガイド」用スクリーンショットの撮影スクリプト。
@@ -58,6 +58,12 @@ async function annotateAndShoot(
   window: Page,
   fileName: string,
   annotations: Annotation[],
+  /**
+   * 保存時の横幅。既定は本体ウィンドウ用の 1200。
+   * 設定ウィンドウのように元が狭い画面は、1200 に合わせると引き伸ばしになって
+   * 文字がぼやけるため、実寸に近い値を明示する。
+   */
+  targetWidth: number = TARGET_WIDTH,
 ): Promise<void> {
   // xterm.js が本来オフスクリーン/不可視の想定で使う内部要素が、
   // --disable-gpu の DOM レンダラでは可視状態のまま描画されてしまうことがある。
@@ -349,7 +355,7 @@ async function annotateAndShoot(
   // Retina 環境では devicePixelRatio 分だけ大きいピクセル数で保存されるため、
   // 画像処理ライブラリを追加せず、macOS 標準の sips で横幅を統一する
   // （ファイルサイズも比例して小さくなる）。
-  execFileSync('sips', ['--resampleWidth', String(TARGET_WIDTH), filePath], { stdio: 'ignore' });
+  execFileSync('sips', ['--resampleWidth', String(targetWidth), filePath], { stdio: 'ignore' });
 }
 
 let launched: LaunchedApp;
@@ -717,10 +723,12 @@ test('screenshots S31 設定パネル', async () => {
   const screen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
-  await window.locator('button[aria-label="設定を開く"]').click();
-  await expect(window.locator('[role="dialog"][aria-label="設定"]')).toBeVisible();
+  // 設定は本体とは別のウィンドウ（Issue #25）。撮影対象もそちらになる。
+  const settings = await openSettingsWindow(launched, () =>
+    window.locator('button[aria-label="設定を開く"]').click(),
+  );
 
-  await annotateAndShoot(window, 'S31-settings-panel.png', [
+  await annotateAndShoot(settings, 'S31-settings-panel.png', [
     {
       selector: '.settings__select',
       number: 1,
@@ -734,5 +742,7 @@ test('screenshots S31 設定パネル', async () => {
       // below だと直下の「テスト送信」ボタンを覆ってしまう
       side: 'right',
     },
-  ]);
+  ],
+  // 設定ウィンドウは幅 520px。1200 に引き伸ばすとぼやけるので実寸に寄せる。
+  620);
 });

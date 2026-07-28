@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
+import { FALLBACK_CONFIG } from './lib/defaults';
 import Sidebar from './sidebar/Sidebar';
-import SettingsPanel from './settings/SettingsPanel';
 import TabBar from './tabs/TabBar';
 import TerminalPane from './terminal/TerminalPane';
 import type { TerminalHandle } from './terminal/useTerminal';
@@ -11,33 +11,9 @@ import { matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
 
-// window.api.config.get() が失敗した場合の既定値。
-// src/main/config.ts の DEFAULT_CONFIG と揃えてある。
-const FALLBACK_CONFIG: AppConfig = {
-  shell: undefined,
-  fontFamily: 'Menlo, "SF Mono", monospace',
-  fontSize: 13,
-  pollIntervalMs: 3000,
-  useTmux: true,
-  notifyOnIdle: true,
-  notifySound: true,
-  notifySoundId: '',
-  slack: { enabled: false, url: '' },
-  discord: { enabled: false, url: '' },
-  scopeAgentsToCwd: false,
-  screenReaderMode: false,
-  theme: {
-    background: '#1e1e1e',
-    foreground: '#d4d4d4',
-    cursor: '#d4d4d4',
-    selectionBackground: '#264f78',
-  },
-};
-
 export default function App(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(FALLBACK_CONFIG);
   const [notice, setNotice] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // OS の支援技術（VoiceOver 等）が動いているか。
   // 動いていれば設定に関わらず screenReaderMode を有効にする。
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
@@ -62,6 +38,11 @@ export default function App(): ReactElement {
       .catch((err: unknown) => {
         console.warn('[config] 設定の取得に失敗しました。既定値を使用します。', err);
       });
+  }, []);
+
+  // 設定ウィンドウは別の Renderer なので、そこでの変更は Main 経由で届く。
+  useEffect(() => {
+    return window.api.config.onChange(setConfig);
   }, []);
 
   // 起動時に共有 cwd（アプリを起動したディレクトリ）を解決してから、最初のシェルタブを1枚開く。
@@ -111,7 +92,8 @@ export default function App(): ReactElement {
         break;
       }
       case 'toggle-settings':
-        setSettingsOpen((open) => !open);
+        // 設定は独立ウィンドウ。既に開いていれば Main 側が前に出す。
+        window.api.settings.open();
         break;
     }
   }, []);
@@ -176,17 +158,6 @@ export default function App(): ReactElement {
     if (tab) tabsApiRef.current.setActiveTabId(tab.id);
   }, []);
 
-  // 設定の変更。Main が正規化した結果（範囲制限など）を state に反映する。
-  // 保存に失敗しても画面は開いたままにし、理由だけを通知バナーに出す。
-  const changeConfig = useCallback((patch: Partial<AppConfig>) => {
-    window.api.config
-      .set(patch)
-      .then((next) => setConfig(next))
-      .catch((err: unknown) => {
-        showError(`設定の保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
-      });
-  }, [showError]);
-
   const resumeHistory = useCallback((entry: SessionHistoryEntry) => {
     const title = sessionDisplayTitle(entry);
     if (entry.provider === 'claude') {
@@ -219,7 +190,7 @@ export default function App(): ReactElement {
           onClose={(id) => void tabsApi.closeTab(id)}
           onNewShell={() => void tabsApi.newShellTab()}
           onRename={tabsApi.renameTab}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => window.api.settings.open()}
         />
         <div className="terminal-stack">
           {tabsApi.tabs.map((tab) => (
@@ -240,13 +211,6 @@ export default function App(): ReactElement {
           ))}
           {tabsApi.tabs.length === 0 && <div className="terminal-stack__empty">タブがありません</div>}
         </div>
-        {settingsOpen && (
-          <SettingsPanel
-            config={config}
-            onChange={changeConfig}
-            onClose={() => setSettingsOpen(false)}
-          />
-        )}
         {notice && (
           <div className="notice-banner">
             <span>{notice}</span>

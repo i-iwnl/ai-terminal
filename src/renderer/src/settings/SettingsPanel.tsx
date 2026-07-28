@@ -1,4 +1,9 @@
-// 設定パネル（モーダル）。
+// 設定フォーム。**独立した設定ウィンドウの中身**として描画される。
+//
+// macOS 13 以降の作法では、アプリ全体に効く設定は非モーダルの Settings ウィンドウ。
+// モーダルシートは「この書類に対する不可逆な決定」に使うもので、Webhook URL の
+// 入力には重い。独立ウィンドウにしたことで、フォーカストラップ・Esc の自前処理・
+// 背景クリック判定・backdrop がすべて不要になった（実装量はむしろ減っている）。
 //
 // ~/.ai-terminal/config.json を手で編集しなくても、通知まわり（サウンド・Slack /
 // Discord の Webhook）を設定できるようにするための画面。
@@ -50,10 +55,15 @@ export default function SettingsPanel({ config, onChange, onClose }: SettingsPan
       });
   }, []);
 
-  // Escape で閉じる。capture で先取りして xterm 側に渡さない。
+  // Escape と Cmd+W でウィンドウを閉じる。
+  // 独立ウィンドウなので、閉じる手段はここと OS のクローズボタンの2つ。
+  // メニューの「タブを閉じる」は本体ウィンドウのタブを対象にしているため、
+  // ここでは使えない（Cmd+W は表示専用の accelerator で登録もされていない）。
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
+      const isEscape = e.key === 'Escape';
+      const isCmdW = e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'w';
+      if (!isEscape && !isCmdW) return;
       e.preventDefault();
       e.stopPropagation();
       onClose();
@@ -127,32 +137,8 @@ export default function SettingsPanel({ config, onChange, onClose }: SettingsPan
   };
 
   return (
-    <div
-      className="settings-backdrop"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="settings"
-        role="dialog"
-        aria-modal="true"
-        aria-label="設定"
-        // 背景クリックで閉じる挙動が、パネル内のクリックにまで波及しないようにする。
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="settings__head">
-          <h2 className="settings__title">設定</h2>
-          <button
-            type="button"
-            className="settings__close"
-            aria-label="設定を閉じる"
-            onClick={onClose}
-          >
-            x
-          </button>
-        </div>
-
-        <div className="settings__body">
+    <div className="settings settings--window" aria-label="設定">
+      <div className="settings__body">
           <section className="settings__section">
             <h3 className="settings__heading">表示</h3>
             <label className="settings__row">
@@ -294,7 +280,6 @@ export default function SettingsPanel({ config, onChange, onClose }: SettingsPan
             </label>
           </section>
         </div>
-      </div>
     </div>
   );
 }

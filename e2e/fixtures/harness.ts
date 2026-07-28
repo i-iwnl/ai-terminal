@@ -413,3 +413,26 @@ export async function closeApp(launched: LaunchedApp | undefined): Promise<void>
     // 消せなくてもテスト結果には影響させない。
   }
 }
+
+/**
+ * 設定ウィンドウを開いて、その Page を返す。
+ *
+ * 設定は本体とは別の BrowserWindow（Issue #25 でモーダルから独立ウィンドウへ変えた）。
+ * `app.windows()` には本体も含まれるので、**本体以外**を探す。
+ * 既に開いていればそれを返し、無ければ `trigger` を実行して現れるのを待つ。
+ */
+export async function openSettingsWindow(
+  launched: LaunchedApp,
+  trigger: () => Promise<void>,
+): Promise<Page> {
+  const existing = launched.app.windows().find((page) => page !== launched.window);
+  if (existing) return existing;
+
+  const appeared = launched.app.waitForEvent('window', { timeout: 15_000 });
+  await trigger();
+  const settings = await appeared;
+  await settings.waitForLoadState('domcontentloaded');
+  // 描画されるまで待つ（中身が空のまま assert して落ちるのを防ぐ）
+  await settings.locator('.settings--window').waitFor({ state: 'visible', timeout: 15_000 });
+  return settings;
+}

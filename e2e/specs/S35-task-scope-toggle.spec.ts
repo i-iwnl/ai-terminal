@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
+import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from '../fixtures/harness';
 
 let launched: LaunchedApp;
 
@@ -27,10 +27,9 @@ test('S35 設定パネルで絞り込みを切り替えると、次のポーリ�
   const items = window.locator('.task-list .task-item');
   await expect(items).toHaveCount(2, { timeout: 15_000 });
 
-  await window.locator('button[aria-label="設定を開く"]').click();
-  const dialog = window.locator('[role="dialog"][aria-label="設定"]');
-  await expect(dialog).toBeVisible();
-
+  const dialog = await openSettingsWindow(launched, () =>
+    window.locator('button[aria-label="設定を開く"]').click(),
+  );
   // check() / uncheck() は使わない。この画面のチェックボックスは
   // config:set の往復が返ってから再描画される制御コンポーネントなので、
   // クリック直後の状態を見に行く check() は「状態が変わらなかった」と判定して落ちる。
@@ -40,22 +39,25 @@ test('S35 設定パネルで絞り込みを切り替えると、次のポーリ�
   await expect(scopeBox).not.toBeChecked();
   await scopeBox.click();
   await expect(scopeBox).toBeChecked();
-  await window.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
+  // Escape はウィンドウごと閉じるので press() 自体が reject しうる（S31 と同じ）
+  await dialog.keyboard.press('Escape').catch(() => undefined);
+  await expect.poll(() => launched.app.windows().length, { timeout: 15_000 }).toBe(1);
 
   await expect(items).toHaveCount(1, { timeout: 15_000 });
   await expect(items.first()).toContainText('demo-project-busy');
 
   // 戻せば元に戻る（片道だけの検証にしない）
-  await window.locator('button[aria-label="設定を開く"]').click();
-  const reopened = window
-    .locator('[role="dialog"] label', { hasText: 'タスク一覧を現在のディレクトリに絞り込む' })
+  const settings = await openSettingsWindow(launched, () =>
+    window.locator('button[aria-label="設定を開く"]').click(),
+  );
+  const reopened = settings
+    .locator('label', { hasText: 'タスク一覧を現在のディレクトリに絞り込む' })
     .locator('input[type="checkbox"]');
   // 開き直しても設定が残っていること（保存されている確認も兼ねる）
   await expect(reopened).toBeChecked();
   await reopened.click();
   await expect(reopened).not.toBeChecked();
-  await window.keyboard.press('Escape');
+  await settings.keyboard.press('Escape').catch(() => undefined);
 
   await expect(items).toHaveCount(2, { timeout: 15_000 });
 });

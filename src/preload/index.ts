@@ -79,6 +79,8 @@ const api: RendererApi = {
     get: (): Promise<AppConfig> => ipcRenderer.invoke(IpcInvoke.configGet) as Promise<AppConfig>,
     set: (patch: Partial<AppConfig>): Promise<AppConfig> =>
       ipcRenderer.invoke(IpcInvoke.configSet, patch) as Promise<AppConfig>,
+    onChange: (listener: (config: AppConfig) => void): (() => void) =>
+      subscribe<AppConfig>(IpcEvent.configChanged, listener),
   },
   notify: {
     show: (req: NotifyRequest): Promise<void> =>
@@ -104,6 +106,10 @@ const api: RendererApi = {
   session: {
     onFocus: (listener: (agentSessionId: string) => void): (() => void) =>
       subscribe<string>(IpcEvent.focusSession, listener),
+  },
+  settings: {
+    open: (): void => ipcRenderer.send(IpcSend.settingsOpen),
+    close: (): void => ipcRenderer.send(IpcSend.settingsClose),
   },
 };
 

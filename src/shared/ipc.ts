@@ -387,6 +387,8 @@ export const IpcInvoke = {
 export const IpcSend = {
   ptyInput: 'pty:input',
   ptyResize: 'pty:resize',
+  settingsOpen: 'settings:open',
+  settingsClose: 'settings:close',
 } as const;
 
 /** Main -> Renderer（push） */
@@ -397,6 +399,7 @@ export const IpcEvent = {
   menuAction: 'menu:action',
   accessibilitySupportChanged: 'app:accessibility-support-changed',
   focusSession: 'session:focus',
+  configChanged: 'config:changed',
 } as const;
 
 /**
@@ -429,6 +432,13 @@ export interface RendererApi {
   config: {
     get(): Promise<AppConfig>;
     set(patch: Partial<AppConfig>): Promise<AppConfig>;
+    /**
+     * 設定が変わったときの購読。購読解除関数を返す。
+     *
+     * **設定ウィンドウは本体とは別の Renderer** なので、そちらでの変更は
+     * 本体の state には自動では届かない。Main が全ウィンドウへ配信する。
+     */
+    onChange(listener: (config: AppConfig) => void): () => void;
   };
   notify: {
     show(req: NotifyRequest): Promise<void>;
@@ -459,5 +469,11 @@ export interface RendererApi {
      * OS 通知をクリックしたときに Main から飛んでくる。購読解除関数を返す。
      */
     onFocus(listener: (agentSessionId: string) => void): () => void;
+  };
+  settings: {
+    /** 設定ウィンドウを開く（既に開いていれば前に出す） */
+    open(): void;
+    /** 設定ウィンドウを閉じる。設定ウィンドウ自身から呼ぶ */
+    close(): void;
   };
 }
