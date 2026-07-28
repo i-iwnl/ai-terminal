@@ -271,6 +271,14 @@ export interface AppConfig {
   discord: WebhookConfig;
   /** サイドバーを現在のディレクトリに絞り込むか（false ならマシン全体） */
   scopeAgentsToCwd: boolean;
+  /**
+   * xterm の screenReaderMode。ターミナルの内容を支援技術から読める DOM として
+   * 露出させる。既定 false。
+   *
+   * 既定で有効にしない理由は描画コスト（行が追加されるたびに live region を
+   * 更新する）。VoiceOver の起動が検知できたときは、この値に関わらず有効にする。
+   */
+  screenReaderMode: boolean;
   /** xterm のテーマ色 */
   theme: TerminalTheme;
 }
@@ -372,6 +380,7 @@ export const IpcInvoke = {
   notifyPlaySound: 'notify:play-sound',
   notifyTestWebhook: 'notify:test-webhook',
   appPaths: 'app:paths',
+  appAccessibilitySupport: 'app:accessibility-support',
 } as const;
 
 /** Renderer -> Main（send / 戻り値なし・高頻度） */
@@ -386,6 +395,7 @@ export const IpcEvent = {
   ptyExit: 'pty:exit',
   agentTasks: 'agents:tasks',
   menuAction: 'menu:action',
+  accessibilitySupportChanged: 'app:accessibility-support-changed',
 } as const;
 
 /**
@@ -430,6 +440,13 @@ export interface RendererApi {
   };
   app: {
     paths(): Promise<AppPaths>;
+    /**
+     * OS の支援技術（VoiceOver 等）が動いているか。
+     * 設定を知らないユーザーでもターミナルが読める状態にするための自動検知に使う。
+     */
+    accessibilitySupport(): Promise<boolean>;
+    /** 支援技術の起動・終了の購読。購読解除関数を返す */
+    onAccessibilitySupportChanged(listener: (enabled: boolean) => void): () => void;
   };
   menu: {
     /** メニューから選ばれた操作の購読。購読解除関数を返す */

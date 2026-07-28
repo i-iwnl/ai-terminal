@@ -10,6 +10,7 @@ import { registerConfigHandlers } from './config';
 import { registerNotifyHandlers } from './notify';
 import { registerAppPathHandlers } from './app-paths';
 import { registerApplicationMenu } from './menu';
+import { registerAccessibilityHandlers } from './accessibility';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -74,6 +75,7 @@ void app.whenReady().then(() => {
   registerConfigHandlers();
   registerNotifyHandlers();
   registerAppPathHandlers();
+  registerAccessibilityHandlers(mainWindow);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

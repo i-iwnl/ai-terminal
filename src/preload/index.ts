@@ -92,6 +92,10 @@ const api: RendererApi = {
   },
   app: {
     paths: (): Promise<AppPaths> => ipcRenderer.invoke(IpcInvoke.appPaths) as Promise<AppPaths>,
+    accessibilitySupport: (): Promise<boolean> =>
+      ipcRenderer.invoke(IpcInvoke.appAccessibilitySupport) as Promise<boolean>,
+    onAccessibilitySupportChanged: (listener: (enabled: boolean) => void): (() => void) =>
+      subscribe<boolean>(IpcEvent.accessibilitySupportChanged, listener),
   },
   menu: {
     onAction: (listener: (action: AppAction) => void): (() => void) =>
