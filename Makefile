@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 .PHONY: help install dev dev-debug dev-quiet build check typecheck lint unit unit-watch format \
         rebuild fix-electron docker-verify docker-build sandbox sandbox-build clean clean-docker \
-        e2e e2e-headless e2e-lint e2e-report e2e-screenshots
+        e2e e2e-visible e2e-lint e2e-report e2e-screenshots
 
 # ---------------------------------------------------------------------------
 # ヘルプ
@@ -76,13 +76,13 @@ format:
 # E2E テスト（Playwright）
 # ---------------------------------------------------------------------------
 
-## E2E テストを実行する（ビルド済みの out/ を使うため build に依存）
+## E2E テストを実行する（ウィンドウは表示しない。ビルド済みの out/ を使うため build に依存）
 e2e: build
 	npx playwright test
 
-## E2E をウィンドウを表示せずに実行する（作業中に画面を奪われない）
-e2e-headless: build
-	AI_TERMINAL_E2E_HIDDEN=1 npx playwright test
+## E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ。マウスを奪われる）
+e2e-visible: build
+	AI_TERMINAL_E2E_SHOW=1 npx playwright test
 
 ## scenarios.yml と e2e/specs/ の 1:1 対応を検査する（実行前提なし）
 e2e-lint:
@@ -93,6 +93,7 @@ e2e-report:
 	npx playwright show-report e2e/report
 
 ## README の使い方ガイド用スクリーンショットを撮る（docs/images/ に出力。make e2e には含まれない）
+##   撮影中はウィンドウが表示される（page.screenshot が非表示ウィンドウでは動かないため）
 e2e-screenshots: build
 	npx playwright test --config=e2e/screenshots.playwright.config.ts
 

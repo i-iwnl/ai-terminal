@@ -60,7 +60,7 @@
 | 段 | 通すもの | 見るもの |
 |---|---|---|
 | 型と規約 | `make check` | typecheck / lint / 単体テストが全て通る |
-| 振る舞い | `make e2e` または `make e2e-headless` | 追加分・既存分ともに green |
+| 振る舞い | `make e2e` | 追加分・既存分ともに green |
 | 台帳 | `make e2e-lint` | `FAIL=0`（シナリオと spec が1:1） |
 
 **新しい振る舞いを足したら、テストも足す。** どちらに足すかの分かれ目:

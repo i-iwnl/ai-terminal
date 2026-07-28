@@ -34,8 +34,8 @@ make dev-quiet     # DevTools を開かずに起動
 make dev-debug     # Main プロセスのデバッガを有効にして起動
 make check         # typecheck + lint + unit（変更後は必ずこれを通す）
 make unit          # 単体テストのみ（vitest。純粋関数だけを対象にする）
-make e2e           # E2E（Playwright + Electron）
-make e2e-headless  # E2E をウィンドウを表示せずに実行する
+make e2e           # E2E（Playwright + Electron。ウィンドウは表示しない）
+make e2e-visible   # E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ）
 make build         # 本番ビルド
 make docker-verify # typecheck + lint + build を Docker コンテナ内で実行
 ```

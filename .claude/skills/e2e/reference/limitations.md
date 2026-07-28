@@ -24,6 +24,6 @@
 
 ## CI で回していない理由
 
-E2E は CI に組み込んでいない。Linux ランナーでは Electron の GUI 起動に xvfb が要り、macOS ランナーは実行コストが高い（`playwright.config.ts` のコメントにも明記）。現状は**ローカル実行のみ**（`make e2e` / `make e2e-headless`）。
+E2E は CI に組み込んでいない。Linux ランナーでは Electron の GUI 起動に xvfb が要り、macOS ランナーは実行コストが高い（`playwright.config.ts` のコメントにも明記）。現状は**ローカル実行のみ**（`make e2e`）。
 
-**`make e2e-headless` は CI 対応ではない。** あれは Electron のウィンドウを画面に出さないだけで、OS のウィンドウサーバ（macOS の GUI セッション）は必要なまま。ヘッドレスな Linux ランナーで回すには依然として xvfb が要る。両者を混同しないこと（詳細は [../operations/run-e2e.md](../operations/run-e2e.md)）。
+**`make e2e` がウィンドウを表示しないことは、CI 対応を意味しない。** あれは Electron のウィンドウを画面に出さないだけで、OS のウィンドウサーバ（macOS の GUI セッション）は必要なまま。ヘッドレスな Linux ランナーで回すには依然として xvfb が要る。両者を混同しないこと（詳細は [../operations/run-e2e.md](../operations/run-e2e.md)）。

@@ -64,18 +64,27 @@ export interface LaunchOptions {
    */
   gpu?: boolean;
   /**
-   * ウィンドウを画面に出さずに実行する（`make e2e-headless`）。
+   * ウィンドウを画面に出さずに実行するか。**既定は true（出さない）。**
    *
-   * Electron に真のヘッドレスモードは無い（BrowserWindow はネイティブウィンドウを要求する）。
-   * ここでやっているのは「起動直後に BrowserWindow.hide() する」ことで、
-   * ウィンドウは存在するが画面に現れない。テストを流している間に画面を占有されない。
+   * 表示したまま走らせると、テスト中のキー入力とマウス操作を Electron の
+   * ウィンドウが奪う。ローカルで E2E を回している間、他の作業ができなくなるため
+   * 既定を非表示にしてある。
    *
-   * 実測（macOS / Electron 43）では、隠したウィンドウでも
-   * requestAnimationFrame は 60fps で回り続け、WebGL レンダラの描画も
-   * capturePage で取れるピクセルまで表示時と一致した。つまり **描画を見る
-   * シナリオも隠したまま検証できる**。
+   * Electron に真のヘッドレスモードは無い（BrowserWindow はネイティブウィンドウを
+   * 要求する）。ここでやっているのは「起動直後に BrowserWindow.hide() する」ことで、
+   * ウィンドウは存在するが画面に現れない。
    *
-   * 既定は環境変数 AI_TERMINAL_E2E_HIDDEN を見る。spec 側は何も書かなくてよい。
+   * 実測（macOS / Electron 43）では、隠したウィンドウでも requestAnimationFrame は
+   * 60fps で回り続け、WebGL レンダラの描画も capturePage で取れるピクセルまで
+   * 表示時と一致した。つまり **描画を見るシナリオも隠したまま検証できる**。
+   *
+   * ⚠ ただし Playwright の `page.screenshot()`（CDP の Page.captureScreenshot）は
+   * 隠したウィンドウでは **タイムアウトする**。Electron 自前の `capturePage()` とは
+   * 別経路で、こちらはウィンドウが可視でないとフレームを返さない。
+   * README 用の撮影（screenshots.spec.ts）が表示を強制しているのはこのため。
+   *
+   * 省略時は環境変数 AI_TERMINAL_E2E_SHOW を見る（`=1` なら表示する）。
+   * spec 側は通常なにも書かなくてよい。
    */
   hidden?: boolean;
 }
@@ -288,6 +297,38 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   };
 
   const app = await electron.launch(launchOptions);
+
+  // ウィンドウを一度も画面に出さない（既定）。
+  //
+  // アプリは `show: false` で BrowserWindow を作り、'ready-to-show' で show() を
+  // 呼ぶ。**起動してから隠すのでは間に合わない**（一瞬ウィンドウが現れてフォーカスを
+  // 奪い、テストの本数だけそれが繰り返される）。そこで show() 自体を無効化する。
+  //
+  // BrowserWindow.prototype を書き換えるので、この時点でまだ作られていない
+  // ウィンドウにも効く。electron.launch() は Main プロセスに接続した直後に返り、
+  // app.whenReady() より先に評価できるとは限らないため、
+  // 既に作られてしまったウィンドウは hide() で取り消す（保険）。
+  const hidden = options.hidden ?? process.env.AI_TERMINAL_E2E_SHOW !== '1';
+  if (hidden) {
+    await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+      const proto = BrowserWindow.prototype;
+      // show / showInactive / focus / moveTop はいずれもウィンドウを前面に出す。
+      // 無効化しても webContents は生きているので、DOM 操作・CDP 入力・
+      // capturePage は従来どおり動く。
+      proto.show = function noop() {};
+      proto.showInactive = function noop() {};
+      proto.focus = function noop() {};
+      proto.moveTop = function noop() {};
+      for (const win of BrowserWindow.getAllWindows()) win.hide();
+
+      // macOS では、ウィンドウを出さなくてもアプリの起動そのものが
+      // アプリケーションをアクティブにし、編集中のエディタからキーボード
+      // フォーカスを奪う。Dock アイコンを消すとアクセサリ扱いになり、
+      // アクティブ化も Cmd+Tab への出現もしなくなる。
+      electronApp.dock?.hide();
+    });
+  }
+
   try {
     // firstWindow の既定タイムアウトは 30 秒。1回のフル実行で Electron の起動が
     // spec の本数だけ走るため、マシンが混んでいるとコールドスタートがこれを超える。
@@ -296,15 +337,6 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     // 30秒で1回失敗するより悪くなる）。再試行は playwright.config.ts の retries に委ねる。
     const window = await app.firstWindow({ timeout: 60_000 });
     await window.waitForLoadState('domcontentloaded');
-
-    // ヘッドレス実行。アプリ本体は変更せず、テスト側からウィンドウを隠す
-    // （隔離ハーネスの前提「アプリのコードには手を入れない」を崩さないため）。
-    if (options.hidden ?? process.env.AI_TERMINAL_E2E_HIDDEN === '1') {
-      await app.evaluate(({ BrowserWindow }) => {
-        for (const win of BrowserWindow.getAllWindows()) win.hide();
-      });
-    }
-
     return { app, window, home, workDir };
   } catch (err) {
     // ウィンドウが出ないまま失敗した Electron は、呼び出し側が LaunchedApp を
