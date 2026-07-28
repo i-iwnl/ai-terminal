@@ -5,6 +5,7 @@ import { registerPtyHandlers, disposePtyAll } from './pty/manager';
 import { registerAgentHandlers } from './agents/poller';
 import { registerHistoryHandlers } from './history/reader';
 import { registerSessionTitleHandlers } from './history/titles';
+import { registerMemoHandlers } from './memo/store';
 import { registerConfigHandlers } from './config';
 import { registerNotifyHandlers } from './notify';
 import { registerAppPathHandlers } from './app-paths';
@@ -64,6 +65,7 @@ void app.whenReady().then(() => {
   registerAgentHandlers(mainWindow);
   registerHistoryHandlers();
   registerSessionTitleHandlers();
+  registerMemoHandlers();
   registerConfigHandlers();
   registerNotifyHandlers();
   registerAppPathHandlers();

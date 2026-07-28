@@ -9,7 +9,8 @@ export type ShortcutAction =
   | { type: 'switch-tab'; index: number }
   | { type: 'new-claude-tab' }
   | { type: 'new-gemini-tab' }
-  | { type: 'toggle-search' };
+  | { type: 'toggle-search' }
+  | { type: 'toggle-settings' };
 
 export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   if (!e.metaKey || e.ctrlKey || e.altKey) return null;
@@ -27,6 +28,8 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   if (key === 't') return { type: 'new-shell-tab' };
   if (key === 'w') return { type: 'close-tab' };
   if (key === 'f') return { type: 'toggle-search' };
+  // Cmd+, は macOS で「アプリの環境設定」の標準ショートカット
+  if (key === ',') return { type: 'toggle-settings' };
   if (/^[1-9]$/.test(e.key)) return { type: 'switch-tab', index: Number(e.key) - 1 };
 
   return null;

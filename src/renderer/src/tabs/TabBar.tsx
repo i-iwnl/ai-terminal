@@ -19,6 +19,7 @@ export interface TabBarProps {
   onClose: (id: string) => void;
   onNewShell: () => void;
   onRename: (id: string, title: string) => void;
+  onOpenSettings: () => void;
 }
 
 export default function TabBar({
@@ -28,6 +29,7 @@ export default function TabBar({
   onClose,
   onNewShell,
   onRename,
+  onOpenSettings,
 }: TabBarProps) {
   // 編集中のタブ ID と、編集中の下書き文字列。編集中でなければ editingTabId は null。
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -137,6 +139,14 @@ export default function TabBar({
         </button>
       </div>
       <div className="tab-bar__drag-region" />
+      <button
+        className="tab-bar__settings"
+        onClick={onOpenSettings}
+        aria-label="設定を開く"
+        title="設定を開く (Cmd+,)"
+      >
+        設定
+      </button>
     </div>
   );
 }

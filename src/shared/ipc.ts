@@ -188,8 +188,64 @@ export interface AppPaths {
 }
 
 // ---------------------------------------------------------------------------
+// メモ
+// ---------------------------------------------------------------------------
+
+/**
+ * メモの種別。
+ * - global: アプリ全体で1枚だけのスクラッチパッド
+ * - session: 履歴セッション（provider + stableId）に紐付くメモ
+ */
+export type MemoScope = 'global' | 'session';
+
+/**
+ * メモ1件。
+ * scope === 'global' のときは provider / stableId / title を持たない。
+ */
+export interface MemoEntry {
+  scope: MemoScope;
+  provider?: HistoryProvider;
+  /** SessionHistoryEntry.stableId と同じ値（セッションメモの保存キー） */
+  stableId?: string;
+  /** メモ本文。未作成なら空文字 */
+  body: string;
+  /** 最終更新時刻（epoch ミリ秒）。未作成なら 0 */
+  updatedAt: number;
+  /**
+   * セッションメモを一覧に出すときの表示名。
+   * 履歴一覧を開かなくてもどのセッションのメモか分かるよう、保存時に一緒に控える。
+   */
+  title?: string;
+}
+
+export interface SetMemoRequest {
+  scope: MemoScope;
+  provider?: HistoryProvider;
+  stableId?: string;
+  /** trim 後に空ならそのメモを削除する */
+  body: string;
+  /** 省略時は保存済みの表示名を維持する */
+  title?: string;
+}
+
+export interface ListMemosResult {
+  /** 全体メモ。未作成でも空の MemoEntry を返す（呼び出し側で分岐させない） */
+  global: MemoEntry;
+  /** セッションメモ。updatedAt の降順 */
+  sessions: MemoEntry[];
+}
+
+// ---------------------------------------------------------------------------
 // 設定
 // ---------------------------------------------------------------------------
+
+/** Slack / Discord の Incoming Webhook 設定 */
+export interface WebhookConfig {
+  /** 送信を有効にするか */
+  enabled: boolean;
+  /** Webhook URL。空文字なら enabled でも送信しない */
+  url: string;
+}
 
 export interface AppConfig {
   /** 起動するシェル。省略時は $SHELL */
@@ -204,6 +260,15 @@ export interface AppConfig {
   notifyOnIdle: boolean;
   /** 通知時に音を鳴らすか */
   notifySound: boolean;
+  /**
+   * 鳴らす音の識別子（SoundOption.id）。空文字なら OS 既定の通知音に任せる。
+   * notifySound が false のときは参照されない。
+   */
+  notifySoundId: string;
+  /** タスク完了を Slack にも送るか */
+  slack: WebhookConfig;
+  /** タスク完了を Discord にも送るか */
+  discord: WebhookConfig;
   /** サイドバーを現在のディレクトリに絞り込むか（false ならマシン全体） */
   scopeAgentsToCwd: boolean;
   /** xterm のテーマ色 */
@@ -228,6 +293,41 @@ export interface NotifyRequest {
   sound?: boolean;
 }
 
+/** 通知音の選択肢1件 */
+export interface SoundOption {
+  /**
+   * 保存・再生に使う識別子。
+   * macOS のシステムサウンドは音源名（例: 'Glass'）、
+   * ユーザー指定のファイルは絶対パス（'/' 始まり）。空文字は「OS 既定」を表す。
+   */
+  id: string;
+  /** 一覧に出す表示名 */
+  label: string;
+}
+
+export interface PlaySoundRequest {
+  /** 省略時は設定中の notifySoundId を鳴らす */
+  soundId?: string;
+}
+
+/** Webhook の送信先 */
+export type WebhookTarget = 'slack' | 'discord';
+
+export interface TestWebhookRequest {
+  target: WebhookTarget;
+  /**
+   * 検証に使う URL。省略時は設定に保存済みの URL を使う。
+   * 「保存する前に試す」ためのフィールド。
+   */
+  url?: string;
+}
+
+/** Webhook 送信の結果。失敗してもアプリは落とさず、理由だけを返す。 */
+export interface WebhookSendResult {
+  ok: boolean;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // チャンネル定義
 // ---------------------------------------------------------------------------
@@ -239,9 +339,14 @@ export const IpcInvoke = {
   agentsList: 'agents:list',
   historyList: 'history:list',
   historySetTitle: 'history:set-title',
+  memoList: 'memo:list',
+  memoSet: 'memo:set',
   configGet: 'config:get',
   configSet: 'config:set',
   notifyShow: 'notify:show',
+  notifyListSounds: 'notify:list-sounds',
+  notifyPlaySound: 'notify:play-sound',
+  notifyTestWebhook: 'notify:test-webhook',
   appPaths: 'app:paths',
 } as const;
 
@@ -281,12 +386,22 @@ export interface RendererApi {
     list(req: ListHistoryRequest): Promise<ListHistoryResult>;
     setTitle(req: SetSessionTitleRequest): Promise<void>;
   };
+  memo: {
+    list(): Promise<ListMemosResult>;
+    set(req: SetMemoRequest): Promise<ListMemosResult>;
+  };
   config: {
     get(): Promise<AppConfig>;
     set(patch: Partial<AppConfig>): Promise<AppConfig>;
   };
   notify: {
     show(req: NotifyRequest): Promise<void>;
+    /** 選択できる通知音の一覧。環境によっては空配列 */
+    listSounds(): Promise<SoundOption[]>;
+    /** 通知音を試聴する */
+    playSound(req: PlaySoundRequest): Promise<void>;
+    /** Webhook にテストメッセージを送る */
+    testWebhook(req: TestWebhookRequest): Promise<WebhookSendResult>;
   };
   app: {
     paths(): Promise<AppPaths>;
