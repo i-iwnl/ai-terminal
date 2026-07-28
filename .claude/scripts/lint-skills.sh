@@ -14,6 +14,7 @@
 #   check6  .claude/README.md の skill 一覧と実体の同期
 #   check7  ルート CLAUDE.md の健全性（起動点として機能しているか）
 #   check8  生成残骸（{{placeholder}} / CUSTOMIZE コメント）
+#   check9  agents と README の同期 / レビュー用 agent が読み取り専用か（リポジトリ固有）
 #
 # 出力: チェックごとに [PASS] / [FAIL] 理由 を1行ずつ、最後に合計を表示。
 # 終了コード: FAIL 件数（0 = 全チェック通過）。
@@ -278,6 +279,46 @@ check_no_leftovers() {
 #  - 設定ファイルの既定値とドキュメント記載値の突合
 #  - 手順が全パッケージ／全アプリに言及しているか
 
+# --- check 9: agents と README の同期、および読み取り専用の担保 ----------------
+# agents/*.md は check2/3（サイズ・リンク）の対象外なので、ここで別途見る。
+#   (a) README の agent 一覧と実体が一致しているか（人が agent の存在に気づけなくなる）
+#   (b) レビュー用 agent が Edit / Write を持っていないか
+#       レビュアーがコードを直し始めると、指摘が消えて差分だけが残る。tools で機械的に禁じる。
+check_agents() {
+  local readme="${CLAUDE_DIR}/README.md"
+  local md base missing="" listed stale="" writable="" tools_line
+  for md in "${AGENTS_DIR}"/*.md; do
+    [ -e "$md" ] || continue
+    base="$(basename "$md")"
+    grep -q "agents/${base}" "$readme" || missing="${missing} ${base}"
+    case "$base" in
+      *reviewer*)
+        tools_line="$(awk 'NR>1 && /^---$/{exit} NR>1 && /^tools:/{print; exit}' "$md")"
+        case "$tools_line" in
+          *Edit*|*Write*|*NotebookEdit*) writable="${writable} ${base}" ;;
+        esac
+        ;;
+    esac
+  done
+  while IFS= read -r listed; do
+    [ -z "$listed" ] && continue
+    [ -e "${AGENTS_DIR}/${listed}" ] || stale="${stale} ${listed}"
+  done <<EOF
+$(grep -o 'agents/[A-Za-z0-9_-]*\.md' "$readme" 2>/dev/null | sed 's#^agents/##' | sort -u)
+EOF
+  if [ -z "$missing" ] && [ -z "$stale" ]; then
+    pass "check9: README の agent 一覧と実体が一致"
+  else
+    [ -n "$missing" ] && fail "check9: README の一覧に未掲載の agent:${missing}"
+    [ -n "$stale" ] && fail "check9: README に載っているが実体が無い agent:${stale}"
+  fi
+  if [ -z "$writable" ]; then
+    pass "check9: レビュー用 agent は読み取り専用（Edit / Write なし）"
+  else
+    fail "check9: レビュー用 agent が書き込み可能:${writable}（tools から Edit / Write を外す）"
+  fi
+}
+
 # --- 実行 --------------------------------------------------------------------
 if [ ! -d "$SKILLS_ROOT" ]; then
   echo "[FAIL] .claude/skills が存在しない（/init-skills init で立ち上げる）"
@@ -292,6 +333,7 @@ check_h1
 check_readme_index
 check_root_claude_md
 check_no_leftovers
+check_agents
 
 echo "----------------------------------------------"
 echo "合計: PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"

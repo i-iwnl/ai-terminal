@@ -31,8 +31,11 @@ Claude Code の設定・skill を管理するディレクトリ。
 | [/terminal](skills/terminal/SKILL.md) | xterm.js と node-pty まわり。PTY が起動しない、日本語 IME、文字幅のずれ、vim / htop の表示崩れ、tmux ラップ時の終了検知、GUI 手動検証の手順 |
 | [/workspace-plan](skills/workspace-plan/SKILL.md) | 作業コンテキストの保持と開発ループ。`.claude/workspace/issue-<番号>/` の作成（init）、進捗の追記と Issue への同期（update）、一覧と Issue の突合（status）、計画 -> 実装 -> 検証 -> 文書 -> 記録を1周回す（loop）、known-issues を GitHub Issue に起こしてラベルを付ける（promote-known-issues） |
 | [/e2e](skills/e2e/SKILL.md) | Playwright による Electron の E2E テスト。シナリオの追加、実行とデバッグ、隔離ハーネス（一時 HOME と偽 CLI）の仕組み、自動テストで担保できない領域 |
+| [/design-review](skills/design-review/SKILL.md) | UI デザイン案の5ペルソナ並列レビュー。レビューの実施と統合（run-review）、結果の Issue 起票（file-proposal）、UI を書くとき常に守る規約・閾値・却下済みの案（reference/design-rules.md） |
 
 3本は責務が隣接しているため、SKILL.md の末尾で相互に境界をリンクしている。**どれを読むか迷ったら**「プロセス間の配線」なら `/electron-ipc`、「外部 CLI の出力」なら `/ai-cli`、「画面と子プロセス」なら `/terminal`。
+
+`/design-review` は単独では使わない。**`/workspace-plan loop` の計画ゲートから、見た目を変える周でだけ差し込まれる**（配線の正は [loop.md](skills/workspace-plan/operations/loop.md)）。
 
 > **単発タスク**（横断リファクタ・並列調査・複数ファイルの機械的修正）の指揮は `/orchestrator` が担う。これはリポジトリ内ではなく**個人スキル**（`~/.claude/skills/orchestrator`）として全リポジトリ共通で入れる運用。自動起動の条件はルート CLAUDE.md「作業分担の既定方針」が正。
 
@@ -124,7 +127,18 @@ Claude Code の設定・skill を管理するディレクトリ。
 > - YES → `agents/<name>.md`
 > - NO（メインがオーケストレーションとして知るべき／いつ呼ぶかの話）→ skill の `operations/` or `SKILL.md`
 
-このリポジトリではまだサブエージェントを定義していない（`agents/` は空）。実装・レビューを役割分担させたくなったら追加し、この節に一覧表を足す。
+#### 定義済みのサブエージェント
+
+| agent | 役割 | 呼ぶ側 |
+|---|---|---|
+| [design-reviewer-macos](agents/design-reviewer-macos.md) | macOS プロダクトデザイナー。HIG、ウィンドウクローム、メニュー、vibrancy、タイポグラフィのウェイト | [/design-review](skills/design-review/operations/run-review.md) |
+| [design-reviewer-ia](agents/design-reviewer-ia.md) | 初見ユーザー / IA 設計者。初回体験、ラベリング、メンタルモデル、空状態、発見可能性 | 同上 |
+| [design-reviewer-power-user](agents/design-reviewer-power-user.md) | エージェント常用ヘビーユーザー。手数、ピクセル予算、キーボード、他ターミナル比較 | 同上 |
+| [design-reviewer-a11y](agents/design-reviewer-a11y.md) | アクセシビリティ専門家。WCAG 実測、フォーカス、色覚多様性、VoiceOver、ズーム | 同上 |
+| [design-reviewer-maintainer](agents/design-reviewer-maintainer.md) | 保守担当エンジニア。実装コスト、E2E への影響、PR 分割、鉄則との整合 | 同上 |
+
+**5体はすべて読み取り専用**（`tools` に Edit / Write を持たせない）。修正はメインが行う。
+観点の定義は agent 側が唯一の正で、**呼び出し側のプロンプトで観点を書き直さない**（ドリフトの温床）。
 
 ### 6. 自動ロードの仕組み（運用上の留意）
 
@@ -151,6 +165,8 @@ Claude Code の設定・skill を管理するディレクトリ。
 | 何を・なぜやるか、作業の状態（open / closed） | **GitHub Issue** |
 | どう作るか・設計判断・進捗の詳細・教訓 | `.claude/workspace/issue-<番号>/` |
 | Issue のラベル体系（種類 / 優先度 / 性質） | [skills/workspace-plan/operations/promote-known-issues.md](skills/workspace-plan/operations/promote-known-issues.md) |
+| UI の規約・コントラスト等の閾値・却下済みのデザイン案 | [skills/design-review/reference/design-rules.md](skills/design-review/reference/design-rules.md) |
+| デザインレビューのペルソナが見る観点 | `.claude/agents/design-reviewer-*.md`（各 agent 定義） |
 
 ### 8. メンテナンスハーネス
 
@@ -174,4 +190,4 @@ frontmatter の欠落・サイズ超過・リンク切れ・カテゴリ違反�
 | docker | ツール/環境 | 現状は `docs/DOCKER.md` と `docs/SANDBOX.md` で足りており、skill 化すると重複になる。CI の設定が複雑化する、サンドボックスの運用手順が増える、コンテナ固有の罠が2件以上たまったら起こす |
 | git | ワークフロー | 現状はルート CLAUDE.md の「ユーザーの明示指示時のみ」で足りる。PR テンプレート・ブランチ運用・レビュー手順が定型化したら起こす |
 | release | ワークフロー | 配布を始めたときに起こす。electron-builder の設定、コード署名、公証（notarization）、自動更新はいずれも罠が多く、一度通すと必ず知識がたまる |
-| ui | アプリ/レイヤー固有 | Renderer の React 側が育ってきたら。現状はタブとサイドバーだけで、コードを読めば分かる範囲を超えていない |
+| ui | アプリ/レイヤー固有 | **見た目の規約は `/design-review` の `reference/design-rules.md` が持つようになったため、当面は不要。** React のコンポーネント設計・状態管理の流儀が定型化したら、そちらだけを切り出す |
