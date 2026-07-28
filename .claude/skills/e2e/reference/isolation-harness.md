@@ -32,6 +32,17 @@
 | `withoutCli` | 偽 CLI を `PATH` に置かない（CLI 不在時のエラー表示を検証する） |
 | `withoutHistory` | 履歴の JSONL フィクスチャを配置しない（履歴が空の状態を検証する） |
 | `config` | `config.json` の値を上書きする（既定値は `harness.ts` の `DEFAULT_CONFIG`） |
+| `gpu` | GPU を有効にして起動する（= xterm が WebGL レンダラになる）。既定は無効 |
+
+### `gpu` を使うときの注意
+
+既定では全シナリオを `--disable-gpu` で起動する。WebGL レンダラだと文字が canvas に描かれ DOM から読めないため、テキストで検証できなくなるからだ。
+
+**この既定は検証の盲点を作る。** DOM レンダラは文字を実 DOM のテキストノードとして描くので、`xterm.css` の読み込みを忘れていても表示されてしまう。実際にその不具合を全22シナリオ green のまま見逃し、`make dev` でターミナルが真っ黒になっていた。
+
+`gpu: true` にした場合、検証手段はピクセルしかない。[../../../../e2e/fixtures/pixels.ts](../../../../e2e/fixtures/pixels.ts) の `captureRegionStats()` を使う（Electron の `capturePage()` から生のビットマップを取るので画像ライブラリは不要）。実例は [../../../../e2e/specs/S23-webgl-rendering.spec.ts](../../../../e2e/specs/S23-webgl-rendering.spec.ts)。
+
+判定はピクセル数の**絶対値ではなく増分**で書くこと。フォント・解像度・テーマに依存しなくなる。なお描画が完全に壊れていてもカーソルのブロックだけは描かれるため、「単色でないこと」だけの判定では不具合を捕まえられない。
 
 ## ハマりどころ（実際に踏んだもの）
 
