@@ -76,12 +76,13 @@ export interface LaunchOptions {
    *
    * 実測（macOS / Electron 43）では、隠したウィンドウでも requestAnimationFrame は
    * 60fps で回り続け、WebGL レンダラの描画も capturePage で取れるピクセルまで
-   * 表示時と一致した。つまり **描画を見るシナリオも隠したまま検証できる**。
+   * 表示時と一致した。README 用の撮影（page.screenshot）も表示時と同じ画像になる。
+   * つまり **描画を見るシナリオも撮影も、隠したまま成立する**。
    *
-   * ⚠ ただし Playwright の `page.screenshot()`（CDP の Page.captureScreenshot）は
-   * 隠したウィンドウでは **タイムアウトする**。Electron 自前の `capturePage()` とは
-   * 別経路で、こちらはウィンドウが可視でないとフレームを返さない。
-   * README 用の撮影（screenshots.spec.ts）が表示を強制しているのはこのため。
+   * ⚠ ただしそれは「一度も show() していない」場合に限る。**一度表示してから
+   * hide() したウィンドウでは page.screenshot() が 30 秒でタイムアウトする**
+   * （実測）。Chromium は表示済みのウィンドウが隠れると occluded 扱いにして
+   * 合成を止めるためと思われる。show() を最初から無効化しているのはこのため。
    *
    * 省略時は環境変数 AI_TERMINAL_E2E_SHOW を見る（`=1` なら表示する）。
    * spec 側は通常なにも書かなくてよい。

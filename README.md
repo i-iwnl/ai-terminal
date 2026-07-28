@@ -233,7 +233,7 @@ make docker-verify   # typecheck + lint + build を Docker コンテナ内で実
 
 Electron に真のヘッドレスモードは無いので（`BrowserWindow` はネイティブウィンドウを要求する）、テスト側から `show()` を無効化し、macOS では Dock アイコンも隠している。ウィンドウは一度も可視にならず、フォーカスも奪わない。実測では描画（WebGL のピクセル）・マウス選択・IME まで表示時と同じ結果になる。**ただし macOS の GUI セッションは必要**（ヘッドレスな Linux CI で回すには別途 `xvfb` が要る）。
 
-挙動を目で追いたいときだけ `make e2e-visible` を使う。`make e2e-screenshots` は撮影の都合で常にウィンドウを表示する（Playwright の `page.screenshot()` は非表示ウィンドウでは動かないため）。
+挙動を目で追いたいときだけ `make e2e-visible` を使う。`make e2e-screenshots`（README 用の画像撮影）も非表示のまま動く。
 
 `make docker-verify` はマシン依存を排除した再現確認用。`node_modules` は named volume でホストと隔離してあるので、macOS 側のネイティブモジュールを壊すことはない。
 

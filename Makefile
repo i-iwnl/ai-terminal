@@ -93,7 +93,6 @@ e2e-report:
 	npx playwright show-report e2e/report
 
 ## README の使い方ガイド用スクリーンショットを撮る（docs/images/ に出力。make e2e には含まれない）
-##   撮影中はウィンドウが表示される（page.screenshot が非表示ウィンドウでは動かないため）
 e2e-screenshots: build
 	npx playwright test --config=e2e/screenshots.playwright.config.ts
 
