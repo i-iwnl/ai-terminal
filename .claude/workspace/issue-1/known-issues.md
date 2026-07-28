@@ -7,6 +7,7 @@
 
 ## 1. Phase 1 の受け入れ基準（残るは実 IME のみ）
 
+> **GitHub Issue**: [#7](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/7)
 ### 症状
 
 `docs/PLAN.md` の Phase 1 受け入れ基準が長らく未検証だった。2026-07-28 に、**GPU 有効（= `make dev` と同じ WebGL レンダラ）でアプリを駆動し、8項目中7項目を確認した**。
@@ -50,6 +51,7 @@ P2（P0 から引き下げ。基本機能が動くことは確認できたため
 
 ## 2. 日本語 IME は自動テストで検証できない
 
+> **GitHub Issue**: [#8](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/8)
 ### 症状
 
 変換中の下線表示・確定前の挙動は OS レベルの入力イベントで、Playwright から再現できない。
@@ -80,6 +82,7 @@ P1
 
 ## 3. tmux 永続化は E2E の範囲外
 
+> **GitHub Issue**: [#15](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/15)
 ### 症状
 
 tmux でラップした場合、内側の `claude` が終了しても PTY の exit が発火しない。この挙動と、アプリ再起動を跨いだセッション復帰は E2E で検証できない。
@@ -145,6 +148,7 @@ P1
 
 ## 4. macOS 通知は検証手段が無い
 
+> **GitHub Issue**: [#16](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/16)
 ### 症状
 
 タスク完了時の macOS 通知の発火を、Playwright から観測できない。

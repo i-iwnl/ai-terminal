@@ -63,11 +63,16 @@ Issue #1 の完了条件と同一。ここでは実装観点で再掲する。
 
 Issue #1 の完了条件は全て満たしており、`main` にマージ済み（PR #3）。残るのは人手か環境整備が要る2件のみ。
 
-| 優先度 | アクション | 詳細 |
+**残タスクは GitHub Issue に起票済み。** 状態の唯一の正は Issue 側で、ここは索引に留める。
+
+| Issue | 優先度 | アクション |
 |---|---|---|
-| P1 | PR #4 のレビューとマージ | https://github.com/Yoshinaga-iwnl/ai-terminal/pull/4 （`test/webgl-e2e-and-phase1-verify` -> `main`） |
-| P2 | macOS の実 IME での日本語入力の確認 | `known-issues.md` の 1 番。**人手でしか確認できない**唯一の残項目 |
-| P2 | htop を入れて本来の項目として確認する | 同上。現在は `top` の対話モードで代替している |
+| [#7](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/7) | P2 | 実機の IME で日本語入力を確認する（**人手でしか確認できない**唯一の残項目） |
+| [#8](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/8) | P1 | IME の入力側が自動検証の対象外であることを README に明記する |
+| [#15](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/15) | P3 | tmux 永続化の検証手段（`deferred`） |
+| [#16](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/16) | P3 | macOS 通知の発火を検証する手段（`deferred`） |
+
+PR #4 はマージ済み（2026-07-28）。「htop を入れて確認する」はチェックリストを性質ベースへ書き換えた際に消えた（固有のコマンド名ではなく「全画面 TUI が崩れないこと」を S24 が担保する）。
 
 ### 片付いたもの（2026-07-28）
 

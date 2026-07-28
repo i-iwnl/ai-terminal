@@ -1,6 +1,6 @@
 ---
 name: workspace-plan
-description: ai-terminal（Electron製ターミナルアプリ）のワークスペース管理と開発ループ。`.claude/workspace/issue-<Issue番号>/` に overview / worklog / architecture / known-issues の4ファイルを作成・更新し、GitHub Issueと1:1対応させながらセッションをまたいで設計判断・進捗・教訓を保持する。新規ワークスペース作成(init)、進捗の追記とIssueへの同期(update)、ワークスペース一覧とIssueのopen/closed突合(status)、指示->計画->実装->検証(check/unit/e2e)->README等の文書更新->記録を1周として回す開発ループ(loop)を扱う。「作業前にワークスペースを作りたい」「進捗を記録したい」「セッションが切れたので再開したい」「続きから実装したい」「機能を追加したい」「ループを回して」「ワークスペースが残っているのにIssueが閉じていないか確認したい」といった依頼で使う。複数トラックの並列実装の指揮は個人skillの/orchestratorが担う（本skillは重複させない）。チケット管理はGitHub Issuesが正で、リポジトリ内チケットskill(/ticket)は持たない。
+description: ai-terminal（Electron製ターミナルアプリ）のワークスペース管理と開発ループ。`.claude/workspace/issue-<Issue番号>/` に overview / worklog / architecture / known-issues の4ファイルを作成・更新し、GitHub Issueと1:1対応させながらセッションをまたいで設計判断・進捗・教訓を保持する。新規ワークスペース作成(init)、進捗の追記とIssueへの同期(update)、ワークスペース一覧とIssueのopen/closed突合(status)、指示->計画->実装->検証(check/unit/e2e)->README等の文書更新->記録を1周として回す開発ループ(loop)、known-issues.mdの課題をGitHub Issueに起票してラベル付けする(promote-known-issues)を扱う。「作業前にワークスペースを作りたい」「進捗を記録したい」「セッションが切れたので再開したい」「続きから実装したい」「機能を追加したい」「ループを回して」「known-issuesをIssueにして」「Issueにラベルを付けて」「残っている課題を洗い出して」「ワークスペースが残っているのにIssueが閉じていないか確認したい」といった依頼で使う。複数トラックの並列実装の指揮は個人skillの/orchestratorが担う（本skillは重複させない）。チケット管理はGitHub Issuesが正で、リポジトリ内チケットskill(/ticket)は持たない。
 ---
 
 # workspace-plan
@@ -15,6 +15,7 @@ Issue単位でワークスペースドキュメントを作成・維持し、AI�
 | Issue番号からワークスペースを新規作成する | [operations/init.md](operations/init.md) |
 | 進捗を追記し、節目でIssueに同期する | [operations/update.md](operations/update.md) |
 | ワークスペース一覧とIssueの状態を確認する（セッション再開時はここから） | [operations/status.md](operations/status.md) |
+| known-issues.md の課題をGitHub Issueに起こし、ラベルを付ける | [operations/promote-known-issues.md](operations/promote-known-issues.md) |
 | 各ファイルの雛形を確認する | [reference/](reference/) 配下（`overview-template.md` / `worklog-template.md` / `architecture-template.md` / `known-issues-template.md`） |
 
 `loop` は `status` で始まり `update` で終わる。**個別に呼ぶのではなく、実装を伴う依頼では既定で `loop` を通す。**

@@ -54,8 +54,16 @@
 
 ## 4. 直近の次アクション
 
-| 優先度 | アクション | 詳細 |
+**残タスクは GitHub Issue に起票済み。** 状態の唯一の正は Issue 側で、ここは索引に留める。
+
+| Issue | 優先度 | アクション |
 |---|---|---|
-| **P0** | PR #6 のレビューとマージ | 未マージだったセッションタイトル編集のコミット（`3caf03c`）を巻き込んでいる。`known-issues.md` の 1 番を参照 |
-| P1 | 通知音が実際に鳴ることの手動確認 | 自動テストで担保できない領域（`known-issues.md` の 2 番） |
-| P2 | Issue #1 に残る宿題2件 | 実 IME での日本語入力、htop での全画面 TUI 確認。`issue-1/known-issues.md` が正 |
+| （PR #6） | **P0** | PR #6 のレビューとマージ。未マージだったセッションタイトル編集のコミット（`3caf03c`）を巻き込んでいる -> `known-issues.md` の 1 番 |
+| [#9](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/9) | P2 | 通知音が実際に鳴ることを手動で確認する |
+| [#10](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/10) | P2 | README の S22 の画像に変換中の文字列が写っていない |
+| [#11](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/11) | P2 | 通知音のパス解決に単体テストが無い |
+| [#12](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/12) | P2 | メモの自動保存がアプリ終了時に取りこぼす可能性（未検証） |
+| [#13](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/13) | P2 | Webhook URL を safeStorage へ移す（`deferred`） |
+| [#14](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/14) | P3 | E2E のタイムアウト設定が実態に合っていない |
+
+Issue #1 側の残タスクは [#7](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/7) / [#8](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/8) / [#15](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/15) / [#16](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/16)。

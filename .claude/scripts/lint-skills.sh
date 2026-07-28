@@ -249,13 +249,24 @@ check_root_claude_md() {
 }
 
 # --- check 8: 生成残骸 --------------------------------------------------------
+# コードフェンス内・インラインコード内は検査しない（check3 と同じ理由）。
+# `{{...}}` は生成テンプレートの残骸であると同時に、実在するコマンドの構文でもある
+# （gh の --template、Go template、Handlebars 等）。手順書に載せた実行可能なコマンドを
+# 残骸と誤検知すると、検査を通すために手順の方を曲げることになる。
+# 本物の残骸は散文・見出し・frontmatter に現れるので、フェンス外だけを見れば足りる。
 check_no_leftovers() {
-  local hits
-  hits="$(grep -rln '{{[^}]\{1,\}}}\|<!-- CUSTOMIZE' "${SKILLS_ROOT}" "${AGENTS_DIR}" "${CLAUDE_DIR}/README.md" "${REPO_ROOT}/CLAUDE.md" 2>/dev/null | head -5 || true)"
+  local md rel hits=""
+  for md in $(list_skill_md) "${AGENTS_DIR}"/*.md "${CLAUDE_DIR}/README.md" "${REPO_ROOT}/CLAUDE.md"; do
+    [ -e "$md" ] || continue
+    rel="${md#"${REPO_ROOT}"/}"
+    if strip_code "$md" | grep -q '{{[^}]\{1,\}}}\|<!-- CUSTOMIZE'; then
+      hits="${hits} ${rel}"
+    fi
+  done
   if [ -z "$hits" ]; then
-    pass "check8: placeholder / CUSTOMIZE コメントの残骸なし"
+    pass "check8: placeholder / CUSTOMIZE コメントの残骸なし（コードフェンス内は対象外）"
   else
-    fail "check8: 生成残骸が残存: $(echo "$hits" | sed "s#^${REPO_ROOT}/##" | tr '\n' ' ')"
+    fail "check8: 生成残骸が残存:${hits}"
   fi
 }
 

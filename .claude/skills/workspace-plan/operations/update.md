@@ -38,6 +38,7 @@
 #### known-issues.md への問題記録
 
 - 症状・原因・影響範囲・対処方針を構造的に記録し、優先度タグを付ける
+- **優先度は必ず書く。** 後で GitHub Issue に起こすとき、優先度ラベルはここの値をそのまま使う（[promote-known-issues.md](promote-known-issues.md)）
 
 ### 3. Issueへの書き戻し（節目のみ・省略不可）
 
@@ -53,7 +54,9 @@
 gh issue comment <Issue番号> --body "<要点>"
 ```
 
-Issueのラベル・open/closedの変更自体（`gh issue close` 等）は行わない。ユーザーが別途判断する。
+`gh issue close` は行わない（課題が解決したかの判断はユーザーが行う）。
+
+**同じ節目で、`known-issues.md` の未対処項目を GitHub Issue に起こす。** 手順とラベル体系は [promote-known-issues.md](promote-known-issues.md) が唯一の正。ワークスペースに書いたまま放置すると、作業を離れた時点で誰にも見えなくなる。
 
 ### 4. 整合性チェック
 
