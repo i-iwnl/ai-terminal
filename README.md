@@ -75,7 +75,7 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 
 ![起動直後の画面](docs/images/S01-launch.png)
 
-左に「実行中タスク / 履歴」を切り替えるサイドバー、上にシェルや AI エージェントのタブを並べるタブバー、その下にターミナル本体が並ぶ。ターミナル部分はいつもの `zsh` / `bash` のプロンプトがそのまま表示される。
+左に「実行中タスク / 履歴 / メモ」を切り替えるサイドバー、上にシェルや AI エージェントのタブを並べるタブバー、その下にターミナル本体が並ぶ。ターミナル部分はいつもの `zsh` / `bash` のプロンプトがそのまま表示される。
 
 ### 2. 普通のターミナルとして使う
 
@@ -119,13 +119,38 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 
 履歴をクリックすると新しいタブが開き、`claude --resume <sessionId>` で続きから再開できる。
 
-### 7. 日本語を入力する
+### 7. メモを残す
+
+サイドバーの「メモ」タブに、どこにも属さない**全体メモ**と、履歴セッションに紐付く**セッションメモ**を書ける。
+
+- **全体メモ**: 常に1枚だけの走り書き。「あとで直す」「このブランチの前提」など、行き場のないメモの置き場
+- **セッションメモ**: 履歴一覧の行にカーソルを合わせると出る「メモ」ボタンから開く。そのセッションの調査経過や、次に何を頼むかを残せる
+
+保存ボタンは無い。入力が止まると自動で保存され、入力欄から離れたときにも保存される。**本文を空にするとそのメモは削除される**（空のメモが一覧に残り続けない）。
+
+保存先は `~/.ai-terminal/memos.json`。`claude` / `gemini` 側のファイルには一切書き込まない。
+
+### 8. 日本語を入力する
 
 ![IME の変換中表示](docs/images/S22-ime-composition.png)
 
 日本語 IME の変換中（未確定）の文字列もその場に表示され、確定すると通常どおりシェルに渡る。
 
-### 8. うまくいかないとき
+### 9. 通知とサウンドを設定する
+
+![設定パネル](docs/images/S31-settings-panel.png)
+
+タブバー右端の「設定」ボタン（または `Cmd+,`）で設定パネルが開く。`config.json` を手で編集しなくても、次を変更できる。
+
+- **フォントと文字サイズ** — 変更するとその場でターミナルに反映される
+- **通知音** — macOS のシステムサウンド（`/System/Library/Sounds`）と `~/Library/Sounds` に置いた音源から選べる。「試聴」でその場で鳴らせる
+- **Slack / Discord への転送** — Incoming Webhook の URL を入れると、タスク完了通知が Slack / Discord にも届く。「テスト送信」で保存前に到達を確認できる
+
+`Escape`・背景クリック・「x」のいずれでも閉じる。変更は即座に `~/.ai-terminal/config.json` に保存される。
+
+> **Webhook URL は `config.json` に平文で保存される。** リポジトリに含まれる場所ではないが、設定ファイルを共有・バックアップするときは注意すること。
+
+### 10. うまくいかないとき
 
 ![CLI が見つからないとき](docs/images/S11-cli-missing.png)
 
@@ -143,12 +168,15 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 | `Cmd+K` | 現在の作業ディレクトリで **claude** を新しいタブで起動 |
 | `Cmd+Shift+K` | 同様に **gemini** を起動 |
 | `Cmd+F` | ターミナル内検索 |
+| `Cmd+,` | 設定パネルの開閉 |
 
 `Ctrl+C` などターミナル本来のキー入力は一切妨げない（`Cmd` 系のみを横取りしている）。
 
 ---
 
 ## 設定
+
+**通知・サウンド・フォントはアプリ内の設定パネル（`Cmd+,`）から変更できる。** ここに書くのは、パネルに出していない項目も含めたファイルの全体像。
 
 `~/.ai-terminal/config.json` を置くと反映される。ファイルが無ければ既定値で動く。**壊れた JSON を置いてもアプリは落ちず、既定値に縮退する。**
 
@@ -161,6 +189,15 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
   "useTmux": true,                  // tmux があれば AI CLI をラップする
   "notifyOnIdle": true,             // 作業完了時に macOS 通知
   "notifySound": true,
+  "notifySoundId": "Glass",         // 空文字なら OS 既定音。絶対パスで自前の音源も指定できる
+  "slack": {
+    "enabled": false,
+    "url": ""                       // Slack Incoming Webhook の URL
+  },
+  "discord": {
+    "enabled": false,
+    "url": ""                       // Discord Webhook の URL
+  },
   "scopeAgentsToCwd": false,        // true にすると現在のディレクトリのタスクだけ表示
   "theme": {
     "background": "#1e1e1e",
@@ -171,14 +208,28 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 }
 ```
 
+`notifySoundId` は `/System/Library/Sounds` と `~/Library/Sounds` から音源名で探す（`Glass` なら `Glass.aiff`）。`/` で始まる値は絶対パスとしてそのまま使う。**指定した音源が見つからない場合は無音になるだけで、通知そのものは出る。**
+
 ---
 
 ## 検証
 
 ```bash
-make check           # typecheck + lint（ホストで実行）
+make check           # typecheck + lint + 単体テスト（ホストで実行）
+make unit            # 単体テストのみ（vitest）
+make e2e             # E2E（Playwright で Electron を起動）
+make e2e-headless    # E2E をウィンドウを表示せずに実行
 make docker-verify   # typecheck + lint + build を Docker コンテナ内で実行
 ```
+
+テストは2層に分かれている。
+
+| 層 | 置き場 | 対象 |
+|---|---|---|
+| 単体（vitest） | `test/unit/` | 外部に触れない純粋関数（設定の正規化・メモの更新・Webhook のペイロード・PTY の起動引数・表示整形・ショートカット判定） |
+| E2E（Playwright） | `e2e/specs/` | 実際に Electron を起動して確かめる振る舞い（全32シナリオ） |
+
+`make e2e-headless` は**ウィンドウを画面に出さずに**全シナリオを走らせる。作業を続けながら回せる。Electron に真のヘッドレスモードは無いため、やっているのは起動直後に `BrowserWindow.hide()` を呼ぶことだが、実測では描画（WebGL のピクセル）・マウス選択・IME まで表示時と同じ結果になる。**ただし macOS の GUI セッションは必要**（ヘッドレスな Linux CI で回すには別途 `xvfb` が要る）。
 
 `make docker-verify` はマシン依存を排除した再現確認用。`node_modules` は named volume でホストと隔離してあるので、macOS 側のネイティブモジュールを壊すことはない。
 
@@ -206,12 +257,20 @@ src/
   main/          Main プロセス（Node.js）
     pty/         PTY のライフサイクル管理、tmux ラップ
     agents/      claude agents --json のポーリング
-    history/     ~/.claude/projects の JSONL 読み取り
+    history/     ~/.claude/projects の JSONL 読み取り、タイトル上書き
+    memo/        ~/.ai-terminal/memos.json（全体メモ / セッションメモ）
+    notify/      macOS 通知・通知音（afplay）・Slack / Discord への転送
     config.ts    ~/.ai-terminal/config.json
-    notify.ts    macOS 通知
   preload/       contextBridge で window.api を露出
-  renderer/      React の UI（xterm.js / サイドバー / タブ）
+  renderer/      React の UI
+    terminal/    xterm.js
+    sidebar/     タスク / 履歴 / メモ
+    tabs/        タブバーとタブ状態
+    settings/    設定パネル（モーダル）
   shared/ipc.ts  IPC 契約。チャンネル名と型の単一の正
+
+test/unit/       単体テスト（vitest）
+e2e/             E2E（Playwright + Electron）
 ```
 
 **Renderer は OS を直接触らない。** PTY 起動もファイル読み込みも Main プロセス側で行い、`contextIsolation` を維持している。
@@ -251,6 +310,18 @@ node scripts/fix-node-pty.mjs
 **履歴一覧のタイトルが出ない項目がある**
 
 `ai-title` が生成される前のセッションではタイトルが取れない（実データで約 14%）。その場合は最初のプロンプトの冒頭が代わりに表示される。仕様上の縮退であって不具合ではない。
+
+**Slack / Discord に通知が届かない**
+
+設定パネルの「テスト送信」を押すと結果がその場に出る。よくある原因:
+
+- URL 欄の左のチェックボックスが入っていない（URL を入れただけでは送らない）
+- Webhook URL が失効している（`HTTP 404: no_service` などが表示される）
+- 社内ネットワークのプロキシで外向き HTTPS が塞がれている
+
+**通知音が鳴らない**
+
+「通知音を鳴らす」が有効か、選んだ音源が存在するかを確認する。**存在しない音源を指定した場合は無音になるだけで、通知そのものは出る**（設定に古い音源名が残っていてもエラーにはしない）。macOS 以外では音の再生自体を行わない。
 
 **tmux 有効時、`claude` を終了してもタブが閉じない**
 

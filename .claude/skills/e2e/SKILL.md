@@ -1,6 +1,6 @@
 ---
 name: e2e
-description: Playwright を使った Electron E2E テスト（e2e/ 配下、全22シナリオ）の追加・実行・デバッグで使う。「E2E を追加したい」「テストが落ちた」「シナリオを増やしたい」「スクリーンショットを撮り直したい」「テストが不安定」「make e2e が失敗する」「隔離ハーネスの挙動を知りたい」といった依頼で読む。scenarios.yml を唯一の正とするシナリオ台帳、e2e/specs/ の spec ファイル、e2e/fixtures/harness.ts の隔離ハーネス（一時 HOME・偽 CLI・固定 JSONL フィクスチャ）、make e2e-lint による scenarios.yml と spec の1:1検査を扱う。ターミナル自体の描画・PTY の不具合調査は /terminal、claude / gemini CLI 出力のパースは /ai-cli、IPC 契約の変更は /electron-ipc を参照し、この skill では扱わない。
+description: Playwright を使った Electron E2E テスト（e2e/ 配下、全32シナリオ）の追加・実行・デバッグで使う。「E2E を追加したい」「テストが落ちた」「シナリオを増やしたい」「スクリーンショットを撮り直したい」「テストが不安定」「make e2e が失敗する」「隔離ハーネスの挙動を知りたい」といった依頼で読む。scenarios.yml を唯一の正とするシナリオ台帳、e2e/specs/ の spec ファイル、e2e/fixtures/harness.ts の隔離ハーネス（一時 HOME・偽 CLI・固定 JSONL フィクスチャ）、make e2e-lint による scenarios.yml と spec の1:1検査を扱う。ターミナル自体の描画・PTY の不具合調査は /terminal、claude / gemini CLI 出力のパースは /ai-cli、IPC 契約の変更は /electron-ipc を参照し、この skill では扱わない。
 ---
 
 # e2e
