@@ -32,13 +32,18 @@ AI コーディングエージェント（Claude Code / Gemini CLI）を飼う�
 make dev           # 開発起動（DevTools が別ウィンドウで自動的に開く）
 make dev-quiet     # DevTools を開かずに起動
 make dev-debug     # Main プロセスのデバッガを有効にして起動
-make check         # typecheck + lint（変更後は必ずこれを通す）
+make check         # typecheck + lint + unit（変更後は必ずこれを通す）
+make unit          # 単体テストのみ（vitest。純粋関数だけを対象にする）
+make e2e           # E2E（Playwright + Electron）
+make e2e-headless  # E2E をウィンドウを表示せずに実行する
 make build         # 本番ビルド
 make docker-verify # typecheck + lint + build を Docker コンテナ内で実行
 ```
 
-`make` を使わない場合は `npm run dev` / `npm run typecheck` / `npm run lint` / `npm run build`。
+`make` を使わない場合は `npm run dev` / `npm run typecheck` / `npm run lint` / `npm run unit` / `npm run build`。
 一覧は `make` で表示できる。**skill やドキュメントに検証コマンドを再掲しない。ここを参照する。**
+
+**テストの置き場は「外部に触れるか」で決める。** 入力から出力が閉じた純粋関数は `test/unit/`（vitest）、画面・PTY・IPC を跨ぐ振る舞いは `e2e/specs/`（Playwright）。Electron を起動する必要があるなら後者。
 
 ## 作業分担の既定方針
 
@@ -55,11 +60,14 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 
 | タスク | skill |
 |---|---|
+| **機能追加・不具合修正を1周回す（計画 -> 実装 -> 検証 -> 文書 -> 記録）** | **`/workspace-plan loop`** |
+| 作業を始める / 進捗を記録する / セッションが切れて再開する | `/workspace-plan` |
 | IPC チャンネルの追加・変更、preload・contextBridge、Renderer から OS 情報を取る | `/electron-ipc` |
 | claude / gemini CLI の起動引数、タスク一覧・履歴が出ない、CLI 更新でパースが壊れた | `/ai-cli` |
 | PTY が起動しない、日本語 IME・文字幅、vim / htop の表示崩れ、ショートカット、tmux | `/terminal` |
-| 作業を始める / 進捗を記録する / セッションが切れて再開する | `/workspace-plan` |
 | E2E テストを追加する / 落ちた / 不安定 / スクリーンショットを撮り直す | `/e2e` |
+
+**実装を伴う依頼は、既定で `/workspace-plan loop` を通す。** 計画の確認ゲートと、検証・文書更新・記録の停止条件がここに集約されている。1ファイルで完結する自明な修正だけは直接実行してよい。
 
 skill 一覧と設計ルールの全体像は **[.claude/README.md](.claude/README.md)** を参照。
 skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` を通すこと。
