@@ -21,10 +21,12 @@ import {
   type PtyExitEvent,
   type PtyInputRequest,
   type PtyResizeRequest,
+  type PtyCwdResult,
   type AppConfig,
 } from '@shared/ipc';
 import { getConfig } from '../config';
 import { markOwnedSession } from '../agents/poller';
+import { readProcessCwd } from './cwd';
 import {
   isTmuxAvailable,
   buildTmuxSessionName,
@@ -241,6 +243,22 @@ export function registerPtyHandlers(): void {
       });
 
       return { ptyId, agentSessionId: plan.agentSessionId, wrappedInTmux };
+    },
+  );
+
+  // シェルタブで `cd` した先を追跡するための問い合わせ。
+  // 実プロセスに聞くので、`cd` だけでなく pushd やスクリプト経由の移動も拾える。
+  // 取得できなければ cwd を付けずに返す（呼び出し側が直前の値を維持する）。
+  ipcMain.handle(
+    IpcInvoke.ptyCwd,
+    async (_event: IpcMainInvokeEvent, rawPtyId: unknown): Promise<PtyCwdResult> => {
+      if (typeof rawPtyId !== 'string') {
+        throw new Error('不正な pty:cwd リクエストです');
+      }
+      const entry = entries.get(rawPtyId);
+      if (!entry) return { ptyId: rawPtyId };
+      const cwd = await readProcessCwd(entry.pty.pid);
+      return { ptyId: rawPtyId, cwd };
     },
   );
 

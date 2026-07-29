@@ -2,10 +2,16 @@
 // xterm.js インスタンス自体は terminal/TerminalPane.tsx 側が持つ。ここではタブのメタデータと
 // PTY の起動・終了だけを扱う。
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PtyKind, SpawnPtyRequest } from '@shared/ipc';
-import { getSharedCwd } from '../lib/cwd';
+import { getSharedCwd, setSharedCwd } from '../lib/cwd';
 import { forgetPty } from '../terminal/ptyStream';
+
+// シェルの cd への追従ポーリング間隔。
+// エージェントタブ（claude / gemini）は自分から cd しないので対象外。
+// tmux でラップして起動している場合、lsof が返すのは tmux クライアント側の cwd で
+// シェルの実際の作業ディレクトリとは無関係になるため、これも対象外にする理由の一つ。
+const CWD_POLL_INTERVAL_MS = 2_000;
 
 export interface TabState {
   /** タブ / PTY を一意に識別する ID（ptyId をそのまま使う） */
@@ -64,6 +70,47 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     setActiveTabIdState(id);
   }, []);
 
+  // PTY の実プロセスに cwd を問い合わせて、変化していればそのタブの cwd を更新する。
+  // reject した場合・cwd が取得できなかった場合は何もしない（直前の値を維持する）。
+  // 2秒間隔のポーリングから呼ばれるため、console.warn 等のログは出さない
+  // （出すとログがすぐ埋まる。lsof が一時的に失敗するのは珍しくない）。
+  const refreshTabCwd = useCallback((ptyId: string): void => {
+    window.api.pty
+      .cwd(ptyId)
+      .then((result) => {
+        if (!result.cwd) return;
+        setTabs((prev) => {
+          const tab = prev.find((t) => t.ptyId === ptyId);
+          if (!tab || tab.cwd === result.cwd) return prev;
+          return prev.map((t) => (t.ptyId === ptyId ? { ...t, cwd: result.cwd } : t));
+        });
+        // このタブがまだアクティブなら、サイドバーへもそのまま反映する。
+        if (activeTabIdRef.current === ptyId) {
+          setSharedCwd(result.cwd);
+        }
+      })
+      .catch(() => {
+        // 何もしない（直前の値を維持する）。
+      });
+  }, []);
+
+  // アクティブなタブが切り替わったら、待たずにそのタブの cwd を共有値へ反映する
+  // （サイドバーは常に「いま見ているタブの文脈」を映すのが狙い）。
+  // シェルタブなら、記録済みの値だけでなく実プロセスへ問い合わせ直して最新化し、
+  // 以降は cd への追従のためポーリングする。対象はアクティブなタブ1枚だけ。
+  useEffect(() => {
+    const tab = tabsRef.current.find((t) => t.id === activeTabId);
+    if (!tab) return;
+    setSharedCwd(tab.cwd);
+    if (tab.kind !== 'shell') return;
+    const ptyId = tab.ptyId;
+    refreshTabCwd(ptyId);
+    const timer = window.setInterval(() => {
+      refreshTabCwd(ptyId);
+    }, CWD_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [activeTabId, refreshTabCwd]);
+
   const spawn = useCallback(
     async (kind: PtyKind, title: string, opts?: SpawnOpts): Promise<void> => {
       const cwd = opts?.cwd ?? getSharedCwd();
@@ -98,13 +145,27 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   const newShellTab = useCallback(() => spawn('shell', 'zsh'), [spawn]);
 
   const newAgentTab = useCallback(
-    (kind: 'claude' | 'gemini', opts?: SpawnOpts): Promise<void> => {
+    async (kind: 'claude' | 'gemini', opts?: SpawnOpts): Promise<void> => {
       const isResume = Boolean(opts?.resumeSessionId ?? opts?.geminiResumeTarget);
       const title = opts?.title ?? (isResume ? `${kind} (再開)` : kind);
-      // 現在アクティブなタブの cwd を引き継ぐ。MVP では全タブ共通の cwd だが、
-      // 将来タブごとに cwd を追跡するようになっても自然に動くようにしてある。
-      const currentCwd = tabsRef.current.find((t) => t.id === activeTabIdRef.current)?.cwd;
-      return spawn(kind, title, { ...opts, cwd: opts?.cwd ?? currentCwd ?? getSharedCwd() });
+      let cwd = opts?.cwd;
+      if (cwd === undefined) {
+        const activeTab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+        // 記録済みの値ではなく、実プロセスへ問い合わせ直してから spawn する。
+        // 「cd した直後に Cmd+Shift+C で claude を開く」という主用途で、記録済みの値のまま
+        // spawn すると cd 前の1回分古いディレクトリを引き継いでしまうため。
+        // 問い合わせに失敗した場合・cwd が取れなかった場合は、従来どおり記録済みの値、
+        // それも無ければ共有 cwd の順にフォールバックする。
+        const fallback = activeTab?.cwd ?? getSharedCwd();
+        cwd = activeTab
+          ? await window.api.pty
+              .cwd(activeTab.ptyId)
+              .then((result) => result.cwd)
+              .catch(() => undefined)
+          : undefined;
+        cwd = cwd ?? fallback;
+      }
+      return spawn(kind, title, { ...opts, cwd });
     },
     [spawn],
   );
