@@ -52,16 +52,42 @@ function colorTokens(): Map<string, string> {
   return out;
 }
 
+describe('デザイントークンの参照', () => {
+  it('var() が参照しているトークンは、すべて宣言されている', () => {
+    // 置換のときのタイプミス（var(--surface-O) など）は、CSS では黙って無視され
+    // **その宣言だけが効かなくなる**。ビルドも E2E も通ってしまうので、ここで押さえる。
+    const declared = new Set([...root.matchAll(/^\s*(--[a-z0-9-]+):/gm)].map((m) => m[1]));
+    const referenced = new Set([...rest.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
+    const undeclared = [...referenced].filter((name) => !declared.has(name));
+    expect(undeclared).toEqual([]);
+  });
+
+  it('宣言したトークンのうち、色は最終的にすべて参照される', () => {
+    // 置換が進むまでは未参照のトークンが残るため、いまは件数だけを見る。
+    // PR 4 が終わったら「未参照ゼロ」に強める。
+    const referenced = new Set([...rest.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
+    expect(referenced.size).toBeGreaterThan(10);
+  });
+});
+
 describe('デザイントークンの宣言', () => {
   it('色トークンが1つ以上宣言されている', () => {
     expect(colorTokens().size).toBeGreaterThan(20);
   });
 
-  it('宣言した色は、すべて CSS 本体で実際に使われている値である', () => {
-    // 使われていない値を宣言していると、置換のときに「どこにも当てはまらないトークン」が残る。
-    // それは PR 5 で消すべきものか、置換漏れかの区別が付かない。
+  it('宣言した色は、未置換ならリテラルが実在し、置換済みなら参照されている', () => {
+    // 置換は段階的に進む（PR 3 で面と境界、PR 4 で残り）ので、この2つの状態を許す。
+    //
+    // - 未置換: 宣言した値と同じリテラルが CSS 本体にある（= 値が現行と 1:1）
+    // - 置換済み: var() で参照されている
+    //
+    // どちらでもないトークンは、**値を間違えたか、消し忘れたか**のどちらか。
+    // 置換が全部終わったら、この検査は「すべて参照されている」に強められる。
     const used = hexesIn(rest);
-    const orphans = [...colorTokens()].filter(([, value]) => !used.has(value));
+    const referenced = new Set([...rest.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
+    const orphans = [...colorTokens()].filter(
+      ([name, value]) => !used.has(value) && !referenced.has(name),
+    );
     expect(orphans).toEqual([]);
   });
 
@@ -77,6 +103,9 @@ describe('デザイントークンの宣言', () => {
       '--surface-field',
       // 既定のステータスドットとタブ無し表示が偶然どちらも #666666。
       '--status-unknown',
+      // 検索バーの浮いた面と区切り線が偶然どちらも #2a2a2a。
+      // 用途が違うので別トークンにしてある（PR 5 で面のほうが動く）。
+      '--surface-float',
     ]);
 
     const byValue = new Map<string, string[]>();

@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 .PHONY: help install dev dev-debug dev-quiet build check typecheck lint unit unit-watch format \
         rebuild fix-electron docker-verify docker-build sandbox sandbox-build clean clean-docker \
-        e2e e2e-visible e2e-lint e2e-report e2e-screenshots
+        e2e e2e-visible e2e-lint e2e-report e2e-screenshots css-substitution-check
 
 # ---------------------------------------------------------------------------
 # ヘルプ
@@ -87,6 +87,10 @@ e2e-visible: build
 ## scenarios.yml と e2e/specs/ の 1:1 対応を検査する（実行前提なし）
 e2e-lint:
 	node scripts/lint-e2e.mjs
+
+## CSS のトークン置換が値を変えていないことを検証する（値を変える PR では落ちる）
+css-substitution-check:
+	node scripts/verify-css-substitution.mjs $(REV)
 
 ## 直近の E2E 実行の HTML レポートを開く
 e2e-report:
