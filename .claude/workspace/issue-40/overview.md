@@ -28,10 +28,10 @@
 
 ## 2. 完成条件
 
-- [ ] Finder から起動した安定版で、サイドバーのタスク一覧が PATH エラーなしで表示される（**要・ユーザーの実機確認**。launchd 相当の最小 PATH からの解決は実機で確認済み）
-- [ ] Finder から起動した安定版で、claude / gemini タブが起動できる（同上）
+- [x] Finder から起動した安定版で、サイドバーのタスク一覧が PATH エラーなしで表示される（2026-07-29 ユーザー実機確認済み。shell-path.log で最小 PATH からの解決成功 907ms を裏取り）
+- [x] Finder から起動した安定版で、claude / gemini タブが起動できる（同上）
 - [x] PATH 解決の純粋関数に単体テストがある（`test/unit/shell-path.test.ts`）
-- [x] `make check` / `make e2e` が green（S11 が1回 flaky → 単独5連続 green、既知の Issue #17 と同型と判断）
+- [x] `make check` / `make e2e` が green
 
 ---
 
@@ -39,9 +39,9 @@
 
 | 項目 | 状態 |
 |---|---|
-| 設計 | 完了（起動時 PATH 解決・詳細は architecture.md） |
-| 実装 | 完了（src/main/shell-path.ts 新設 + index.ts 組み込み） |
-| 検証 | 自動検証は完了。Finder 起動の実機確認のみ残 |
+| 設計 | 完了 |
+| 実装 | 完了（真因修正 e82d767 を含む） |
+| 検証 | 完了（自動検証 + ユーザーの Finder 起動実機確認） |
 
 ---
 
@@ -49,4 +49,4 @@
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | ユーザーが `make install-app` 後、Finder 起動で確認 | タスク一覧が PATH エラーなしで出る / claude・gemini タブが起動する |
+| **P0** | PR #41 のマージ（ユーザー判断） | マージで Issue #40 は Closes により自動クローズ |
