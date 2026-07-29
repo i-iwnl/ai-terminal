@@ -79,3 +79,43 @@
 
 - アイコンは PR #32 に積んで反映済み。残タスクは PR のレビュー・マージ（ユーザー判断）のみ
 - アイコンを差し替えたいときは `build/icon.svg` を編集 → PNG 化して `build/icon.png` を上書き → `make package`
+
+---
+
+## 2026-07-29 - Phase 0 / Phase 1 マージ後の main へ rebase し、install-app を追加
+
+### 実施内容
+
+- Issue #20 の Phase 0（#21〜#25）と Phase 1（PR 1〜3）が main に入ったため、その上へ rebase した
+- 衝突は `src/main/config.ts` の import 部の1箇所だけ。両方の意図を残した:
+  - `@shared/defaults` から既定値を読む（#36）
+  - `dataDir()` で保存先を決める（本 Issue）
+- `make install-app` を追加した（package まで一括で行い `/Applications` へ入れ替える）
+- 検証: `make check`（unit 85）/ `make e2e`（38 passed）/ `make e2e-lint`（PASS=279）/
+  `make css-substitution-check`（PASS）
+- **実際に .app を生成し、起動して8秒間生存すること、正常終了することを確認した**
+
+### 設計判断
+
+- **`install-app` は起動中なら中止する。** このアプリは AI エージェントの PTY を抱えているので、
+  動いたまま `.app` を差し替えると実行中のセッションを巻き添えで失う。
+  **勝手に kill はしない**（エラーで止めるだけ）
+- 起動チェックを `package` の prerequisite ではなく、**ビルドより前**に置いた
+- `ditto` の前に `rm -rf` する。`cp -R` の上書きだと古いファイルが残る
+
+### 教訓（該当する場合）
+
+- **「ガードが効いた」だけで満足すると、遅いガードを見逃す。**
+  最初 `install-app: package` と prerequisite にしていたため、**1分かけてビルドしてから
+  「起動中なので中止」と言う**動きになっていた。時間を測って初めて気づき、0.04秒で止まる形に直した
+- **Makefile の `:=` はファイル読み込み時に確定する。** `APP_SRC := $(wildcard dist/...)` だと
+  初回ビルドでは `dist/` がまだ無いので常に空になる。ビルド後に評価したいものは `=` を使う
+- **heredoc 経由で Makefile を書き換えると、行継続（`\`）が潰れる。**
+  レシピが1行に潰れても動いてしまうため気づきにくい。Makefile の編集は差分ベースで行う
+
+### 次に再開するとき最初に読むべきこと
+
+- rebase 済みの内容を `feat/issue-27-stable-package` に force-push し、PR #32 を更新した
+- **`/Applications/ai-terminal.app` にインストール済み**。設定とメモは `~/.ai-terminal`、
+  `make dev` は `~/.ai-terminal-dev` を見る
+- 署名は ad-hoc。**他人に配ると Gatekeeper に止められる**（配布するなら Developer ID と notarization が要る）

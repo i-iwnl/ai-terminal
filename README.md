@@ -55,13 +55,15 @@ make build     # out/ に main / preload / renderer を出力
 `make dev` で常用していると、コード変更や再起動のたびに PTY ごとセッションが途切れる。**日常のエージェント飼育は安定版の .app、開発は `make dev`** と分けるためのビルドがこれ。
 
 ```bash
-make package   # dist/ に ai-terminal.app と dmg を生成
+make package       # dist/ に ai-terminal.app と dmg を生成
+make install-app   # 上記に加えて /Applications へ入れ替えるところまで一括
 ```
 
 - 生成物は `dist/mac-arm64/ai-terminal.app`（そのまま起動できる）と `dist/ai-terminal-<version>-arm64.dmg`（/Applications に入れるならこちら）。
 - 署名は ad-hoc（ローカルビルドの起動には十分。配布は想定しない）。
 - 安定版と `make dev` は**同時に起動できる**。データ保存先が分かれているため互いの設定・メモを壊さない（下の「設定」を参照）。
-- 開発版を再起動しても安定版の PTY は無傷。安定版自体を更新したいときだけ `make package` し直し、途切れた Claude セッションは履歴一覧（`--resume`）から復帰する。
+- 開発版を再起動しても安定版の PTY は無傷。安定版自体を更新したいときだけ `make install-app` し直し、途切れた Claude セッションは履歴一覧（`--resume`）から復帰する。
+- **`make install-app` は安定版が起動中だと中止する。** このアプリは AI エージェントの PTY を抱えているので、動いたまま `.app` を差し替えると実行中のセッションを巻き添えで失う。勝手に終了させることはしないので、自分で終了してから実行する。
 
 ---
 

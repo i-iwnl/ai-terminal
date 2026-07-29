@@ -3,8 +3,16 @@
 # よく使うコマンドの入口。詳しい説明は README.md を参照。
 # アプリ本体の起動は必ずホスト（macOS）で行う。GUI を Docker では動かさない。
 
+# パッケージ済みアプリの位置。electron-builder は arch ごとに出力先を分ける
+# （Apple Silicon は dist/mac-arm64、Intel は dist/mac）。
+APP_NAME := ai-terminal.app
+APP_DEST := /Applications/$(APP_NAME)
+# ビルド後に評価する（= を使う）。:= だと Makefile 読み込み時に確定してしまい、
+# 初回ビルドでは dist/ がまだ無いので常に空になる。
+APP_SRC_AT_RUNTIME = $(firstword $(wildcard dist/mac-arm64/$(APP_NAME) dist/mac/$(APP_NAME)))
+
 .DEFAULT_GOAL := help
-.PHONY: help install dev dev-debug dev-quiet build package check typecheck lint unit unit-watch format \
+.PHONY: help install dev dev-debug dev-quiet build package install-app check typecheck lint unit unit-watch format \
         rebuild fix-electron docker-verify docker-build sandbox sandbox-build clean clean-docker \
         e2e e2e-visible e2e-lint e2e-report e2e-screenshots css-substitution-check
 
@@ -52,6 +60,27 @@ build:
 ## 安定版の .app と dmg を dist/ に生成する（ローカル用。署名は ad-hoc）
 package:
 	npm run package
+
+# **起動中は入れ替えない。** このアプリは AI エージェントの PTY を抱えているので、
+# 動いたまま .app を差し替えると実行中のセッションを巻き添えで失う。
+# 終了してから実行すること（エラーで止めるだけで、勝手に kill はしない）。
+#
+# 起動チェックは package より先に置く。prerequisite にすると、1分かけてビルドしてから
+# 「起動中なので中止」と言うことになる（実測でそうなった）。
+# APP_SRC はビルド前だと空になりうるので、参照は package の後で行う。
+## ビルドして /Applications へ入れ替える（package まで一括。起動中は中止する）
+install-app:
+	@pgrep -f '$(APP_DEST)/Contents/MacOS/' >/dev/null 2>&1 && { \
+	  printf '\n  中止: $(APP_DEST) が起動中です。\n'; \
+	  printf '  実行中の AI セッションを失うため、アプリを終了してから実行してください。\n\n'; \
+	  exit 1; \
+	} || true
+	@$(MAKE) --no-print-directory package
+	@test -n "$(APP_SRC_AT_RUNTIME)" || { echo "  ビルド成果物が見つかりません（dist/ を確認）"; exit 1; }
+	rm -rf "$(APP_DEST)"
+	ditto "$(APP_SRC_AT_RUNTIME)" "$(APP_DEST)"
+	@printf '\n  インストールしました: $(APP_DEST)\n'
+	@printf '  設定とメモの保存先は ~/.ai-terminal（make dev は ~/.ai-terminal-dev）\n\n'
 
 ## typecheck と lint と単体テストをまとめて実行する
 check: typecheck lint unit
