@@ -99,6 +99,19 @@ export interface LaunchOptions {
   /** 履歴の JSONL を配置しない（空状態の検証用） */
   withoutHistory?: boolean;
   /**
+   * PTY へ渡る起動時の TERM_PROGRAM / TERM_PROGRAM_VERSION を、Apple Terminal から
+   * 起動したときの値に固定する（Issue #61 の再発防止用）。
+   *
+   * 指定しない場合、TERM_PROGRAM は `...process.env`（Playwright を実行している側の
+   * シェルの環境）をそのまま継承する。これは実行者が使っているターミナルアプリに
+   * 依存し非決定的で、たとえば iTerm2 や CI から実行すると TERM_PROGRAM が
+   * Apple_Terminal にならず、/etc/zshrc_Apple_Terminal も読まれないため
+   * 「Restored session: ...」の再現条件が揃わない（＝退行しても検出できない
+   * green になる）。S02 はこの不確実性を避けるため、実行環境によらず
+   * 確実に Apple Terminal から起動した状況を再現する目的でこれを使う。
+   */
+  simulateAppleTerminalHost?: boolean;
+  /**
    * GPU を有効にして起動する（= xterm が WebGL レンダラになる）。
    *
    * 既定は false（`--disable-gpu`）。理由は下の electron.launch のコメントを参照。
@@ -403,6 +416,11 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       // ログインシェル解決が同じ前提で動く。
       SHELL: '/bin/zsh',
       PATH: path,
+      // simulateAppleTerminalHost が無指定なら、この行自体を出さず ...process.env の
+      // 継承（実行者の環境依存）に任せる。他シナリオの挙動を変えないための最小の変更。
+      ...(options.simulateAppleTerminalHost
+        ? { TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '470.2' }
+        : {}),
       AI_TERMINAL_E2E_FIXTURES: runtimeFixtures,
       // E2E は out/ を electron バイナリで起動するため isPackaged が false になり、
       // アプリの既定では保存先が ~/.ai-terminal-dev に化ける（dev/安定版の分離）。

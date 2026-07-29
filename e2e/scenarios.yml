@@ -20,7 +20,13 @@ scenarios:
     title: シェルが起動してプロンプトが表示される
     spec: S02-shell-prompt.spec.ts
     readme: false
-    note: preload の読み込み失敗を検出する。実際にこの不具合を作り込んだことがある
+    note: >-
+      preload の読み込み失敗を検出する。実際にこの不具合を作り込んだことがある。
+      あわせて Issue #61 の再発防止として、TERM_PROGRAM=Apple_Terminal を明示的に
+      継承させても「Restored session: ...」という嘘の行が出ないことを見る
+      （harness.ts の simulateAppleTerminalHost で確実に再現条件を揃える。
+      指定しないと実行者のターミナルアプリ依存になり、退行しても検出できない
+      green になりうる）
   - id: S03
     title: コマンドを入力すると出力が返る
     spec: S03-shell-echo.spec.ts

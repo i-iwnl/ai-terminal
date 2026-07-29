@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import type { IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
 import { spawn as spawnPty } from 'node-pty';
 import type { IPty } from 'node-pty';
@@ -123,8 +123,16 @@ export function buildSpawnPlan(
  * - Electron が注入する ELECTRON_* 系は子プロセスの挙動を壊しうるため削除する。
  * - TERM / COLORTERM を設定し、色が正しく出るようにする。
  * - LANG が未設定なら日本語表示のため ja_JP.UTF-8 を補う。
+ * - TERM_PROGRAM / TERM_PROGRAM_VERSION は起動元の値を上書きする（下記コメント参照）。
+ *
+ * @param appVersion PTY に渡す TERM_PROGRAM_VERSION の値。呼び出し側から
+ *   `app.getVersion()` を渡す想定（このファイル自体を Electron に依存させず
+ *   単体テストしやすくするため引数で受け取る）。
  */
-export function buildPtyEnv(base: NodeJS.ProcessEnv): Record<string, string | undefined> {
+export function buildPtyEnv(
+  base: NodeJS.ProcessEnv,
+  appVersion: string,
+): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...base };
   for (const key of Object.keys(env)) {
     if (key.startsWith('ELECTRON_')) delete env[key];
@@ -132,6 +140,26 @@ export function buildPtyEnv(base: NodeJS.ProcessEnv): Record<string, string | un
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
   if (!env.LANG) env.LANG = 'ja_JP.UTF-8';
+
+  // TERM_PROGRAM を上書きする理由（Issue #61）:
+  // ターミナル（Apple Terminal / iTerm2 等）から `make dev` で起動すると、
+  // 起動元の TERM_PROGRAM（例: Apple_Terminal）がそのまま子プロセスへ継承される。
+  // macOS の /etc/zshrc は末尾で
+  //   [ -f /etc/zshrc_$TERM_PROGRAM ] && . /etc/zshrc_$TERM_PROGRAM
+  // を実行しており、TERM_PROGRAM=Apple_Terminal だと /etc/zshrc_Apple_Terminal が
+  // 走る。これは Apple Terminal 用のセッション復元（shell_session_update）を
+  // 起動するもので、何も復元していないのに「Restored session: ...」という
+  // 嘘の行を1行目に出し、副作用として ~/.zsh_sessions にファイルが溜まり続ける。
+  // このアプリは Apple Terminal でも iTerm2 でもないので、継承された値が何であれ
+  // 子プロセスから見て「自分は ai-terminal 上で動いている」と正しく分かるように
+  // 固定で上書きする。
+  env.TERM_PROGRAM = 'ai-terminal';
+  // TERM_PROGRAM_VERSION は TERM_PROGRAM とセットで初めて意味を持つ値。素通しすると
+  // 「TERM_PROGRAM は ai-terminal なのにバージョンだけ Apple Terminal・iTerm2 の
+  // もの」という不整合な組み合わせが残ってしまう。削除するのではなく ai-terminal
+  // 自身のバージョンに置き換え、ペアとして整合させる。
+  env.TERM_PROGRAM_VERSION = appVersion;
+
   return env;
 }
 
@@ -215,7 +243,7 @@ export function registerPtyHandlers(): void {
       const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId);
 
       const cwd = req.cwd || homedir();
-      const env = buildPtyEnv(process.env);
+      const env = buildPtyEnv(process.env, app.getVersion());
 
       let proc: IPty;
       try {
