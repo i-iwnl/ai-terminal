@@ -513,18 +513,31 @@ body {
 }
 
 .task-item {
+  border-bottom: 1px solid var(--border-row);
+}
+
+/* 行の中身（アイコン + 本文）。押せる行は <button>、押せない行は <div> で、
+   どちらも同じ見た目になるようボタンの既定スタイルをここで打ち消す
+   （Issue #64: <li onClick> のままではキーボードで到達できなかった）。 */
+.task-item__row {
   display: flex;
   gap: var(--sp-2);
+  width: 100%;
   padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--border-row);
+  margin: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: default;
 }
 
-.task-item--clickable {
+button.task-item__row {
   cursor: pointer;
 }
 
-.task-item--clickable:hover {
+button.task-item__row:hover {
   background: var(--surface-2);
 }
 

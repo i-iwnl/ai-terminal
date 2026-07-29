@@ -450,3 +450,23 @@ scenarios:
       素通しが効きすぎておらず、編集中でなくなれば通常どおりショートカットが
       機能することの担保（1 spec = 1 test の制約上、前半だけでは
       「全ショートカットを殺す実装」を誤って通してしまう）
+
+  # --- タスク一覧のキーボード到達性（Issue #64） ------------------------------
+  - id: S47
+    title: キーボードだけでタスク一覧の押せる行に到達し、対応するタブにフォーカスが移る
+    spec: S47-task-row-keyboard.spec.ts
+    readme: false
+    note: >-
+      タスク一覧の行が `<li onClick>` のままで tabindex も role も無く、
+      キーボードだけでは実行中セッションのタブへ飛べなかった（WCAG 2.1.1
+      違反）。修正は `<li>` を保ったまま、押せる行だけを内側の `<button>` に
+      する（押せない行は非対話のまま据え置く）。
+      押せる行になる条件（ownedByApp && canFocus）を満たすため、agents.json
+      の固定 sessionId と同じ ID を持つ履歴フィクスチャをこの spec だけの
+      一時 HOME に追記し、それを resume することで markOwnedSession に
+      同じ ID を登録させる（S15 が「固定フィクスチャでは positive case を
+      作れない」とした制約を、resume 経由で回避する）。
+      Tab キーだけで押せる行の <button> に到達できること、Enter で
+      対応するタブがアクティブになり実際に xterm の隠し textarea まで
+      フォーカスが移ることを見る。押せない行（other-project-idle）が
+      依然として <div> のまま非対話であることも合わせて確認する。
