@@ -57,28 +57,18 @@ Issue 本文の PR 分割表が唯一の正。ここでは進捗だけを持つ�
   - [x] 5-6 `prefers-contrast: more` + S41 — PR #51
   - [x] 5-7 画像12枚の撮り直し + README
 
-### Phase 2 以降 — 全 14 本が未着手（2026-07-29 に実コードで確認）
+### Phase 2 以降 — 全 14 本が未着手
 
-Issue 本文の表（PR 6〜20）が正。**PR 7 は Phase 0 の #25 / PR #35 で前倒し完了済み**なので、
-残りは **PR 6, 8〜20 の 14 本**。着手時に個別の行をここへ引き写す。
+**進捗は [Issue #20 本文の「Phase / PR 分割」表](https://github.com/i-iwnl/ai-terminal/issues/20#phase--pr-分割)が唯一の正。**
+2026-07-29 に PR 6〜20 を1本ずつ実コードに当てて確認し、**ステータス列を Issue 本文に足した**。
+ここには表を引き写さない（二重化すると必ず片方が古くなる）。
 
-| PR | 内容 | 未着手の裏取り |
-|---|---|---|
-| 6 | Target Size 24x24 | `styles.css` に 24px の `min-height` / `min-width` が1つも無い |
-| 8 | タスク行の再設計 | `TaskList.tsx` にグループ見出し・待たせている時間・ソートが無い |
-| 9 | `<li onClick>` 解体 + `role="tablist"` | `TaskList.tsx:85` に `<li onClick>` が現存。`role="tab"` は 0 件 |
-| 10 | タブマーカー + `basename(cwd)` | `TabBar.tsx:119` は `tab.title` をそのまま出している |
-| 11 | 通知バナー severity 化・配列化 | `App.tsx:214` は単一の `notice` 文字列のみ |
-| 12 | 空状態の次の行動 + `+ ▾` | 「タブがありません」等、次の行動への導線が無い |
-| 13 | スコープ行 + 設定セクション切り直し | 該当 DOM 無し |
-| 14 | キーボード（J）+ `Cmd+Opt` 解禁 | — |
-| 15 / 16 | サイドバー折りたたみ / ドラッグリサイズ | `collapse`・幅の永続化のコードが 0 件 |
-| 17 / 18 | `src/shared/theme.ts` + テーマ切替 UI | `src/shared/` に `theme.ts` が存在しない |
-| 19 | 密度・タイポ + vibrancy | `vibrancy` が 0 件 |
-| 20 | ウィンドウ上端の統一 + フルスクリーン | `menu.ts:59` の `togglefullscreen` のみ |
+要点だけ:
 
-**PR 8 / 10 / 13 は [#58](https://github.com/i-iwnl/ai-terminal/issues/58)（cwd の固定）の決着待ち。**
-3本とも cwd を画面に出す提案で、全タブ同一・起動時固定のままでは全行に同じ値が並ぶだけになる。
+- 完了 11 / 26 本。残りは **PR 6, 8〜20 の 14 本**
+- **PR 7 は Phase 0 の #25 / PR #35 で前倒し完了済み。** 表の順番どおりには進んでいない
+- **PR 8 / 10 / 13 は [#58](https://github.com/i-iwnl/ai-terminal/issues/58)（cwd の固定）の決着待ち**
+- #58 と独立に着手できるものの最小は **PR 6**（+25行・画像0枚・依存は完了済みの PR 5 のみ）
 
 ---
 
