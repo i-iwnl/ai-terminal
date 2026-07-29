@@ -49,17 +49,23 @@
   --surface-tab-active: #2e2e2e;
 
   /* -- 境界 -------------------------------------------------------------- */
-  --border-subtle: #2a2a2a; /* 区切り線。1.4.11 の対象外（装飾） */
+  /* 装飾の線（情報を運んでいない）。1.4.11 の対象外なので 3:1 は求めない。 */
+  --border-subtle: #2a2a2a; /* サイドバーとタブバーの区切り */
   --border-row: #232323; /* 一覧の行間 */
-  --border-section: #303030; /* 設定のセクション区切り */
-  /* ここから下は「入力欄・ボタンの唯一の境界」に使われており、
-     現状 1.4.11（3:1）を大きく割っている。PR 5 で #747474 に寄せる。 */
-  /* 実測は S40（e2e/specs/S40-contrast-contract.spec.ts）が唯一の正。
-     手で書いた表は3周続けて誤った（原因はいつも「背景をどれと見なすか」）。 */
-  --border-control: #3a3a3a; /* 設定の入力欄。PR 5-4 -> #747474 */
-  --border-control-muted: #333333; /* 履歴のボタン（対 --surface-0 で 1.39）。PR 5 -> #747474 */
-  --border-control-strong: #4a4a4a; /* インライン編集・検索欄 */
-  --border-search: #444444; /* 検索欄（対 --surface-1 で 1.71）。PR 5 -> #747474 */
+  /* ただし設定ウィンドウのセクション区切りだけは**唯一の境界**で、
+     節の切れ目という情報を運んでいる。面が #282828 に明るくなった分を吸収する。 */
+  --border-section: #3d3d3d; /* 対 --surface-3 で 1.36（#303030 のままだと 1.12） */
+
+  /* コントロールの輪郭。**入力欄・ボタンの「そこに操作できるものがある」を
+     伝える唯一の手がかり**なので 1.4.11 の 3:1 を満たす必要がある。
+     以前は用途ごとに4種類（#3a3a3a / #333333 / #4a4a4a / #444444）あり、
+     いずれも 1.30〜1.51 で、枠が無いのとほぼ同じだった。
+
+     **#7a7a7a は5つの面すべてで 3:1 を満たす最小に近い値。**
+     5ペルソナのレビューは #747474 を推したが、それは選択中タブの面を
+     --surface-2 に畳む前提の話で、実際には --surface-tab-active #2e2e2e が残った。
+     その上では #747474 は 2.91 で割る（実測: #7a7a7a なら 3.16）。 */
+  --border-control: #7a7a7a;
 
   /* -- 文字 -------------------------------------------------------------- */
   /* 用途ごとに9種類あった灰色を、役割の違う4段 + 端末用に整理した。
@@ -81,22 +87,26 @@
   --text-terminal: #d4d4d4; /* xterm の前景色に合わせた既定。役割が違うので段の外 */
 
   /* -- アクセント -------------------------------------------------------- */
-  --accent: #4c8bf5; /* 選択・フォーカス。PR 5 -> #5b9cff */
+  --accent: #5b9cff; /* 選択・フォーカス。最も明るい面の上でも 5.37 */
 
   /* -- 状態 -------------------------------------------------------------- */
   /* 意味の対応は src/shared/agent-status.ts が唯一の正。
      **強調するのは「あなたの番」の側**（Issue #21）。 */
   --status-your-turn: #f5a623;
   --status-working: #4caf50;
-  --status-unknown: #666666; /* 既定のドット。PR 5 -> #7d7d7d（対ホバー面で 3:1 を満たす） */
+  --status-unknown: #7d7d7d; /* 既定のドット。対ホバー面で 3.87（#666666 では 2.77） */
   --status-error: #e08a8a; /* 一覧の解析エラー */
   --status-exited: #d47b7b; /* 終了したタブ */
 
   /* -- 通知バナー -------------------------------------------------------- */
-  --notice-error-bg: #4a2020;
-  --notice-error-fg: #f4c7c7;
-  --notice-error-border: #7a3030; /* 対 --surface-1 で 1.82 = バナーの存在が見えない。PR 5 -> #b05a5a */
-  --settings-error-border: #b05a5a; /* 設定ウィンドウのエラー帯（こちらは既に 3:1 を満たす） */
+  /* 帯そのものが面に埋もれないこと。設定ウィンドウ（--surface-3）の上が一番厳しく、
+     従来の #4a2020 は対 --surface-3 で 1.07 = 塗りが完全に同化していた。 */
+  --notice-error-bg: #602c2c; /* 対 --surface-3 で 1.33 / 対 --surface-1 で 1.50 */
+  --notice-error-fg: #f4c7c7; /* 上の塗りの上で 7.31 */
+  /* 枠は帯の存在を伝える唯一の線。従来は #7a3030（対 --surface-1 で 1.82）で見えなかった。
+     **--border-control との明度差も要る**（色覚特性下では色相が消え、
+     「エラーの枠」と「ただの入力欄の枠」が同じに見える）。#d07a7a 対 #7a7a7a で 1.38。 */
+  --notice-error-border: #d07a7a;
 
   /* -- 型 ---------------------------------------------------------------- */
   /* 9px は macOS の最小推奨（11pt）を大きく下回るうえ、10px との差に意味が無かったので
@@ -288,7 +298,7 @@ body {
   font-size: var(--fs-sm);
   color: inherit;
   background: var(--surface-3);
-  border: 1px solid var(--border-control-strong);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   padding: 0 2px;
   margin: 0;
@@ -392,7 +402,7 @@ body {
 
 .terminal-search input {
   background: var(--surface-1);
-  border: 1px solid var(--border-search);
+  border: 1px solid var(--border-control);
   color: var(--text-terminal);
   padding: 2px 6px;
   border-radius: var(--radius-md);
@@ -401,7 +411,7 @@ body {
 
 .terminal-search button {
   background: transparent;
-  border: 1px solid var(--border-search);
+  border: 1px solid var(--border-control);
   color: var(--text-terminal);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -569,7 +579,7 @@ body {
 
 .history-list__providers button {
   background: transparent;
-  border: 1px solid var(--border-control-muted);
+  border: 1px solid var(--border-control);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
   padding: 2px var(--sp-2);
@@ -584,7 +594,7 @@ body {
 
 .history-list__reload {
   background: transparent;
-  border: 1px solid var(--border-control-muted);
+  border: 1px solid var(--border-control);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
   padding: 2px var(--sp-2);
@@ -623,7 +633,7 @@ body {
 .history-item__action {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid var(--border-control-muted);
+  border: 1px solid var(--border-control);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
   line-height: 1;
@@ -646,7 +656,7 @@ body {
   font-size: var(--fs-sm);
   color: inherit;
   background: var(--surface-3);
-  border: 1px solid var(--border-control-strong);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   padding: 0 2px;
   margin: 0;
@@ -700,7 +710,7 @@ body {
   line-height: var(--lh-normal);
   color: var(--text-primary);
   background: var(--surface-1);
-  border: 1px solid var(--border-control-muted);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   padding: 6px;
   outline: none;
@@ -813,7 +823,7 @@ body {
   flex-shrink: 0;
   background: var(--notice-error-bg);
   color: var(--notice-error-fg);
-  border-bottom: 1px solid var(--settings-error-border);
+  border-bottom: 1px solid var(--notice-error-border);
   padding: var(--sp-2) var(--sp-4);
   font-size: var(--fs-sm);
 }
