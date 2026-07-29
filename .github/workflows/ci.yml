@@ -41,5 +41,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # E2E は CI に載せない（Linux ランナーでは xvfb が要り、macOS ランナーは高価）が、
+      # 単体テストは OS に触らないのでここで走らせる。
+      # デザイントークンの検査（本体に色リテラルを直書きしていないか・CSS と TS の面が
+      # 一致しているか）はここに載っていないと、PR の時点では誰も見ないまま通る。
+      - name: Unit tests
+        run: npm run unit
+
       - name: Build
         run: npm run build

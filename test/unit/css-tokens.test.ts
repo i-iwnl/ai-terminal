@@ -11,6 +11,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_THEME, SURFACE } from '@shared/defaults';
+
 const CSS = readFileSync(
   resolve(import.meta.dirname, '../../src/renderer/src/styles.css'),
   'utf8',
@@ -27,6 +29,23 @@ function splitRoot(css: string): { root: string; rest: string } {
 }
 
 const { root, rest } = splitRoot(CSS);
+
+/**
+ * 同じ値を持つことを意図的に許すトークン。**「いま実際に衝突している」ものだけを並べる。**
+ * 衝突が解消したら消すこと（消し忘れは下の「もう重複していない名前が残っていない」が捕まえる）。
+ */
+const INTENTIONAL_DUPLICATES = new Set([
+  // 行間の区切りと設定ウィンドウの面が偶然どちらも #232323。
+  // PR 5 で面のほうが動くので、そこで解消される。
+  '--border-row',
+  // 履歴のボタン枠とインライン編集の入力欄が偶然どちらも #333333。
+  '--surface-field',
+  // 既定のステータスドットとタブ無し表示が偶然どちらも #666666。
+  '--status-unknown',
+  // 検索バーの浮いた面と区切り線が偶然どちらも #2a2a2a。
+  // 用途が違うので別トークンにしてある（PR 5 で面のほうが動く）。
+  '--surface-float',
+]);
 
 /** 色の表記ゆれ（#fff / #ffffff）を吸収して比較できる形にする */
 function normalizeHex(hex: string): string {
@@ -119,18 +138,7 @@ describe('デザイントークンの宣言', () => {
     // 同じ色に2つ名前が付くと、置換のときにどちらを使うかで揺れる。
     // 用途が違って同じ値なのは構わないが、その場合は片方を PR 5 で畳む前提なので
     // **意図的な重複だけを許す**（下の許容リストに理由付きで並べる）。
-    const intentionalDuplicates = new Set([
-      // 行間の区切りと設定ウィンドウの面が偶然どちらも #232323。
-      // PR 5 で面のほうが #2b2b2b に動くので、そこで解消される。
-      '--border-row',
-      // 履歴のボタン枠とインライン編集の入力欄が偶然どちらも #333333。
-      '--surface-field',
-      // 既定のステータスドットとタブ無し表示が偶然どちらも #666666。
-      '--status-unknown',
-      // 検索バーの浮いた面と区切り線が偶然どちらも #2a2a2a。
-      // 用途が違うので別トークンにしてある（PR 5 で面のほうが動く）。
-      '--surface-float',
-    ]);
+    const intentionalDuplicates = INTENTIONAL_DUPLICATES;
 
     const byValue = new Map<string, string[]>();
     for (const [name, value] of colorTokens()) {
@@ -139,5 +147,46 @@ describe('デザイントークンの宣言', () => {
     }
     const collisions = [...byValue].filter(([, names]) => names.length > 1);
     expect(collisions).toEqual([]);
+  });
+
+  it('重複の許容リストに、もう重複していない名前が残っていない', () => {
+    // 上の検査は許容リストの名前を `continue` で読み飛ばすだけなので、
+    // **トークンを畳んで衝突が解消したあとも、古い名前が残ったまま通ってしまう**。
+    // 一度免除された名前は以後永久に重複検査から外れる = 検査が黙って腐る。
+    //
+    // 許容リストは「今まさに衝突している」ものだけであるべきなので、
+    // 宣言が消えた名前・衝突が解消した名前をここで落とす。
+    const tokens = colorTokens();
+    const stale = [...INTENTIONAL_DUPLICATES].filter((name) => {
+      const value = tokens.get(name);
+      if (value === undefined) return true; // 宣言ごと消えた
+      // 自分以外に同じ値のトークンが無いなら、もう衝突していない
+      return ![...tokens].some(([other, v]) => other !== name && v === value);
+    });
+    expect(stale).toEqual([]);
+  });
+});
+
+describe('CSS と TypeScript の面の値', () => {
+  // CSS 変数は Main プロセスから読めないので、面の色は styles.css と
+  // src/shared/defaults.ts の2箇所に存在する。**構造的に統一できない。**
+  //
+  // このリポジトリは以前、同じ状況を「揃えてある」というコメントだけで守ろうとして失敗している
+  // （Issue #20 の A-1）。機械で突き合わせる。
+
+  it('CSS の --surface-* と SURFACE が一致する', () => {
+    const tokens = colorTokens();
+    expect(tokens.get('--surface-0')).toBe(normalizeHex(SURFACE.sidebar));
+    expect(tokens.get('--surface-1')).toBe(normalizeHex(SURFACE.base));
+    expect(tokens.get('--surface-2')).toBe(normalizeHex(SURFACE.hover));
+    expect(tokens.get('--surface-3')).toBe(normalizeHex(SURFACE.raised));
+  });
+
+  it('ターミナルの背景と前景が、CSS の面・文字色と一致する', () => {
+    // ずれると .terminal-pane__container の padding の分だけ、
+    // xterm が塗る領域の外周に色の違う帯が出る（Issue #20 の A-2）。
+    const tokens = colorTokens();
+    expect(normalizeHex(DEFAULT_THEME.background)).toBe(tokens.get('--surface-1'));
+    expect(normalizeHex(DEFAULT_THEME.foreground)).toBe(tokens.get('--text-terminal'));
   });
 });

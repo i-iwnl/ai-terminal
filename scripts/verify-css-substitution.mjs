@@ -14,13 +14,20 @@
 //
 // 終了コード: 0 = 一致（置換のみ）、1 = 不一致（値が変わっている）
 //
-// **値を変える PR（PR 5）では、このスクリプトは当然落ちる。** そのときは実行しない。
+// **値を変える PR では、このスクリプトは当然落ちる。** そのときは止めるのではなく、
+// 落ちた出力（下の `-` / `+` の行差分）を PR 本文に貼って、意図した変更の表と突き合わせる。
+// 「表に無い `+` 行が1本でもあれば意図しない変更」という機械的な受け入れ基準になる。
+// 展開後の全宣言を行単位で出すので、スクリーンショットより精度が高い。
+//
+// **比較対象の既定は `origin/main`。** 以前は `HEAD` だったが、コミットしてから
+// ローカルで叩くと**自分自身と比較して必ず PASS する**（何も検証していないのに緑になる）。
+// 作業中の未コミットの変更を見たいときだけ `REV=HEAD` を明示すること。
 
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const CSS_PATH = 'src/renderer/src/styles.css';
-const BASE_REV = process.argv[2] ?? 'HEAD';
+const BASE_REV = process.argv[2] ?? 'origin/main';
 
 function stripRoot(css) {
   const start = css.indexOf(':root {');

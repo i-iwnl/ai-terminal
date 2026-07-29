@@ -14,6 +14,7 @@
 import { join } from 'node:path';
 import { BrowserWindow, ipcMain } from 'electron';
 import { IpcSend } from '@shared/ipc';
+import { SURFACE } from '@shared/defaults';
 
 let settingsWindow: BrowserWindow | null = null;
 
@@ -37,7 +38,8 @@ export function openSettingsWindow(parent: BrowserWindow | null): void {
     // 非モーダル。親を指定するとウィンドウの前後関係だけが揃い、
     // 本体の操作は妨げない（modal: true にしない）。
     parent: parent ?? undefined,
-    backgroundColor: '#232323',
+    // 開いた瞬間の塗り。CSS の --surface-3（.settings--window の背景）と揃える。
+    backgroundColor: SURFACE.raised,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
