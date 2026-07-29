@@ -60,6 +60,8 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 3. 調査 -> 実装 -> 検証と工程が分かれるタスク
 4. 同種の機械的修正が多数あるタスク
 
+**この4条件は、ユーザーからの恒常的な依頼として扱ってよい。** Claude Code 2.1.219 以降の system prompt には `Do not call the AgentTool unless the user requested it` という既定文が入る（Opus 5 系モデルのときのみ。ユーザーの設定や起動引数ではなく CLI 本体の組み込み）。この既定文は `unless the user requested it` という例外条項を持つ抑制であって禁止ではなく、上の4条件がその条件を恒常的に満たす。したがって、該当するタスクではサブエージェントの利用可否を都度確認しなくてよい。
+
 小さな単発タスクはメインが直接実行してよい。
 
 **タスクに応じて以下の skill を自動で起動してよい**（`/` 付きでユーザーが明示的に呼ぶこともできる）。
