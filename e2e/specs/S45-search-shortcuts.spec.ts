@@ -45,8 +45,18 @@ test('S45 Cmd+Shift+G で gemini が増えず、Cmd+G で検索が次のヒッ�
   // 文字列を検索語にする。フォーカスをターミナル側へ戻してから Cmd+G を押し、
   // 画面に見えているマークが変わる（＝別のヒットへ移動した）ことを確認する。
   // xterm.js の SearchAddon が最初にどちらを拾うかには依存させない。
+  //
+  // **検索語をコマンド行に literal で書かないこと。** 打ち込んだコマンドはそのまま
+  // 画面に残るため、`echo MARK-ONE; ... echo MARK-TWO` と書くと**その1行だけで
+  // 両方のマークが可視になり**、「いまどちらのヒットに居るか」を画面から判定できない
+  // （ヒット数も 2 ではなく 4 になる）。ここでは変数に入れて展開させることで、
+  // コマンド行には `$M-ONE` しか残らないようにしている。
+  //
+  // 初版はこれを踏んでおり、`Restored session:` の1行（Issue #61 で削除）が
+  // 偶然コマンド行を画面外へ押し出していたおかげで通っていた。**その1行が消えた
+  // 瞬間に落ちた**ので、行数のずれに依存しない形に書き直してある。
   await window.locator('.xterm-helper-textarea').first().focus();
-  await window.keyboard.type('echo MARK-ONE; for i in {1..150}; do echo filler-$i; done; echo MARK-TWO');
+  await window.keyboard.type('M=MARK; echo $M-ONE; for i in {1..150}; do echo filler-$i; done; echo $M-TWO');
   await window.keyboard.press('Enter');
   await expect(screen).toContainText('MARK-TWO', { timeout: 15_000 });
 
@@ -66,18 +76,27 @@ test('S45 Cmd+Shift+G で gemini が増えず、Cmd+G で検索が次のヒッ�
     return null;
   };
 
-  await window.keyboard.press('Meta+g');
-  await expect.poll(currentMark, { timeout: 10_000 }).not.toBeNull();
-  const first = await currentMark();
+  // **押す前の状態を基準として控える。** 検索を始める前から片方のマークは画面に
+  // 見えている（直前に流した出力の末尾が MARK-TWO）ので、「押したあとに何か
+  // 見えていること」を条件にすると**1回目の押下が反映される前に条件が満たされ、
+  // 基準が押下前の値のまま**になる。そのまま2回目を押すと元の位置へ戻ってきて
+  // 「変わっていない」と判定され、実装は正しいのにテストだけが落ちる。
+  //
+  // 実際に一度これを踏んだ。Issue #61（Restored session: の1行を消す）で表示が
+  // 1行ずれた瞬間に落ち、実装のバグを疑って調べたが、動いていなかったのは
+  // テストのほうだった（Cmd+G を4回押して交互に移動することを実測で確認済み）。
+  const before = await currentMark();
 
-  await window.keyboard.press('Meta+g');
-  await expect
-    .poll(
-      async () => {
-        const mark = await currentMark();
-        return mark !== null && mark !== first;
-      },
-      { timeout: 10_000 },
-    )
-    .toBe(true);
+  const pressAndExpectMoved = async (from: 'ONE' | 'TWO' | null): Promise<'ONE' | 'TWO' | null> => {
+    await window.keyboard.press('Meta+g');
+    await expect
+      .poll(async () => (await currentMark()) !== from, { timeout: 10_000 })
+      .toBe(true);
+    return currentMark();
+  };
+
+  // 1回目で別のヒットへ移り、2回目でさらに移る（ヒットは2箇所なので元へ戻る）。
+  // **2回押すのが要点。** 1回だけだと「初回だけ動いて以降は固まる」実装を見逃す。
+  const afterFirst = await pressAndExpectMoved(before);
+  await pressAndExpectMoved(afterFirst);
 });
