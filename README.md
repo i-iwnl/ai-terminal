@@ -64,6 +64,7 @@ make install-app   # 上記に加えて /Applications へ入れ替えるとこ�
 - 安定版と `make dev` は**同時に起動できる**。データ保存先が分かれているため互いの設定・メモを壊さない（下の「設定」を参照）。
 - 開発版を再起動しても安定版の PTY は無傷。安定版自体を更新したいときだけ `make install-app` し直し、途切れた Claude セッションは履歴一覧（`--resume`）から復帰する。
 - **`make install-app` は安定版が起動中だと中止する。** このアプリは AI エージェントの PTY を抱えているので、動いたまま `.app` を差し替えると実行中のセッションを巻き添えで失う。勝手に終了させることはしないので、自分で終了してから実行する。
+- **`make install-app` は入れ替えの直前に、生成した .app そのものに対してスモーク E2E（起動・claude タブ・タスク一覧・PATH 解決の4本）を自動実行する。** 落ちた場合は `/Applications` を入れ替えずに中止するので、壊れた安定版で上書きしてしまうことがない。スモークだけを手で回したいときは `make e2e-packaged`。
 
 ---
 
@@ -255,15 +256,17 @@ make check           # typecheck + lint + 単体テスト（ホストで実行�
 make unit            # 単体テストのみ（vitest）
 make e2e             # E2E（Playwright で Electron を起動。ウィンドウは表示しない）
 make e2e-visible     # E2E をウィンドウを表示して実行（挙動を目で追いたいときだけ）
+make e2e-packaged    # パッケージ版 .app に対するスモーク E2E（install-app が関門として自動実行）
 make docker-verify   # typecheck + lint + build を Docker コンテナ内で実行
 ```
 
-テストは2層に分かれている。
+テストは3層に分かれている。
 
 | 層 | 置き場 | 対象 |
 |---|---|---|
 | 単体（vitest） | `test/unit/` | 外部に触れない純粋関数（設定の正規化・メモの更新・Webhook のペイロード・PTY の起動引数・通知音の探索規則・表示整形・ショートカット判定） |
-| E2E（Playwright） | `e2e/specs/` | 実際に Electron を起動して確かめる振る舞い（全35シナリオ） |
+| E2E（Playwright） | `e2e/specs/` | 実際に Electron を起動して確かめる振る舞い（全39シナリオ） |
+| パッケージ版スモーク | `e2e/packaged.playwright.config.ts` | `electron-builder --dir` が生成した本物の .app を起動し、asar・`isPackaged: true`・本番の preload 読み込みまで含めて確かめるスモーク4本（S01 / S09 / S12 / S39） |
 
 **`make e2e` はウィンドウを画面に出さずに走る。** 表示したままだとテスト中のキー入力とマウス操作を Electron のウィンドウが奪い、実行中は他の作業ができなくなるため。
 

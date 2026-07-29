@@ -303,3 +303,15 @@ scenarios:
       緑になる。ローカルに HTTP サーバを立て、実際にリクエストが届き本文が
       Slack は text / Discord は content の形になっていることまで確認する。
       到達不能な URL では失敗が表示されることも見て、成功と区別が付くことを担保する
+  - id: S39
+    title: CLI が起動時の PATH に無くても、ログインシェルから解決して一覧が出る
+    spec: S39-path-via-login-shell.spec.ts
+    readme: false
+    note: >-
+      Finder / Dock 起動のパッケージ版は launchd の最小 PATH しか継承せず、
+      アプリが起動時にログインシェル（$SHELL -i -l）から PATH を補完して
+      初めて CLI が見つかる（src/main/shell-path.ts、Issue #40）。
+      通常のシナリオは偽 CLI を PATH の先頭に置くため、この補完が完全に
+      壊れていても全部 green になる（実際に #40 はそうやってすり抜けた）。
+      本シナリオだけは偽 CLI を .zshrc 経由でのみ露出し、解決の成否が
+      そのまま一覧の表示に現れるようにする

@@ -36,9 +36,10 @@ make check         # typecheck + lint + unit（変更後は必ずこれを通す
 make unit          # 単体テストのみ（vitest。純粋関数だけを対象にする）
 make e2e           # E2E（Playwright + Electron。ウィンドウは表示しない）
 make e2e-visible   # E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ）
+make e2e-packaged  # パッケージ版 .app に対するスモーク E2E（package-dir から一括）
 make build         # 本番ビルド
 make package       # 安定版の .app / dmg を dist/ に生成（ローカル用・署名は ad-hoc）
-make install-app   # package まで一括で行い /Applications へ入れ替える（起動中は中止する）
+make install-app   # package まで一括で行い /Applications へ入れ替える（起動中は中止する。入れ替え前にパッケージ版スモークが関門として走る）
 make docker-verify # typecheck + lint + build を Docker コンテナ内で実行
 ```
 

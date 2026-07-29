@@ -40,6 +40,7 @@
 | `agentsEmpty` | `claude agents --json` が0件（`[]`）を返す状況を再現する |
 | `geminiEmpty` | `gemini --list-sessions` が0件を返す状況を再現する |
 | `withoutCli` | 偽 CLI を `PATH` に置かない（CLI 不在時のエラー表示を検証する） |
+| `cliOnlyViaLoginShell` | 偽 CLI を起動時の `PATH` に置かず、一時 HOME の `.zshrc` からのみ `PATH` に足す。アプリのログインシェル PATH 解決（`src/main/shell-path.ts`）が機能して初めて CLI が見つかる、という Finder 起動の条件を再現する（S39 / Issue #40 の再発防止） |
 | `withoutHistory` | 履歴の JSONL フィクスチャを配置しない（履歴が空の状態を検証する） |
 | `config` | `config.json` の値を上書きする（既定値は `harness.ts` の `DEFAULT_CONFIG`） |
 | `gpu` | GPU を有効にして起動する（= xterm が WebGL レンダラになる）。既定は無効 |

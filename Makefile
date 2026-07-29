@@ -12,9 +12,9 @@ APP_DEST := /Applications/$(APP_NAME)
 APP_SRC_AT_RUNTIME = $(firstword $(wildcard dist/mac-arm64/$(APP_NAME) dist/mac/$(APP_NAME)))
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev dev-debug dev-quiet build package install-app check typecheck lint unit unit-watch format \
+.PHONY: help install dev dev-debug dev-quiet build package package-dir install-app check typecheck lint unit unit-watch format \
         rebuild fix-electron docker-verify docker-build sandbox sandbox-build clean clean-docker \
-        e2e e2e-visible e2e-lint e2e-report e2e-screenshots css-substitution-check
+        e2e e2e-visible e2e-lint e2e-report e2e-screenshots e2e-packaged e2e-packaged-run css-substitution-check
 
 # ---------------------------------------------------------------------------
 # ヘルプ
@@ -61,6 +61,19 @@ build:
 package:
 	npm run package
 
+## 安定版の .app のみを dist/ に生成する（dmg を作らない高速版。e2e-packaged 用）
+package-dir:
+	npm run package:dir
+
+## パッケージ版の .app に対してスモーク E2E を実行する（package-dir から一括）
+e2e-packaged: package-dir
+	@$(MAKE) --no-print-directory e2e-packaged-run
+
+# dist/ の既存成果物に対してスモークだけを実行する（ビルドしない）。
+# install-app が package 直後の成果物を使い回すための内部ターゲット。
+e2e-packaged-run:
+	npx playwright test --config=e2e/packaged.playwright.config.ts
+
 # **起動中は入れ替えない。** このアプリは AI エージェントの PTY を抱えているので、
 # 動いたまま .app を差し替えると実行中のセッションを巻き添えで失う。
 # 終了してから実行すること（エラーで止めるだけで、勝手に kill はしない）。
@@ -77,6 +90,11 @@ install-app:
 	} || true
 	@$(MAKE) --no-print-directory package
 	@test -n "$(APP_SRC_AT_RUNTIME)" || { echo "  ビルド成果物が見つかりません（dist/ を確認）"; exit 1; }
+	@printf '\n  入れ替え前スモーク: パッケージ版 .app に対して E2E を実行します\n\n'
+	@$(MAKE) --no-print-directory e2e-packaged-run || { \
+	  printf '\n  中止: パッケージ版スモークが失敗しました。/Applications は入れ替えていません。\n\n'; \
+	  exit 1; \
+	}
 	rm -rf "$(APP_DEST)"
 	ditto "$(APP_SRC_AT_RUNTIME)" "$(APP_DEST)"
 	@printf '\n  インストールしました: $(APP_DEST)\n'
