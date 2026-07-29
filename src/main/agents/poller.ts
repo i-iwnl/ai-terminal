@@ -13,6 +13,7 @@ import { becameYourTurn, countYourTurn } from '@shared/agent-status';
 
 import { getConfig } from '../config';
 import { notify } from '../notify';
+import { retryLoginShellPath } from '../shell-path';
 import { listClaudeAgents } from './claude';
 
 // エージェント（実行中タスク一覧）の取得とポーリング。
@@ -89,6 +90,14 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
   const cwd = config.scopeAgentsToCwd ? lastKnownCwd : undefined;
 
   const result = await listClaudeAgents(cwd);
+
+  // claude が PATH に無い場合、起動時のログインシェル解決が一過性の要因
+  // （起動直後の負荷等）で失敗したまま固定されている可能性がある。
+  // 抑制付きで再解決を試みる（成功すれば次のポーリングから自然に直る）。
+  if (result.errorKind === 'not-found') {
+    retryLoginShellPath();
+  }
+
   const tasks: AgentTask[] = result.tasks.map((task) => ({
     ...task,
     ownedByApp: ownedSessionIds.has(task.sessionId),

@@ -5,7 +5,12 @@
 // 優先順位（E2E の偽 CLI 隔離を含む）を崩さないことが要件。
 
 import { describe, expect, it } from 'vitest';
-import { extractDelimitedPath, mergePathEntries } from '../../src/main/shell-path';
+import {
+  buildProbeCommand,
+  extractDelimitedPath,
+  mergePathEntries,
+  shouldAttemptRetry,
+} from '../../src/main/shell-path';
 
 const D = '__AI_TERMINAL_PATH__';
 
@@ -47,5 +52,38 @@ describe('mergePathEntries', () => {
 
   it('空エントリ（連続コロン等）を持ち込まない', () => {
     expect(mergePathEntries('/a::/b', '::/c')).toBe('/a:/b:/c');
+  });
+});
+
+describe('buildProbeCommand', () => {
+  it('$PATH の直後に目印を続けない（変数名として食われて空に展開される）', () => {
+    // `"$PATH__目印__"` はシェルが PATH__目印__ という1つの未定義変数として解釈する。
+    // 実際にパッケージ版の PATH 補完が全く効かない原因になった（Issue #40）。
+    expect(buildProbeCommand('__D__')).not.toMatch(/\$PATH[A-Za-z0-9_]/);
+  });
+
+  it('目印で挟んだ PATH を printf で出力するコマンドになっている', () => {
+    expect(buildProbeCommand('__D__')).toBe(`printf '%s' "__D__\${PATH}__D__"`);
+  });
+});
+
+describe('shouldAttemptRetry', () => {
+  const base = { attemptCount: 0, lastAttemptAt: 0, inFlight: false };
+
+  it('最短間隔が空いていれば試行してよい', () => {
+    expect(shouldAttemptRetry({ ...base, lastAttemptAt: 0 }, 15_000, 15_000, 5)).toBe(true);
+  });
+
+  it('最短間隔が空いていなければ試行しない', () => {
+    expect(shouldAttemptRetry({ ...base, lastAttemptAt: 1_000 }, 15_999, 15_000, 5)).toBe(false);
+  });
+
+  it('実行中は重ねて試行しない', () => {
+    expect(shouldAttemptRetry({ ...base, inFlight: true }, 100_000, 15_000, 5)).toBe(false);
+  });
+
+  it('上限回数に達したら試行しない', () => {
+    expect(shouldAttemptRetry({ ...base, attemptCount: 5 }, 100_000, 15_000, 5)).toBe(false);
+    expect(shouldAttemptRetry({ ...base, attemptCount: 4 }, 100_000, 15_000, 5)).toBe(true);
   });
 });
