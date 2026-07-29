@@ -37,8 +37,14 @@ export interface SpawnPtyResult {
   /** アプリ内でこの PTY を識別する ID */
   ptyId: string;
   /**
-   * claude を起動した場合に --session-id で渡した UUID。
-   * これを使って claude agents --json の結果と突き合わせる。
+   * claude を起動した場合の、そのセッションを一意に識別する ID。
+   * 新規起動時は --session-id で渡した UUID、resume 時は --resume に渡した
+   * 既存のセッション ID がそのまま入る（resume で新たに採番することはない）。
+   * これを使って claude agents --json の結果と突き合わせたり、tmux セッション名
+   * （src/main/pty/tmux.ts）を組み立てたりする。
+   * resume でも埋まるため、Renderer 側では resume で開いたタブもタスク一覧の行から
+   * 選べる（src/renderer/src/App.tsx の canFocusTaskTab が参照する）。
+   * gemini には安定した ID が無いため常に undefined。
    */
   agentSessionId?: string;
   /** tmux でラップして起動したか */
