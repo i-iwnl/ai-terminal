@@ -251,6 +251,16 @@ scenarios:
       チェックボックスは config:set の往復後に再描画されるため check() は使えない
 
   # --- 設定と通知 -------------------------------------------------------------
+  - id: S38
+    title: Dock バッジにあなたの番の件数が出る
+    spec: S38-dock-badge.spec.ts
+    readme: false
+    note: >-
+      Dock バッジは Renderer から見えないので、electronApp.evaluate() で
+      app.getBadgeCount() を読む。フィクスチャは busy 1件 + idle 1件なので期待値は 1。
+      「0 より大きい」ではなく **総数（2）ではないこと** を見るのが要点で、
+      緩い判定にすると busy 側を数える逆の実装でも緑になる
+
   - id: S37
     title: 設定でターミナルをスクリーンリーダーから読めるようにできる
     spec: S37-screen-reader-mode.spec.ts

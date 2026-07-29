@@ -139,6 +139,15 @@ export default function App(): ReactElement {
     return window.api.menu.onAction((action) => runActionRef.current(action));
   }, []);
 
+  // OS 通知のクリックから「このセッションのタブを前に出せ」が飛んでくる。
+  // 対応するタブが無い場合は何もしない（ウィンドウの前面化は Main 側で済んでいる）。
+  useEffect(() => {
+    return window.api.session.onFocus((agentSessionId) => {
+      const tab = tabsApiRef.current.tabs.find((t) => t.agentSessionId === agentSessionId);
+      if (tab) tabsApiRef.current.setActiveTabId(tab.id);
+    });
+  }, []);
+
   // 支援技術の起動状態。初期値を取り、以降は変化を購読する。
   // 取得に失敗しても false のまま続行する（設定からは有効にできる）。
   useEffect(() => {

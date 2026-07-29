@@ -18,6 +18,15 @@ import { getConfig } from '../config';
 import { listSounds, playSound, DEFAULT_SOUND_ID } from './sound';
 import { sendWebhook } from './webhook';
 
+export interface NotifyOptions {
+  /**
+   * OS 通知がクリックされたときの処理。
+   * IPC 経由（Renderer からの notify:show）では渡らない — 呼び出し元が Main 側の
+   * ときだけ意味を持つ。
+   */
+  onClick?: () => void;
+}
+
 /**
  * 通知を出す。
  *
@@ -29,7 +38,7 @@ import { sendWebhook } from './webhook';
  *
  * poller.ts からタスク完了検知時に直接呼べるよう export する。
  */
-export function notify(req: NotifyRequest): void {
+export function notify(req: NotifyRequest, options: NotifyOptions = {}): void {
   const config = getConfig();
   const soundEnabled = req.sound ?? config.notifySound;
   const customSoundId = soundEnabled ? config.notifySoundId : DEFAULT_SOUND_ID;
@@ -43,6 +52,11 @@ export function notify(req: NotifyRequest): void {
       body: req.body,
       silent: !soundEnabled || useCustomSound,
     });
+    // 通知に出口を付ける。
+    // ここが無いと「通知が来た -> Cmd+Tab でアプリを探す -> タブバーを目で舐める ->
+    // サイドバーを開く -> 行をクリック」の4〜5手を毎回踏むことになる。
+    // 1日 100〜200 回起きる操作なので、ここだけで効果が大きい。
+    if (options.onClick) notification.on('click', options.onClick);
     notification.show();
   }
 

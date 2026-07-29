@@ -4,30 +4,10 @@
 
 import { useEffect, useState } from 'react';
 import type { AgentTask, AgentTasksEvent } from '@shared/ipc';
+// 状態の意味の単一の正。表示・通知・Dock バッジが同じ判定を使う。
+import { toTaskState, TASK_STATE_LABEL } from '@shared/agent-status';
 import { basename, formatElapsed } from '../lib/format';
 import { getSharedCwd, subscribeSharedCwd } from '../lib/cwd';
-
-// CLI の語と、人間から見た意味は逆になりやすいので注意する。
-//   busy = エージェントが動いている  -> 人間は待たなくてよい
-//   idle = エージェントが止まっている -> 人間の入力待ち（あなたの番）
-// 根拠は src/main/agents/poller.ts の遷移検知（busy -> 非busy を「作業完了」として通知している）。
-//
-// **未知の値を既知の2値に丸めない。** status は「CLI が返した値をそのまま持つ」ため
-// （src/shared/ipc.ts）、二値分岐にすると CLI が新しい状態を返し始めた瞬間に全件が
-// どちらか片側へ誤訳される。分からないものは分からないと表示する（鉄則5）。
-type TaskState = 'working' | 'your-turn' | 'unknown';
-
-function toTaskState(status: string | undefined): TaskState {
-  if (status === 'busy') return 'working';
-  if (status === 'idle') return 'your-turn';
-  return 'unknown';
-}
-
-const TASK_STATE_LABEL: Record<TaskState, string> = {
-  working: '作業中',
-  'your-turn': 'あなたの番',
-  unknown: '不明',
-};
 
 export interface TaskListProps {
   /** ownedByApp なタスクをクリックしたときに、対応するタブへフォーカスする */
