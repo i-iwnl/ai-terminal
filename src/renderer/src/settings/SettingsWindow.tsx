@@ -8,11 +8,11 @@
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import type { AppConfig } from '@shared/ipc';
-import { FALLBACK_CONFIG } from '../lib/defaults';
+import { DEFAULT_CONFIG } from '@shared/defaults';
 import SettingsPanel from './SettingsPanel';
 
 export default function SettingsWindow(): ReactElement {
-  const [config, setConfig] = useState<AppConfig>(FALLBACK_CONFIG);
+  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

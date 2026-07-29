@@ -4,9 +4,18 @@
 // その方針が実際に守られているかを、壊れた入力を食わせて確認する。
 
 import { describe, expect, it } from 'vitest';
-import { coerceConfig, DEFAULT_CONFIG } from '../../src/main/config';
+import { coerceConfig } from '../../src/main/config';
+import { DEFAULT_CONFIG } from '../../src/shared/defaults';
 
 describe('coerceConfig', () => {
+  // 設定項目を1つ増やすときは AppConfig / DEFAULT_CONFIG / coerceConfig の3箇所を触る。
+  // 型が守ってくれるのは前2つだけで、**coerceConfig への追加漏れは型では検出できない**
+  // （返り値の型は満たしたまま、その項目だけが常に undefined になる）。
+  // 空オブジェクトを食わせた結果が既定値と一致するかで、そこを機械的に押さえる。
+  it('空の設定は、すべての項目が既定値になる（coerceConfig への追加漏れの検出）', () => {
+    expect(coerceConfig({})).toEqual(DEFAULT_CONFIG);
+  });
+
   it('オブジェクトでない入力は既定値へ縮退する', () => {
     expect(coerceConfig(null)).toEqual(DEFAULT_CONFIG);
     expect(coerceConfig('壊れた設定')).toEqual(DEFAULT_CONFIG);
