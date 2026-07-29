@@ -152,6 +152,35 @@
   --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
+/* macOS の「コントラストを上げる」（システム設定 > アクセシビリティ > ディスプレイ）に追従する。
+ *
+ * **トークン化の最大の見返りがここ。** 値が :root の1箇所に集まっているので、
+ * 上書きするだけで全画面が追従する。
+ *
+ * 上げるのは3種類:
+ *
+ * 1. 最も弱い文字（tertiary）を1段上げる。既定でも 4.86 で AA は満たしているが、
+ *    「上げてくれ」と言っている人に対して最弱の段を据え置く理由が無い
+ * 2. 装飾の区切り線をコントロールの輪郭と同じ強さにする。
+ *    既定では意図的に弱くしてある（情報を運んでいないため）が、
+ *    高コントラストでは領域の切れ目が見えること自体が価値になる
+ * 3. **選択中タブの塗り。** 既定では 1.23 しかなく、この画面で唯一
+ *    閾値を満たしていない箇所。高コントラストを求めた人に対して、
+ *    一番情報量のある表示が改善しないのでは意味がない（2.13 まで上げる）
+ *
+ * prefers-reduced-motion は入れない。この CSS に transition / animation /
+ * @keyframes は0件で、**止める動きが存在しない**。空振りする記述を置かない。
+ */
+@media (prefers-contrast: more) {
+  :root {
+    --text-tertiary: var(--text-secondary);
+    --border-subtle: var(--border-control);
+    --border-row: var(--border-control);
+    --border-section: var(--border-control);
+    --surface-tab-active: #525252;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
