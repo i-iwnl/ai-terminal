@@ -458,6 +458,14 @@ export interface RendererApi {
     accessibilitySupport(): Promise<boolean>;
     /** 支援技術の起動・終了の購読。購読解除関数を返す */
     onAccessibilitySupportChanged(listener: (enabled: boolean) => void): () => void;
+    /**
+     * ドロップされた File の絶対パスを返す。取得できなければ空文字。
+     *
+     * **`File.path` は Electron 32 で削除された。** 代替の `webUtils.getPathForFile()` は
+     * preload でしか呼べない（Renderer に `webUtils` を渡すと contextIsolation の前提が崩れる）ので、
+     * ここだけ IPC を経由しない同期 API になっている。
+     */
+    pathForFile(file: File): string;
   };
   menu: {
     /** メニューから選ばれた操作の購読。購読解除関数を返す */

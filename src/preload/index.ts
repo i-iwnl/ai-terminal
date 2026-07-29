@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import {
   IpcInvoke,
@@ -98,6 +98,16 @@ const api: RendererApi = {
       ipcRenderer.invoke(IpcInvoke.appAccessibilitySupport) as Promise<boolean>,
     onAccessibilitySupportChanged: (listener: (enabled: boolean) => void): (() => void) =>
       subscribe<boolean>(IpcEvent.accessibilitySupportChanged, listener),
+    // ドロップされた File から絶対パスを引く唯一の手段。
+    // 合成された File（E2E など）や、パスを持たない File では例外が飛ぶことがあるので
+    // 握りつぶして空文字にする（呼び出し側は uri-list 経路へフォールバックする）。
+    pathForFile: (file: File): string => {
+      try {
+        return webUtils.getPathForFile(file);
+      } catch {
+        return '';
+      }
+    },
   },
   menu: {
     onAction: (listener: (action: AppAction) => void): (() => void) =>

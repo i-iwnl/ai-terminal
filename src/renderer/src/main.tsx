@@ -15,6 +15,14 @@ if (!container) {
   throw new Error('root 要素が見つかりません');
 }
 
+// ウィンドウにファイルがドロップされたときの**ブラウザ既定の挙動はそのファイルへの画面遷移**で、
+// Electron でも同じ。踏むとアプリが消えて白画面になり、開いていたタブと PTY をまとめて失う。
+// ターミナルペインが受け取った分は各ペインが preventDefault するが、
+// 外した場所へ落ちた分をここで確実に握りつぶす（設定ウィンドウも同じバンドルなので一緒に守られる）。
+for (const type of ['dragover', 'drop'] as const) {
+  window.addEventListener(type, (e) => e.preventDefault());
+}
+
 // 設定は独立したウィンドウだが、ビルドの入力（HTML）を増やさないよう
 // 同じバンドルを `#settings` 付きで読み込んで描画を切り替える。
 const isSettingsWindow = window.location.hash === '#settings';
