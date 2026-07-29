@@ -34,12 +34,12 @@ const { root, rest } = splitRoot(CSS);
  * 同じ値を持つことを意図的に許すトークン。**「いま実際に衝突している」ものだけを並べる。**
  * 衝突が解消したら消すこと（消し忘れは下の「もう重複していない名前が残っていない」が捕まえる）。
  */
-const INTENTIONAL_DUPLICATES = new Set([
-  // 既定のステータスドットとタブ無し表示が偶然どちらも #666666。
-  // PR 5-3（文字）と PR 5-4（状態色）でそれぞれ別の値へ動くので、そこで解消される。
-  '--status-unknown',
-  // PR 5-2 で3件（--border-row / --surface-field / --surface-float）が
-  // 衝突しなくなったので落とした。**下の自己検査が実際にこの3件を指して落ちた** ―
+const INTENTIONAL_DUPLICATES = new Set<string>([
+  // **いまは1件も無い。**
+  //
+  // PR 5-2 で3件（--border-row / --surface-field / --surface-float）、
+  // PR 5-3 で1件（--status-unknown。相方だった --text-faint が消えた）が
+  // 衝突しなくなり、そのつど**下の自己検査が名前を指して落ちた**。
   // 従来の実装（許容リストを continue で読み飛ばすだけ）のままなら、
   // 消し忘れたまま永久に重複検査から外れていた。
 ]);

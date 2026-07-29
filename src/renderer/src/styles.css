@@ -62,18 +62,23 @@
   --border-search: #444444; /* 検索欄（対 --surface-1 で 1.71）。PR 5 -> #747474 */
 
   /* -- 文字 -------------------------------------------------------------- */
-  /* PR 5 で primary / secondary / tertiary の3段へ整理する。
-     現行は用途ごとに9種類あり、明度差に意味が無いものが混ざっている。 */
-  --text-bright: #ffffff; /* 選択中のタブ・強調 */
-  --text-primary: #dddddd; /* 一覧の主タイトル */
-  --text-emphasis: #cccccc; /* 設定の値 */
-  --text-state: #bbbbbb; /* 状態ラベル（作業中 / あなたの番） */
-  --text-secondary: #999999; /* 非選択のタブ・ラベル */
-  --text-raw: #8f8f8f; /* CLI が返した生の値 */
-  --text-muted: #888888; /* 空状態・メモのプレビュー */
-  --text-tertiary: #777777; /* メタ情報（対 --surface-0 で 3.93 = AA 未達）。PR 5 -> #949494 */
-  --text-faint: #666666; /* タブが無いときの表示（2.90 = AA 未達）。PR 5 -> #949494 */
-  --text-terminal: #d4d4d4; /* xterm の前景色に合わせた既定 */
+  /* 用途ごとに9種類あった灰色を、役割の違う4段 + 端末用に整理した。
+     **すべての段が、最も明るい面（--surface-3）の上でも 4.5:1 を満たす**
+     （実測は S40 が唯一の正。最悪ケースは tertiary の 4.86）。
+
+     隣り合う段の差は primary/secondary が 1.90、secondary/tertiary が 1.28。
+     **1.28 は段として見えないので、この2つが同じ行に隣接する箇所を作らない。**
+     見出しと状態ラベルを primary に上げてあるのはそのため（下の各割り当てを参照）。 */
+  --text-bright: #ffffff; /* 選択中のタブ・見出しの強調。**primary に畳まない**:
+                             選択中タブの手がかりは塗り(1.23)と文字の2つしかなく、
+                             畳むと文字の差が 2.38 -> 1.10 になって両方同時に弱くなる */
+  --text-primary: #e6e6e6; /* 一覧の主タイトル・状態ラベル・セクション見出し・設定の値 */
+  --text-secondary: #a8a8a8; /* 非選択のタブ・ラベル・補助ボタン */
+  --text-tertiary: #949494; /* メタ情報・CLI の生の値・空状態・プレビュー */
+  --text-disabled: #6f6f6f; /* 押せないボタンの文字。**tertiary に畳まない**:
+                              WCAG 1.4.3 は無効なコントロールを免除しており、
+                              ここを本文と同じ濃さにすると「押せない」が伝わらなくなる */
+  --text-terminal: #d4d4d4; /* xterm の前景色に合わせた既定。役割が違うので段の外 */
 
   /* -- アクセント -------------------------------------------------------- */
   --accent: #4c8bf5; /* 選択・フォーカス。PR 5 -> #5b9cff */
@@ -362,12 +367,14 @@ body {
   padding: var(--sp-1);
 }
 
+/* タブが1枚も無いときの表示。**画面に他の文字が1つも無い状態**なので、
+   相対的な弱さが機能しない。最弱の段は使わない。 */
 .terminal-stack__empty {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-faint);
+  color: var(--text-tertiary);
 }
 
 .terminal-search {
@@ -438,7 +445,7 @@ body {
 
 .panel-message {
   padding: var(--sp-3);
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-size: var(--fs-sm);
 }
 
@@ -492,14 +499,19 @@ body {
   background: var(--status-working);
 }
 
-/* 状態は色だけでなく語でも示す。色覚特性によっては橙と緑が区別できない */
+/* 状態は色だけでなく語でも示す。色覚特性によっては橙と緑が区別できない。
+   **すぐ右に並ぶ生の値（--text-tertiary）と同じ濃さにしない。**
+   同じ行・同じ大きさ・同じ太さで 8px 離れているだけなので、
+   色の差が無くなると「訳」と「CLI が言ったこと」の主従が消える。
+   4.5:1 を保ったまま secondary と tertiary の間に段は作れない（差は最大 1.27）ので、
+   下げるのではなく上げる。実測 2.43（現状 1.68 より良い）。 */
 .task-item__state {
-  color: var(--text-state);
+  color: var(--text-primary);
 }
 
 /* CLI が返した生の値。翻訳ラベルより一段弱く見せる */
 .task-item__raw-status {
-  color: var(--text-raw);
+  color: var(--text-tertiary);
 }
 
 .task-item__body {
@@ -669,9 +681,10 @@ body {
   margin-top: var(--sp-4);
 }
 
+/* 設定の見出しと同じ理由で一段上げる（すぐ下にヒントが続く） */
 .memo-panel__heading {
   margin: 0 0 6px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: var(--fs-xs);
   font-weight: normal;
 }
@@ -766,7 +779,7 @@ body {
 }
 
 .memo-item__preview {
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-size: var(--fs-xs);
   margin-top: 2px;
   overflow: hidden;
@@ -818,11 +831,13 @@ body {
   border-top: 1px solid var(--border-section);
 }
 
+/* すぐ下に同じ大きさ・同じ太さの注記が続くので、見出しは一段上げる。
+   色以外に見出しであることを示す手がかりが無い（ウェイトの階層は次周）。 */
 .settings__heading {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-xs);
   font-weight: normal;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .settings__note {
@@ -838,7 +853,7 @@ body {
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
   font-size: var(--fs-sm);
-  color: var(--text-emphasis);
+  color: var(--text-primary);
 }
 
 .settings__label {
@@ -885,7 +900,7 @@ body {
   background: transparent;
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
-  color: var(--text-emphasis);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: var(--fs-xs);
   padding: 3px 10px;
@@ -897,7 +912,7 @@ body {
 }
 
 .settings__button:disabled {
-  color: var(--text-faint);
+  color: var(--text-disabled);
   cursor: default;
 }
 
