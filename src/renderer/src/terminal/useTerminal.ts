@@ -44,6 +44,12 @@ export interface UseTerminalOptions {
   fontFamily: string;
   fontSize: number;
   theme: TerminalTheme;
+  /**
+   * xterm の screenReaderMode。有効にすると読み上げ用の DOM が別に生える。
+   * WebGL レンダラは canvas に描くため、これが false だと**支援技術からは
+   * ターミナルの内容が1文字も見えない**。
+   */
+  screenReaderMode: boolean;
   onExit: (event: PtyExitEvent) => void;
   onSearchVisibilityChange: (visible: boolean) => void;
 }
@@ -87,6 +93,7 @@ export function useTerminal(
       allowProposedApi: true,
       cursorBlink: true,
       scrollback: 5000,
+      screenReaderMode: optionsRef.current.screenReaderMode,
     });
     termRef.current = term;
 
@@ -190,7 +197,8 @@ export function useTerminal(
     term.options.fontFamily = options.fontFamily;
     term.options.fontSize = options.fontSize;
     term.options.theme = toXtermTheme(options.theme);
-  }, [options.fontFamily, options.fontSize, options.theme]);
+    term.options.screenReaderMode = options.screenReaderMode;
+  }, [options.fontFamily, options.fontSize, options.theme, options.screenReaderMode]);
 
   const handleRef = useRef<TerminalHandle>({
     focus: () => termRef.current?.focus(),

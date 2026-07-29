@@ -39,6 +39,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   slack: DEFAULT_WEBHOOK,
   discord: DEFAULT_WEBHOOK,
   scopeAgentsToCwd: false,
+  screenReaderMode: false,
   theme: DEFAULT_THEME,
 };
 
@@ -95,6 +96,7 @@ export function coerceConfig(raw: unknown): AppConfig {
     slack: webhook('slack'),
     discord: webhook('discord'),
     scopeAgentsToCwd: bool('scopeAgentsToCwd', DEFAULT_CONFIG.scopeAgentsToCwd),
+    screenReaderMode: bool('screenReaderMode', DEFAULT_CONFIG.screenReaderMode),
     theme: {
       background: themeStr('background'),
       foreground: themeStr('foreground'),

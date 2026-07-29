@@ -244,6 +244,23 @@ export default function SettingsPanel({ config, onChange, onClose }: SettingsPan
           </section>
 
           <section className="settings__section">
+            <h3 className="settings__heading">アクセシビリティ</h3>
+            <p className="settings__note">
+              ターミナルの内容は GPU が canvas に描くため、既定では VoiceOver
+              から読めません。有効にすると読み上げ用の要素を別に出します（描画は少し重くなります）。
+              VoiceOver が動いていることを検知できたときは、この設定に関わらず有効になります。
+            </p>
+            <label className="settings__row">
+              <input
+                type="checkbox"
+                checked={config.screenReaderMode}
+                onChange={(e) => onChange({ screenReaderMode: e.target.checked })}
+              />
+              <span>ターミナルの内容をスクリーンリーダーから読めるようにする</span>
+            </label>
+          </section>
+
+          <section className="settings__section">
             <h3 className="settings__heading">動作</h3>
             <label className="settings__row">
               <input

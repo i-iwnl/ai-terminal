@@ -13,11 +13,12 @@ export interface TerminalPaneProps {
   fontFamily: string;
   fontSize: number;
   theme: TerminalTheme;
+  screenReaderMode: boolean;
   onExit: (event: PtyExitEvent) => void;
 }
 
 const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function TerminalPane(
-  { ptyId, active, fontFamily, fontSize, theme, onExit },
+  { ptyId, active, fontFamily, fontSize, theme, screenReaderMode, onExit },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -29,6 +30,7 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     fontFamily,
     fontSize,
     theme,
+    screenReaderMode,
     onExit,
     onSearchVisibilityChange: setSearchOpen,
   });

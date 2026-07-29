@@ -25,6 +25,7 @@ const FALLBACK_CONFIG: AppConfig = {
   slack: { enabled: false, url: '' },
   discord: { enabled: false, url: '' },
   scopeAgentsToCwd: false,
+  screenReaderMode: false,
   theme: {
     background: '#1e1e1e',
     foreground: '#d4d4d4',
@@ -37,6 +38,10 @@ export default function App(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(FALLBACK_CONFIG);
   const [notice, setNotice] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // OS の支援技術（VoiceOver 等）が動いているか。
+  // 動いていれば設定に関わらず screenReaderMode を有効にする。
+  // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
+  const [accessibilitySupport, setAccessibilitySupport] = useState(false);
 
   const showError = useCallback((message: string) => {
     setNotice(message);
@@ -134,6 +139,20 @@ export default function App(): ReactElement {
     return window.api.menu.onAction((action) => runActionRef.current(action));
   }, []);
 
+  // 支援技術の起動状態。初期値を取り、以降は変化を購読する。
+  // 取得に失敗しても false のまま続行する（設定からは有効にできる）。
+  useEffect(() => {
+    window.api.app
+      .accessibilitySupport()
+      .then((enabled) => setAccessibilitySupport(enabled))
+      .catch((err: unknown) => {
+        console.warn('[a11y] 支援技術の状態を取得できませんでした。', err);
+      });
+    return window.api.app.onAccessibilitySupportChanged((enabled) => {
+      setAccessibilitySupport(enabled);
+    });
+  }, []);
+
   const handleExit = useCallback((event: PtyExitEvent) => {
     tabsApiRef.current.markExited(event.ptyId, { exitCode: event.exitCode, signal: event.signal });
   }, []);
@@ -206,6 +225,7 @@ export default function App(): ReactElement {
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
               theme={config.theme}
+              screenReaderMode={config.screenReaderMode || accessibilitySupport}
               onExit={handleExit}
             />
           ))}

@@ -73,4 +73,12 @@ describe('coerceConfig', () => {
     expect(coerceConfig({ shell: 123 }).shell).toBeUndefined();
     expect(coerceConfig({}).shell).toBeUndefined();
   });
+
+  it('screenReaderMode の既定は false で、設定ファイルから有効にできる', () => {
+    // 既定で有効にしない理由は描画コスト（行の追加ごとに live region を更新する）。
+    // 既定値が true に転ぶと、全ユーザーの描画が重くなる方向の退行になる。
+    expect(coerceConfig({}).screenReaderMode).toBe(false);
+    expect(coerceConfig({ screenReaderMode: true }).screenReaderMode).toBe(true);
+    expect(coerceConfig({ screenReaderMode: 'yes' }).screenReaderMode).toBe(false);
+  });
 });
