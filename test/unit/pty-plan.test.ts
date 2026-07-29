@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildPtyEnv, buildSpawnPlan } from '../../src/main/pty/manager';
+import { buildTmuxSessionName } from '../../src/main/pty/tmux';
 
 describe('buildSpawnPlan（shell）', () => {
   it('設定のシェルをログインシェルとして起動する', () => {
@@ -40,7 +41,58 @@ describe('buildSpawnPlan（claude）', () => {
       () => 'should-not-be-used',
     );
     expect(plan.args).toEqual(['--resume', 'existing-id']);
-    expect(plan.agentSessionId).toBeUndefined();
+    // 採番はしないが、tmux セッション名を安定させるため resume 先の ID をそのまま返す
+    expect(plan.agentSessionId).toBe('existing-id');
+  });
+});
+
+describe('buildSpawnPlan（claude）と tmux セッション名の安定性', () => {
+  // Issue #60: Cmd+W でタブを閉じても、tmux セッション名が resume のたびに変われば
+  // 二度と同じセッションに戻れない。ここでは buildSpawnPlan の結果を実際に
+  // buildTmuxSessionName に通し、名前が安定していることを担保する。
+
+  it('同じセッションを2回 resume すると、tmux セッション名が2回とも同じになる', () => {
+    const req = { kind: 'claude' as const, cols: 80, rows: 24, resumeSessionId: 'session-a' };
+    const plan1 = buildSpawnPlan(req, { shell: undefined });
+    const plan2 = buildSpawnPlan(req, { shell: undefined });
+    expect(plan1.agentSessionId).toBe('session-a');
+    expect(plan2.agentSessionId).toBe('session-a');
+    expect(buildTmuxSessionName(plan1.agentSessionId!)).toBe(
+      buildTmuxSessionName(plan2.agentSessionId!),
+    );
+  });
+
+  it('新規起動を2回行うと、tmux セッション名は互いに異なる（衝突しない）', () => {
+    let counter = 0;
+    const generateId = (): string => `uuid-${counter++}`;
+    const plan1 = buildSpawnPlan(
+      { kind: 'claude', cols: 80, rows: 24 },
+      { shell: undefined },
+      generateId,
+    );
+    const plan2 = buildSpawnPlan(
+      { kind: 'claude', cols: 80, rows: 24 },
+      { shell: undefined },
+      generateId,
+    );
+    expect(buildTmuxSessionName(plan1.agentSessionId!)).not.toBe(
+      buildTmuxSessionName(plan2.agentSessionId!),
+    );
+  });
+
+  it('新規起動で採番した ID と、その ID で resume したときの tmux セッション名が一致する（Cmd+W で閉じたタブに履歴から戻れる）', () => {
+    const freshPlan = buildSpawnPlan(
+      { kind: 'claude', cols: 80, rows: 24 },
+      { shell: undefined },
+      () => 'fixed-uuid',
+    );
+    const resumePlan = buildSpawnPlan(
+      { kind: 'claude', cols: 80, rows: 24, resumeSessionId: freshPlan.agentSessionId },
+      { shell: undefined },
+    );
+    expect(buildTmuxSessionName(freshPlan.agentSessionId!)).toBe(
+      buildTmuxSessionName(resumePlan.agentSessionId!),
+    );
   });
 });
 
@@ -56,6 +108,20 @@ describe('buildSpawnPlan（gemini）', () => {
       { shell: undefined },
     );
     expect(plan.args).toEqual(['--resume', 'latest']);
+  });
+
+  it('gemini は安定したセッション名を持たない（agentSessionId は常に undefined）', () => {
+    // gemini には claude の --session-id / --resume <uuid> に相当する安定した ID が無い。
+    // そのため tmux セッション名は ptyId（起動のたびに使い捨て）に頼るしかなく、
+    // Cmd+W で閉じたタブには拾い直せない（Issue #60 の対象外。tmux.ts 冒頭コメント参照）。
+    const newPlan = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined });
+    expect(newPlan.agentSessionId).toBeUndefined();
+
+    const resumePlan = buildSpawnPlan(
+      { kind: 'gemini', cols: 80, rows: 24, geminiResumeTarget: 'latest' },
+      { shell: undefined },
+    );
+    expect(resumePlan.agentSessionId).toBeUndefined();
   });
 });
 

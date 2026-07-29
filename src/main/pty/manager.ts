@@ -41,8 +41,14 @@ import {
 /** spawn プランの結果。tmux でラップする前の「素のコマンド」を表す。 */
 export interface SpawnPlan extends CommandSpec {
   /**
-   * claude を --session-id で新規起動したときに採番した UUID。
-   * resume の場合や gemini の場合は undefined。
+   * claude セッションを一意に識別する ID。
+   * 新規起動時は --session-id で自前採番した UUID、resume 時は --resume に渡した
+   * 既存のセッション ID がそのまま入る（resume で新たに採番することはない）。
+   * つまり「同じ claude セッションに対しては常に同じ値になる」キー。
+   * tmux セッション名（buildTmuxSessionName）はこれを使って組み立てるため、
+   * ここが安定していることで Cmd+W で閉じたタブに resume で戻れる
+   * （tmux new-session -A が既存セッションに当たる）。
+   * gemini には安定した ID が無いため常に undefined。
    */
   agentSessionId?: string;
 }
@@ -60,13 +66,23 @@ export function buildShellPlan(config: Pick<AppConfig, 'shell'>): SpawnPlan {
  * claude の起動コマンドを組み立てる。
  * resumeSessionId が無い場合は自前で UUID を採番し、`--session-id` として渡す
  * （サイドバー側が `claude agents --json` の結果と突き合わせるための ID）。
+ *
+ * resume の場合は新しい ID を採番しない（generateId を呼ばない）が、
+ * agentSessionId には resume 先の既存 ID をそのまま入れて返す。
+ * こうしないと tmux セッション名（buildTmuxSessionName(plan.agentSessionId ?? ptyId)）が
+ * 毎回 fresh な ptyId 由来になってしまい、`tmux new-session -A` が既存セッションに
+ * 当たらない ＝ Cmd+W で閉じたタブに二度と戻れない、という不具合になる（Issue #60）。
  */
 export function buildClaudePlan(
   req: Pick<SpawnPtyRequest, 'resumeSessionId'>,
   generateId: () => string = randomUUID,
 ): SpawnPlan {
   if (req.resumeSessionId) {
-    return { command: 'claude', args: ['--resume', req.resumeSessionId] };
+    return {
+      command: 'claude',
+      args: ['--resume', req.resumeSessionId],
+      agentSessionId: req.resumeSessionId,
+    };
   }
   const agentSessionId = generateId();
   return { command: 'claude', args: ['--session-id', agentSessionId], agentSessionId };
@@ -220,10 +236,11 @@ export function registerPtyHandlers(): void {
       entries.set(ptyId, { pty: proc, sender: event.sender });
 
       // このアプリが起動した Claude セッションを一覧側に知らせる（AgentTask.ownedByApp に反映される）。
-      // 新規起動（--session-id で採番）と resume（既存 ID を指定）の両方が対象。
-      const ownedSessionId = plan.agentSessionId ?? req.resumeSessionId;
-      if (req.kind === 'claude' && ownedSessionId) {
-        markOwnedSession(ownedSessionId);
+      // 新規起動（--session-id で採番）と resume（--resume に渡した既存 ID）の両方が対象。
+      // buildClaudePlan が resume でも agentSessionId に対象 ID を入れて返すようになったため、
+      // req.resumeSessionId へのフォールバックはもう不要（plan.agentSessionId だけで足りる）。
+      if (req.kind === 'claude' && plan.agentSessionId) {
+        markOwnedSession(plan.agentSessionId);
       }
 
       proc.onData((data: string) => {
