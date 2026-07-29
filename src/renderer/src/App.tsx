@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
-import { FALLBACK_CONFIG } from './lib/defaults';
+import { DEFAULT_CONFIG } from '@shared/defaults';
 import Sidebar from './sidebar/Sidebar';
 import TabBar from './tabs/TabBar';
 import TerminalPane from './terminal/TerminalPane';
@@ -12,7 +12,7 @@ import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
 
 export default function App(): ReactElement {
-  const [config, setConfig] = useState<AppConfig>(FALLBACK_CONFIG);
+  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [notice, setNotice] = useState<string | null>(null);
   // OS の支援技術（VoiceOver 等）が動いているか。
   // 動いていれば設定に関わらず screenReaderMode を有効にする。

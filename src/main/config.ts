@@ -15,39 +15,11 @@ import {
   type TerminalTheme,
   type WebhookConfig,
 } from '@shared/ipc';
+// 既定値の唯一の正。Renderer 側の初期値も同じものを見る。
+import { DEFAULT_CONFIG, DEFAULT_THEME, DEFAULT_WEBHOOK } from '@shared/defaults';
 
 const CONFIG_DIR = join(homedir(), '.ai-terminal');
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
-
-const DEFAULT_THEME: TerminalTheme = {
-  background: '#1e1e1e',
-  foreground: '#d4d4d4',
-  cursor: '#d4d4d4',
-  selectionBackground: '#264f78',
-};
-
-const DEFAULT_WEBHOOK: WebhookConfig = {
-  enabled: false,
-  url: '',
-};
-
-export const DEFAULT_CONFIG: AppConfig = {
-  // shell は未指定なら $SHELL、それも無ければ /bin/zsh を使う（解決は pty 側の責務）
-  shell: undefined,
-  fontFamily: 'Menlo, "SF Mono", monospace',
-  fontSize: 13,
-  pollIntervalMs: 3000,
-  useTmux: true,
-  notifyOnIdle: true,
-  notifySound: true,
-  // 空文字は「OS 既定の通知音に任せる」。識別子の意味は notify/sound.ts が正。
-  notifySoundId: '',
-  slack: DEFAULT_WEBHOOK,
-  discord: DEFAULT_WEBHOOK,
-  scopeAgentsToCwd: false,
-  screenReaderMode: false,
-  theme: DEFAULT_THEME,
-};
 
 let cached: AppConfig | null = null;
 
