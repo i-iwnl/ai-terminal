@@ -90,10 +90,15 @@
   --settings-error-border: #b05a5a; /* 設定ウィンドウのエラー帯（こちらは既に 3:1 を満たす） */
 
   /* -- 型 ---------------------------------------------------------------- */
-  /* 現行は 9 / 10 / 11 / 12 / 13 / 16px の6段階。9px と 10px は差に意味が無いので
-     PR 5 で 11px へ畳む（--fs-9 / --fs-10 はそこで削除する）。 */
-  --fs-9: 9px; /* 「このアプリ」バッジ。PR 5 -> --fs-xs へ畳む */
-  --fs-10: 10px; /* 履歴の操作ボタン・メモの日時。PR 5 -> --fs-xs へ畳む */
+  /* 9px は macOS の最小推奨（11pt）を大きく下回るうえ、10px との差に意味が無かったので
+     PR 5-1 で 11px へ畳んだ。--fs-9 は削除済み。
+
+     **--fs-10 はメモ一覧の日時だけに残してある。** ここを 11px にすると、
+     すぐ上のプレビュー行と同じ大きさになる。プレビューとメタ情報は色でも
+     区別していたが、その色は PR 5-3 で同じ段に畳む予定なので、
+     **色と大きさの両方を同じ周で潰すと2行が完全に同化する**（5ペルソナレビューの指摘）。
+     どちらかは残す必要があり、大きさを残した。 */
+  --fs-10: 10px; /* メモ一覧の日時のみ。上のコメントの理由で畳まない */
   --fs-xs: 11px; /* メタ情報 */
   --fs-sm: 12px; /* 一覧・ラベル */
   --fs-md: 13px; /* 本文既定 */
@@ -282,7 +287,7 @@ body {
 }
 
 .tab-bar__exit-badge {
-  font-size: var(--fs-10);
+  font-size: var(--fs-xs);
   color: var(--status-exited);
 }
 
@@ -510,7 +515,7 @@ body {
 }
 
 .task-item__badge {
-  font-size: var(--fs-9);
+  font-size: var(--fs-xs);
   color: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
@@ -604,7 +609,7 @@ body {
   background: transparent;
   border: 1px solid var(--border-control-muted);
   color: var(--text-secondary);
-  font-size: var(--fs-10);
+  font-size: var(--fs-xs);
   line-height: 1;
   padding: 2px 6px;
   border-radius: var(--radius-md);
@@ -642,7 +647,7 @@ body {
 
 .history-item__error {
   color: var(--status-error);
-  font-size: var(--fs-10);
+  font-size: var(--fs-xs);
   margin-top: 2px;
 }
 
