@@ -13,6 +13,13 @@ export default tseslint.config(
       // 数千件のエラーで落ちる。
       'e2e/report/**',
       'test-results/**',
+      // 別ブランチの git worktree（`.claude/worktrees/<ブランチ名>/`）。
+      // ここにチェックアウトが増えると tsconfig.json が複数見つかり、
+      // typescript-eslint の自動探索が
+      // 「No tsconfigRootDir was set, and multiple candidate TSConfigRootDirs are present」
+      // で全ファイルを parsing error にする（実測 226 件）。
+      // **自分の変更と無関係に make check が落ちる**ので、e2e/report と同じ理由で除外する。
+      '.claude/worktrees/**',
     ],
   },
   ...tseslint.configs.recommended,
