@@ -18,14 +18,32 @@ const CSS = readFileSync(
   'utf8',
 );
 
-/** `:root { ... }` の中身と、それ以外を分けて返す */
+/**
+ * トークンの宣言部と、それ以外を分けて返す。
+ *
+ * **`:root` は1つではない。** `@media (prefers-contrast: more)` の中にも
+ * 上書き用の `:root` がある。あれは「本体に色を直書きした」のではなく
+ * **トークンの宣言**なので、リテラル混入の検査から外す必要がある。
+ *
+ * - `root`: 先頭の `:root`（トークンの値の唯一の正。値の突き合わせはこれを見る）
+ * - `rest`: **すべての** `:root` ブロックを取り除いた残り（= var() で書くべき場所）
+ */
 function splitRoot(css: string): { root: string; rest: string } {
-  const start = css.indexOf(':root {');
-  const end = css.indexOf('\n}', start);
-  return {
-    root: css.slice(start, end),
-    rest: css.slice(0, start) + css.slice(end + 2),
-  };
+  let first = '';
+  let rest = '';
+  let cursor = 0;
+  for (;;) {
+    const start = css.indexOf(':root {', cursor);
+    if (start === -1) {
+      rest += css.slice(cursor);
+      break;
+    }
+    const end = css.indexOf('\n}', start);
+    rest += css.slice(cursor, start);
+    if (!first) first = css.slice(start, end);
+    cursor = end + 2;
+  }
+  return { root: first, rest };
 }
 
 const { root, rest } = splitRoot(CSS);
