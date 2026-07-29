@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
+import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from '../fixtures/harness';
 
 let launched: LaunchedApp;
 
@@ -12,7 +12,11 @@ test.afterEach(async () => {
 });
 
 /**
- * 設定パネルの開閉と、変更が実際に効くことを検証する。
+ * 設定ウィンドウの開閉と、変更が実際に効くことを検証する。
+ *
+ * 設定は本体とは別の BrowserWindow（Issue #25 でモーダルから独立ウィンドウへ変えた）。
+ * モーダルだった頃は「開いた直後のキー入力が PTY へ流れる」不具合があったが、
+ * 別ウィンドウになったことで構造ごと消えている。
  *
  * S21 は config.json をあらかじめ書いた状態で起動して反映を見ているが、
  * こちらは **アプリを起動したまま画面から変えて反映されるか** を見る。
@@ -28,10 +32,10 @@ test('S31 設定パネルから変更するとターミナルに反映される'
   await expect(rows).toBeVisible();
   const before = await rows.evaluate((el) => getComputedStyle(el).fontSize);
 
-  // タブバーの「設定」ボタンで開く
-  await window.locator('button[aria-label="設定を開く"]').click();
-  const dialog = window.locator('[role="dialog"][aria-label="設定"]');
-  await expect(dialog).toBeVisible();
+  // タブバーの「設定」ボタンで開く（別ウィンドウが現れる）
+  const dialog = await openSettingsWindow(launched, () =>
+    window.locator('button[aria-label="設定を開く"]').click(),
+  );
 
   // 通知音の一覧が取れていること（macOS のシステムサウンドが読める）。
   // 「OS 既定」だけの環境もありうるので、件数ではなく先頭の選択肢の性質で見る。
@@ -49,16 +53,17 @@ test('S31 設定パネルから変更するとターミナルに反映される'
   }).toPass({ timeout: 20_000 });
   expect(before).not.toBe('22px');
 
-  // Escape で閉じる
-  await window.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
+  // Escape / Cmd+W を押すとウィンドウごと閉じるため、press() 自体が
+  // 「ページが閉じた」で reject しうる。閉じたことは windows() の数で判定するので、
+  // ここでの reject は握り潰してよい（押せなかった場合は次の assert が落ちる）。
+  await dialog.keyboard.press('Escape').catch(() => undefined);
+  await expect.poll(() => launched.app.windows().length, { timeout: 15_000 }).toBe(1);
 
   // Cmd+, で開き直すと、変更した値が保持されている
-  await window.keyboard.press('Meta+,');
-  await expect(window.locator('[role="dialog"][aria-label="設定"]')).toBeVisible();
-  await expect(window.locator('[role="dialog"] input[type="number"]').first()).toHaveValue('22');
+  const reopened = await openSettingsWindow(launched, () => window.keyboard.press('Meta+,'));
+  await expect(reopened.locator('input[type="number"]').first()).toHaveValue('22');
 
-  // 背景クリックでも閉じる
-  await window.locator('.settings-backdrop').click({ position: { x: 5, y: 5 } });
-  await expect(window.locator('[role="dialog"][aria-label="設定"]')).toHaveCount(0);
+  // Cmd+W でも閉じる（設定ウィンドウ側のキー処理）
+  await reopened.keyboard.press('Meta+w').catch(() => undefined);
+  await expect.poll(() => launched.app.windows().length, { timeout: 15_000 }).toBe(1);
 });

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
+import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from '../fixtures/harness';
 
 let launched: LaunchedApp;
 let server: Server | undefined;
@@ -59,9 +59,9 @@ test('S32 設定した Webhook にテスト送信が届く', async () => {
   launched = await launchApp();
   const { window } = launched;
 
-  await window.locator('button[aria-label="設定を開く"]').click();
-  const dialog = window.locator('[role="dialog"][aria-label="設定"]');
-  await expect(dialog).toBeVisible();
+  const dialog = await openSettingsWindow(launched, () =>
+    window.locator('button[aria-label="設定を開く"]').click(),
+  );
 
   // Slack 側に受信サーバの URL を入れる
   const slackUrl = dialog.locator('input[aria-label="Slack の Webhook URL"]');

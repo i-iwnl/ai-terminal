@@ -11,6 +11,7 @@
 
 import { app, Menu, shell, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import { IpcEvent, type AppAction } from '@shared/ipc';
+import { openSettingsWindow } from './settings-window';
 
 const REPOSITORY_URL = 'https://github.com/i-iwnl/ai-terminal';
 
@@ -74,7 +75,13 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
       submenu: [
         { role: 'about', label: `${appName} について` },
         { type: 'separator' },
-        actionItem(win, '設定...', 'Cmd+,', { type: 'toggle-settings' }),
+        {
+          label: '設定...',
+          accelerator: 'Cmd+,',
+          // 設定は独立ウィンドウなので Main 側で完結する（Renderer を経由しない）。
+          registerAccelerator: false,
+          click: () => openSettingsWindow(win.isDestroyed() ? null : win),
+        },
         { type: 'separator' },
         { role: 'services', label: 'サービス' },
         { type: 'separator' },

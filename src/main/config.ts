@@ -3,12 +3,18 @@
 // このモジュールは Main プロセスの他モジュール（pty / agents / notify）から
 // getConfig() で参照される共有モジュール。壊すと全体に波及するので変更は慎重に。
 
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { IpcInvoke, type AppConfig, type TerminalTheme, type WebhookConfig } from '@shared/ipc';
+import {
+  IpcEvent,
+  IpcInvoke,
+  type AppConfig,
+  type TerminalTheme,
+  type WebhookConfig,
+} from '@shared/ipc';
 
 const CONFIG_DIR = join(homedir(), '.ai-terminal');
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
@@ -135,6 +141,22 @@ export function setConfig(patch: Partial<AppConfig>): AppConfig {
 export function registerConfigHandlers(): void {
   ipcMain.handle(IpcInvoke.configGet, (): AppConfig => getConfig());
   ipcMain.handle(IpcInvoke.configSet, (_event, patch: Partial<AppConfig>): AppConfig => {
-    return setConfig(patch ?? {});
+    const next = setConfig(patch ?? {});
+    broadcastConfig(next);
+    return next;
   });
+}
+
+/**
+ * 設定の変更を全ウィンドウへ配信する。
+ *
+ * 設定ウィンドウは本体とは別の Renderer なので、そこでの変更は本体の state には
+ * 届かない（モーダルだった頃は同じ Renderer だったので不要だった）。
+ * **配信を忘れると「設定を変えてもターミナルに反映されない」という形で表に出る。**
+ */
+function broadcastConfig(config: AppConfig): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    win.webContents.send(IpcEvent.configChanged, config);
+  }
 }
