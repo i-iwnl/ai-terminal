@@ -41,4 +41,41 @@ test('S37 設定でターミナルをスクリーンリーダーから読める�
   // ここが「支援技術から見えるか」の実質的な判定。
   await window.keyboard.type('echo SCREEN_READER_OK\n');
   await expect(a11y).toContainText('SCREEN_READER_OK', { timeout: 15_000 });
+
+  // --- タブが複数あっても .xterm-accessibility はちょうど1個であること ---
+  //
+  // xterm は screenReaderMode 有効時に aria-live="assertive" の live region を
+  // 生成する（AccessibilityManager）。assertive は読み上げを割り込んで中断するため、
+  // 支援技術に露出している live region が2個以上になると、片方の読み上げが
+  // もう片方に潰される（design-review.md の「案の前提そのものを壊した指摘」）。
+  //
+  // App.tsx は screenReaderMode をアクティブなタブにだけ渡す（issue-56 PR 0-a）。
+  // .xterm-accessibility は各タブが自分の Terminal インスタンスの screenReaderMode
+  // オプションに応じて生やす DOM 要素で、visibility: hidden は生成そのものを止めない
+  // （生成後に描画とアクセシビリティツリーへの露出を消すだけ）。つまりこのガードを
+  // 外すと、非アクティブなタブでも .xterm-accessibility が生えたままになり、
+  // ここでの toHaveCount(1) は素の DOM 個数のまま 2 に落ちて赤くなる
+  // （visibility: hidden は「支援技術への露出」は防ぐが、Playwright の DOM 走査は
+  // 防がないため、toBeVisible() 抜きの単純な個数比較で十分検出できる）。
+  // それでもここで固定しておくのは、Issue #56（分割表示）が入ると同一タブ内の
+  // 複数ペインが同時に visible になり、visibility: hidden による偶然の遮断（描画側も
+  // 消える）が効かなくなるため。次にここを触る人が「1個で十分では」と緩めないよう、
+  // 「タブが複数あっても1個」を明示的な不変条件としてテストに残す。
+  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  await expect(tabs).toHaveCount(1);
+
+  await window.keyboard.press('Meta+t');
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(1)).toHaveClass(/is-active/);
+  await expect(a11y).toHaveCount(1);
+
+  // タブを行き来しても1個のまま付け替わること（useTerminal.ts の
+  // screenReaderMode 変化の反映が効いていることの担保）。
+  await window.keyboard.press('Meta+1');
+  await expect(tabs.nth(0)).toHaveClass(/is-active/);
+  await expect(a11y).toHaveCount(1);
+
+  await window.keyboard.press('Meta+2');
+  await expect(tabs.nth(1)).toHaveClass(/is-active/);
+  await expect(a11y).toHaveCount(1);
 });

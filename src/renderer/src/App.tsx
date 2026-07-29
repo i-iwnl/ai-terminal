@@ -205,7 +205,17 @@ export default function App(): ReactElement {
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
               theme={config.theme}
-              screenReaderMode={config.screenReaderMode || accessibilitySupport}
+              // screenReaderMode はアクティブなタブにだけ渡す。
+              // xterm は screenReaderMode 有効時に aria-live="assertive" の live region を
+              // 生成する（AccessibilityManager）。assertive は読み上げを割り込んで中断するため、
+              // 支援技術に露出している live region は常に1個でなければならない
+              // （2個以上が同時に喋ると、片方の読み上げがもう片方に潰される）。
+              // 今日は非アクティブなペインが visibility: hidden で a11y ツリーからも
+              // 除去されるため、全タブに渡しても結果的に露出は1個に収まる（実質 no-op）。
+              // だが Issue #56（分割表示）が入ると同一タブ内の複数ペインが同時に visible に
+              // なり、この遮断が効かなくなる。そのときに複数ペインが同時に
+              // screenReaderMode: true を持たないよう、ここで不変条件として明示しておく。
+              screenReaderMode={tab.id === tabsApi.activeTabId && (config.screenReaderMode || accessibilitySupport)}
               onExit={handleExit}
             />
           ))}

@@ -107,4 +107,36 @@ assertive が N 個同時に露出する。**2ペインで claude と gemini を
 
 ---
 
+## 2026-07-29 - PR 0-a: screenReaderMode をアクティブなペインだけに
+
+導入計画の1本目。**分割のコードは1行も書いていない。**
+
+### 実施内容
+
+- `App.tsx` の `screenReaderMode` を、アクティブなタブのときだけ true にした
+- S37 に「**タブが2枚あっても `.xterm-accessibility` はちょうど1個**」「タブを切り替えても1個のまま」の検査を足した
+- `scenarios.yml` の S37 の note に、この不変条件を足した理由を追記した
+- `useTerminal.ts` は無変更。`options.screenReaderMode` の変化を `term.options` へ反映する仕組みが既にあり、タブ切り替えで正しく付け替わることを新しい検査で確認した
+
+### 設計判断
+
+- **ゲートを `.map()` の中の prop 式に置いた**（`tab.id === tabsApi.activeTabId && (...)`）。同じ JSX の `active={tab.id === tabsApi.activeTabId}` と並ぶ形になり、近傍の書き方に一致する
+- **S37 を拡張し、新しいシナリオは作らなかった。** `make e2e-lint` の check7 が「1 spec に `test()` は1つ」を検査しているため。既に起動しているアプリを使い回す形になった
+
+### 教訓
+
+- **「visibility: hidden だから DOM 上も1個になる」は誤り。** 計画時（design-review.md の PR 0-a の行）は「今日は実質 no-op」と書いており、私自身も**この検査は関門にならないかもしれない**と予想していた。実際に `App.tsx` を元に戻して測ったら、`.xterm-accessibility` は**2個**になり検査は赤くなった。
+  理由は、`visibility: hidden` が消すのは**露出と描画**であって、**DOM ノードの生成ではない**から。live region は `TerminalPane` ごとの xterm インスタンスが自分の `screenReaderMode` オプションを見て作るので、CSS とは独立に増える。
+  **つまりこの変更は no-op ではなく、既に実害の一歩手前まで来ていた**（VoiceOver から見て隠れていただけで、DOM には assertive な live region が タブ枚数ぶん生えていた）
+- **予想をコメントに書いてから測ると、間違いがコードに残る。** ワーカーは最初「この検査では捕まえられないので visibility ベースで書き直す必要がある」という趣旨のコメントを spec に書いていた。実測後にその記述を訂正している。**測る前に書いた説明は、測ったあとに読み直す**
+
+### 次に再開するとき最初に読むべきこと
+
+1. **次は PR 0-b**（`useTerminal.ts` の `doFit` と `handle.fit` の1本化 + 同値の `pty.resize` を送らない）。関門は「挙動不変・E2E 全 green」
+2. 進捗の表は `overview.md` の「導入計画（PR 0-a 〜 9）の進捗」に置いた。**内容の正は `design-review.md` の表**なので、そちらに状態を書き込まないこと（二重管理になる）
+3. `known-issues.md` の 1 のうち **#60（tmux の `-A`）は解決済み**（PR #73）。`Cmd+W` の頻度が上がる前提の懸念が1つ減った
+4. **PR 0-a で分かった事実を、分割の実装時に使うこと**: 非アクティブなペインを `visibility: hidden` 以外の方法で隠すと、この不変条件は別の壊れ方をする
+
+---
+
 <!-- 以降、作業のたびにセクションを追記 -->
