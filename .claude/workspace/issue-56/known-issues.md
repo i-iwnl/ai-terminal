@@ -12,17 +12,17 @@
 
 ### 症状
 
-| # | Issue | 内容 | 体感頻度 |
-|---|---|---|---|
-| 1-1 | [#61](https://github.com/i-iwnl/ai-terminal/issues/61) | `TERM_PROGRAM` が素通しされ、新しいシェルタブのたびに `Restored session: ...` という**嘘の行**が出る（`manager.ts:109-118`）。`docs/images/S01-launch.png` の1行目がそれ | 10〜30回/日 |
-| 1-2 | [#60](https://github.com/i-iwnl/ai-terminal/issues/60) | **tmux の `-A` が既存セッションに当たる経路がコード上1本も存在しない**（`manager.ts:170` の名前が毎回 fresh な `randomUUID`）。**claude は生き続け、アプリからは二度と戻れない** | 毎日積む |
-| 1-3 / 1-4 | [#62](https://github.com/i-iwnl/ai-terminal/issues/62) | `Cmd+Shift+G`（macOS の「前を検索」）が gemini 起動に取られている / `Cmd+G` が無い | 20〜40回/日 |
-| 1-5 | [#65](https://github.com/i-iwnl/ai-terminal/issues/65) | `Cmd+1`〜`9` しかなく、**10枚目以降のタブにキーボードで到達できない** | - |
-| 1-6 | [#64](https://github.com/i-iwnl/ai-terminal/issues/64) | `TaskList.tsx:85-95` の `<li onClick>` に `tabindex` も `role` も無い（**キーボードで押せない**） | - |
-| 1-7 | [#66](https://github.com/i-iwnl/ai-terminal/issues/66) | `wrappedInTmux` が `useTabs.ts:80-88` で捨てられ、「このタブは tmux の中」がどこにも出ない | - |
-| 1-8 | [#67](https://github.com/i-iwnl/ai-terminal/issues/67) | `.terminal-search` が細いペインからはみ出す（実測 260px 前後） | 分割後に顕在化 |
-| 1-9 | [#68](https://github.com/i-iwnl/ai-terminal/issues/68) | `e2e/screenshots.spec.ts:12` のコメントが「11シナリオ」（実際は12）。台帳ハーネスは検出しない | - |
-| 1-10 | [#63](https://github.com/i-iwnl/ai-terminal/issues/63) | `App.tsx:106-116` のグローバル keydown が `e.target` を見ずに先取りするので、**タブ名の編集中に `Cmd+D` を押すと分割が走る** | 分割後に顕在化 |
+| # | Issue | 内容 | 体感頻度 | 状態 |
+|---|---|---|---|---|
+| 1-1 | [#61](https://github.com/i-iwnl/ai-terminal/issues/61) | `TERM_PROGRAM` が素通しされ、新しいシェルタブのたびに `Restored session: ...` という**嘘の行**が出る（`manager.ts:109-118`）。`docs/images/S01-launch.png` の1行目がそれ | 10〜30回/日 | **解決済み PR #78** |
+| 1-2 | [#60](https://github.com/i-iwnl/ai-terminal/issues/60) | **tmux の `-A` が既存セッションに当たる経路がコード上1本も存在しない**（`manager.ts:170` の名前が毎回 fresh な `randomUUID`）。**claude は生き続け、アプリからは二度と戻れない** | 毎日積む | **解決済み PR #73** |
+| 1-3 / 1-4 | [#62](https://github.com/i-iwnl/ai-terminal/issues/62) | `Cmd+Shift+G`（macOS の「前を検索」）が gemini 起動に取られている / `Cmd+G` が無い | 20〜40回/日 | **解決済み PR #77** |
+| 1-5 | [#65](https://github.com/i-iwnl/ai-terminal/issues/65) | `Cmd+1`〜`9` しかなく、**10枚目以降のタブにキーボードで到達できない** | - | 未着手 |
+| 1-6 | [#64](https://github.com/i-iwnl/ai-terminal/issues/64) | `TaskList.tsx:85-95` の `<li onClick>` に `tabindex` も `role` も無い（**キーボードで押せない**） | - | **解決済み PR #80** |
+| 1-7 | [#66](https://github.com/i-iwnl/ai-terminal/issues/66) | `wrappedInTmux` が `useTabs.ts:80-88` で捨てられ、「このタブは tmux の中」がどこにも出ない | - | 未着手 |
+| 1-8 | [#67](https://github.com/i-iwnl/ai-terminal/issues/67) | `.terminal-search` が細いペインからはみ出す（実測 260px 前後） | 分割後に顕在化 | 未着手（分割の周で踏む） |
+| 1-9 | [#68](https://github.com/i-iwnl/ai-terminal/issues/68) | `e2e/screenshots.spec.ts:12` のコメントが「11シナリオ」（実際は12）。台帳ハーネスは検出しない | - | 未着手 |
+| 1-10 | [#63](https://github.com/i-iwnl/ai-terminal/issues/63) | `App.tsx:106-116` のグローバル keydown が `e.target` を見ずに先取りするので、**タブ名の編集中に `Cmd+D` を押すと分割が走る** | 分割後に顕在化 | **解決済み PR #79** |
 
 ### 影響範囲
 
@@ -32,8 +32,10 @@
 ### 対処方針
 
 - [x] GitHub Issue に起票した（#60〜#68 の9本。1-3 と 1-4 は同じ領域の同じ作業なので #62 に統合した）
-- [x] **1-2（#60）は解決済み**（PR #73）。resume でも tmux セッション名が安定するようになり、`Cmd+W` した claude に履歴からの resume で戻れる。**分割で `Cmd+W` の頻度が上がる前提の懸念が1つ減った**
-- [ ] 1-8（#67）と 1-10（#63）は分割の周で踏むので、踏んだ時点で該当 PR に含めてよい
+- [x] **10件のうち5件を返済した**（2026-07-29）: 1-1（#61 / PR #78）・1-2（#60 / PR #73）・1-3 / 1-4（#62 / PR #77）・1-6（#64 / PR #80）・1-10（#63 / PR #79）
+- [x] **1-10（#63）を分割の前に済ませた。** 「分割後に顕在化」と評価していたが、`Cmd+D` を待たずとも**編集中の `Cmd+W` で編集対象のタブごと閉じる**という実害が既にあった。**「分割後に顕在化」は「今は無害」ではない**
+- [ ] **残り5件**: 1-5（#65 タブ10枚目以降に到達できない）・1-7（#66 tmux ラップが見えない）・1-8（#67 検索バーのはみ出し）・1-9（#68 コメントのシナリオ数）
+- [ ] 1-8（#67）は分割で初めて顕在化するので、踏んだ時点で該当 PR に含めてよい
 
 ### 優先度
 
