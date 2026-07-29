@@ -74,6 +74,15 @@ export interface LaunchOptions {
   geminiEmpty?: boolean;
   /** 偽 CLI を PATH に置かない（CLI 不在時のエラー表示を検証する） */
   withoutCli?: boolean;
+  /**
+   * 偽 CLI を起動時の PATH に置かず、一時 HOME の .zshrc からのみ PATH に足す。
+   *
+   * Finder / Dock から起動したパッケージ版は launchd の最小 PATH しか継承せず、
+   * アプリは起動時にログインシェル（$SHELL -i -l）から PATH を取得して補完する
+   * （src/main/shell-path.ts）。その解決が端から端まで機能していないと
+   * CLI が見つからない、という本番の条件を再現する（Issue #40 の再発防止）。
+   */
+  cliOnlyViaLoginShell?: boolean;
   /** config.json の上書き */
   config?: Record<string, unknown>;
   /** 履歴の JSONL を配置しない（空状態の検証用） */
@@ -212,7 +221,16 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   // 既定のままだと実マシンのユーザー名とホスト名がプロンプトに出てしまい、
   // スクリーンショットに写り込む（README に載せる画像としては不適切）。
   // カレントディレクトリ名は残す（spec がプロンプトの検出に使っている）。
-  writeFileSync(join(home, '.zshrc'), "PROMPT='%1~ %# '\nRPROMPT=''\n");
+  //
+  // cliOnlyViaLoginShell のときは、偽 CLI のディレクトリをこの .zshrc でだけ
+  // PATH に足す（起動時の PATH には入れない）。アプリの shell-path.ts が
+  // ログインシェル経由で PATH を解決できて初めて CLI が見つかる状態を作る。
+  const binDir = join(home, 'bin');
+  const zshrcLines = ["PROMPT='%1~ %# '", "RPROMPT=''"];
+  if (options.cliOnlyViaLoginShell) {
+    zshrcLines.push(`export PATH="${binDir}:$PATH"`);
+  }
+  writeFileSync(join(home, '.zshrc'), `${zshrcLines.join('\n')}\n`);
 
   // 設定（フォント・テーマ・ポーリング間隔を固定する）
   mkdirSync(join(home, '.ai-terminal'), { recursive: true });
@@ -240,7 +258,6 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   }
 
   // 偽 CLI を置く bin ディレクトリ（実行権限を確実に付ける）
-  const binDir = join(home, 'bin');
   mkdirSync(binDir, { recursive: true });
   if (!options.withoutCli) {
     for (const name of ['claude', 'gemini']) {
@@ -284,9 +301,20 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
 
   // PATH の先頭に偽 CLI を置く。最小限のシステムパスだけを残し、
   // 実行環境に入っている本物の claude / gemini を拾わないようにする。
-  const path = `${binDir}:/usr/bin:/bin:/usr/sbin:/sbin`;
+  // cliOnlyViaLoginShell のときは偽 CLI を PATH に置かず、launchd 起動と同じ
+  // 「最小 PATH + ログインシェル経由でのみ CLI に到達できる」状態にする。
+  const path = options.cliOnlyViaLoginShell
+    ? '/usr/bin:/bin:/usr/sbin:/sbin'
+    : `${binDir}:/usr/bin:/bin:/usr/sbin:/sbin`;
+
+  // パッケージ版スモーク（e2e/packaged.playwright.config.ts）では、node_modules の
+  // electron で out/ を起動する代わりに、dist/ の本物の .app バイナリを起動する。
+  // asar・app.isPackaged: true・本番の preload 読み込みまで本物になる。
+  // 隔離（一時 HOME / PATH / AI_TERMINAL_DATA_DIR / --user-data-dir）は同一。
+  const packagedBinary = process.env.AI_TERMINAL_E2E_PACKAGED_APP;
 
   const launchOptions = {
+    ...(packagedBinary ? { executablePath: packagedBinary } : {}),
     // --disable-gpu により xterm の WebGL アドオンの初期化が失敗し、
     // アプリの try/catch が DOM レンダラへフォールバックする。
     // DOM レンダラなら文字が .xterm-rows に入るため、テキストを検証できる
@@ -302,7 +330,8 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     // ~/Library/Application Support/ai-terminal を共有する。テストを並列に回したとき
     // 別テストのウィンドウ状態やキャッシュが混ざる原因になる。
     args: [
-      REPO_ROOT,
+      // パッケージ版はバイナリ自身がアプリを含むので、エントリポイントの指定は不要
+      ...(packagedBinary ? [] : [REPO_ROOT]),
       ...(options.gpu ? [] : ['--disable-gpu']),
       `--user-data-dir=${join(home, 'electron-user-data')}`,
     ],
@@ -312,6 +341,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       HOME: home,
       // zsh に上で書いた .zshrc を読ませる
       ZDOTDIR: home,
+      // ハーネスは .zshrc + ZDOTDIR で zsh を前提にしているので、シェルも固定する。
+      // 開発機の $SHELL が zsh 以外でも、PTY のシェルタブと shell-path.ts の
+      // ログインシェル解決が同じ前提で動く。
+      SHELL: '/bin/zsh',
       PATH: path,
       AI_TERMINAL_E2E_FIXTURES: runtimeFixtures,
       // E2E は out/ を electron バイナリで起動するため isPackaged が false になり、
