@@ -47,9 +47,16 @@ function expandTokens(css) {
   return out;
 }
 
-/** 色の表記ゆれ（#fff / #ffffff）と空行・末尾空白を吸収する */
+/** 色の表記ゆれ（#fff / #ffffff）と空行・末尾空白・コメントを吸収する
+ *
+ * コメントを比較対象から外すのは、**置換に伴ってコメントを直せなくなる**ため。
+ * 「既定色 #666 のまま」のような記述は、置換した瞬間に嘘になる。
+ * コメントは描画に影響しないので落として構わない。
+ * **宣言をコメントアウトして消す改変は、宣言の行そのものが消えるので従来どおり検出できる。**
+ */
 function normalize(css) {
   return css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/#[0-9a-fA-F]{3,6}\b/g, (hex) => {
       const body = hex.slice(1).toLowerCase();
       return `#${body.length === 3 ? [...body].map((c) => c + c).join('') : body}`;

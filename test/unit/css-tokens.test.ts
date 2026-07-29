@@ -37,9 +37,19 @@ function normalizeHex(hex: string): string {
   return `#${body}`;
 }
 
+/** コメントを落とす。コメント中の色や値を「使われている」と誤認しないため */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
 function hexesIn(source: string): Set<string> {
-  const found = source.match(/#[0-9a-fA-F]{3,6}\b/g) ?? [];
+  const found = stripComments(source).match(/#[0-9a-fA-F]{3,6}\b/g) ?? [];
   return new Set(found.map(normalizeHex));
+}
+
+/** CSS 本体（コメントを除く）から参照されているトークン名 */
+function referencedTokens(): Set<string> {
+  return new Set([...stripComments(rest).matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
 }
 
 /** :root で宣言されている色トークン（名前 -> 正規化した値） */
@@ -62,11 +72,32 @@ describe('デザイントークンの参照', () => {
     expect(undeclared).toEqual([]);
   });
 
-  it('宣言したトークンのうち、色は最終的にすべて参照される', () => {
-    // 置換が進むまでは未参照のトークンが残るため、いまは件数だけを見る。
-    // PR 4 が終わったら「未参照ゼロ」に強める。
-    const referenced = new Set([...rest.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
-    expect(referenced.size).toBeGreaterThan(10);
+  it('宣言した色トークンは、すべて CSS 本体から参照されている', () => {
+    // PR 4 で置換が完了したので、「件数が増えた」ではなく **未参照ゼロ** を要求する。
+    // 未参照の色トークンが1つでもあるということは、
+    // **その色をどこかで直接リテラルで書いている**（＝ PR 5 で値を変えても反映されない）か、
+    // 消し忘れのどちらかである。
+    const referenced = referencedTokens();
+    const unused = [...colorTokens().keys()].filter((name) => !referenced.has(name));
+    expect(unused).toEqual([]);
+  });
+
+  it('色以外の未参照トークンは、理由を書いたものだけに限る', () => {
+    // 尺（サイズ・余白・行間）は、段を飛ばさないために使用箇所が無くても宣言を残すことがある。
+    // ただし **黙って増やせないように**、ここに名前を書かないと落ちるようにしておく。
+    const allowedUnused = new Set([
+      // 行間を詰めている箇所が現行に1つも無い。PR 5 の密度調整で使う。
+      '--lh-tight',
+      // 24px の余白が現行に1つも無い。4/8/12/16/24 の段を飛ばさないために残す。
+      '--sp-6',
+    ]);
+
+    const colors = new Set(colorTokens().keys());
+    const referenced = referencedTokens();
+    const unused = [...root.matchAll(/^\s*(--[a-z0-9-]+):/gm)]
+      .map((m) => m[1])
+      .filter((name) => !colors.has(name) && !referenced.has(name) && !allowedUnused.has(name));
+    expect(unused).toEqual([]);
   });
 });
 
@@ -75,20 +106,13 @@ describe('デザイントークンの宣言', () => {
     expect(colorTokens().size).toBeGreaterThan(20);
   });
 
-  it('宣言した色は、未置換ならリテラルが実在し、置換済みなら参照されている', () => {
-    // 置換は段階的に進む（PR 3 で面と境界、PR 4 で残り）ので、この2つの状態を許す。
+  it('CSS 本体に色のリテラルが1つも残っていない', () => {
+    // PR 4 で置換が完了した。以降、本体に hex を直接書くと**トークンを迂回する**ことになり、
+    // PR 5 で値を変えてもその箇所だけ取り残される。リテラルの再混入をここで止める。
     //
-    // - 未置換: 宣言した値と同じリテラルが CSS 本体にある（= 値が現行と 1:1）
-    // - 置換済み: var() で参照されている
-    //
-    // どちらでもないトークンは、**値を間違えたか、消し忘れたか**のどちらか。
-    // 置換が全部終わったら、この検査は「すべて参照されている」に強められる。
-    const used = hexesIn(rest);
-    const referenced = new Set([...rest.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
-    const orphans = [...colorTokens()].filter(
-      ([name, value]) => !used.has(value) && !referenced.has(name),
-    );
-    expect(orphans).toEqual([]);
+    // 上の「宣言した色トークンはすべて参照されている」と対になっている。
+    // あちらは「宣言したのに使っていない」、こちらは「宣言を使わずに直書きした」を捕まえる。
+    expect([...hexesIn(rest)]).toEqual([]);
   });
 
   it('同じ値に対してトークンが1つだけである（重複宣言を作らない）', () => {
