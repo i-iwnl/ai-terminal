@@ -7,7 +7,7 @@ import TerminalPane from './terminal/TerminalPane';
 import type { TerminalHandle } from './terminal/useTerminal';
 import { startPtyStream } from './terminal/ptyStream';
 import { useTabs } from './tabs/useTabs';
-import { matchShortcut } from './lib/shortcuts';
+import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
 
@@ -114,6 +114,20 @@ export default function App(): ReactElement {
   // グローバルショートカット。capture フェーズで先取りし、xterm に渡る前に処理する。
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
+      // タブ名編集中（.tab-bar__title-input）・履歴タイトル編集中
+      // （.history-item__title-input）・contenteditable な要素にフォーカスがある間は
+      // 何もせず素通しする（preventDefault も stopPropagation もしない）。
+      // ここを見ずに先取りすると、名前を入力している最中の Cmd 系のキーが
+      // すべてアプリの操作として走る。たとえば入力欄で Cmd+W を押すと
+      // （macOS では入力中でも押しうるキーだが）タブそのものが閉じてしまい、
+      // 編集していた対象ごと消える。Issue #56 で Cmd+D が分割表示に割り当たると、
+      // 名前の入力中に知らないうちに PTY がもう1本増えるという壊れ方になる（Issue #63）。
+      // xterm.js のキー入力用 textarea（.xterm-helper-textarea）はここでいう
+      // 「編集中」には含めない。ターミナル操作中は常にこの textarea が
+      // フォーカスされているため、含めてしまうとアプリのショートカットが
+      // 1つも効かなくなる（isEditableTarget 側のコメント参照）。
+      if (isEditableTarget(e.target)) return;
+
       const action = matchShortcut(e);
       if (!action) return;
       e.preventDefault();

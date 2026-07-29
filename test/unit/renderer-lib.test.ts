@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { formatRelativeTime, sessionDisplayTitle, basename } from '../../src/renderer/src/lib/format';
-import { matchShortcut } from '../../src/renderer/src/lib/shortcuts';
+import { isEditableTarget, matchShortcut } from '../../src/renderer/src/lib/shortcuts';
 
 /** KeyboardEvent の必要な部分だけを組み立てる（DOM を用意せずに判定を試す）。 */
 function keyEvent(init: {
@@ -24,6 +24,69 @@ function keyEvent(init: {
     shiftKey: init.shiftKey ?? false,
   } as KeyboardEvent;
 }
+
+/**
+ * isEditableTarget が見る最小限のプロパティだけを持つ、素の DOM 要素を模したオブジェクト。
+ * unit テストは environment: 'node' で動く（jsdom を使わない）ため、実 DOM 要素は
+ * 作れない。isEditableTarget 自体が duck typing で実装されているので、
+ * ここでも実要素を作らず、同じ形のプロパティを持つだけのオブジェクトで検証する。
+ */
+function fakeElement(init: {
+  tagName?: string;
+  classNames?: string[];
+  isContentEditable?: boolean;
+  /** この要素（または祖先）が一致するとみなすセレクタの集合。closest() のスタブ用。 */
+  closestMatches?: string[];
+}): EventTarget {
+  const classNames = init.classNames ?? [];
+  const closestMatches = init.closestMatches ?? [];
+  return {
+    tagName: init.tagName,
+    isContentEditable: init.isContentEditable ?? false,
+    classList: {
+      contains: (name: string) => classNames.includes(name),
+    },
+    closest: (selector: string) => (closestMatches.includes(selector) ? ({} as Element) : null),
+  } as unknown as EventTarget;
+}
+
+describe('isEditableTarget', () => {
+  it('通常の input / textarea は編集中と判定する', () => {
+    expect(isEditableTarget(fakeElement({ tagName: 'INPUT' }))).toBe(true);
+    expect(isEditableTarget(fakeElement({ tagName: 'TEXTAREA' }))).toBe(true);
+  });
+
+  it('contenteditable な要素は編集中と判定する', () => {
+    expect(isEditableTarget(fakeElement({ tagName: 'DIV', isContentEditable: true }))).toBe(true);
+  });
+
+  // xterm.js はターミナルへのキー入力を受けるために画面外の <textarea> を常時
+  // フォーカスさせている。ここが「編集中」と誤判定されると、ターミナル操作中は
+  // 常にアプリのショートカットが死ぬ（全ショートカットが機能しなくなる）ため、
+  // 他とは独立したケースとして固定する。
+  it('xterm-helper-textarea は編集中と判定しない（誤ると全ショートカットが死ぬ）', () => {
+    expect(
+      isEditableTarget(fakeElement({ tagName: 'TEXTAREA', classNames: ['xterm-helper-textarea'] })),
+    ).toBe(false);
+  });
+
+  // 検索入力欄は Cmd+F / Cmd+G がフォーカスの有無に関わらず効く設計を維持するため、
+  // あえて編集中の対象外にしている（shortcuts.ts のコメント参照）。
+  it('検索入力欄（.terminal-search 配下）は編集中と判定しない', () => {
+    expect(
+      isEditableTarget(fakeElement({ tagName: 'INPUT', closestMatches: ['.terminal-search'] })),
+    ).toBe(false);
+  });
+
+  it('div や button など通常の要素は編集中と判定しない', () => {
+    expect(isEditableTarget(fakeElement({ tagName: 'DIV' }))).toBe(false);
+    expect(isEditableTarget(fakeElement({ tagName: 'BUTTON' }))).toBe(false);
+  });
+
+  it('target が無い（null）場合も落ちずに false を返す', () => {
+    expect(isEditableTarget(null)).toBe(false);
+  });
+});
 
 describe('matchShortcut', () => {
   it('Cmd 無しのキーはすべて素通しする', () => {

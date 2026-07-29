@@ -11,6 +11,63 @@ import type { AppAction } from '@shared/ipc';
 
 export type ShortcutAction = AppAction;
 
+/**
+ * このキーイベントの発生元が「編集中の入力欄」で、アプリのショートカットとして
+ * 先取りしてはいけないかを判定する。
+ *
+ * タブ名編集（TabBar.tsx の `.tab-bar__title-input`）や履歴タイトル編集
+ * （HistoryList.tsx の `.history-item__title-input`）にフォーカスがある状態で
+ * Cmd+W 等を押すと、名前を打っている途中でタブが閉じる・PTY が増えるといった
+ * 事故になる（Issue #63）。ここではその防止のために「編集中」を判定する。
+ *
+ * 判定は DOM の型と属性だけを見て行い、React や window には依存させない。
+ * こうしておくと単体テストで素の DOM 要素（を模した最小限のオブジェクト）を
+ * 組み立てるだけで検証できる。unit テストは environment: 'node'（jsdom を使わない）
+ * で動くため、`instanceof HTMLElement` のような実 DOM クラスへの依存は使えない。
+ * そのため実装は duck typing（必要なプロパティ・メソッドが生えているかだけを見る）
+ * にしてある。ブラウザの実 DOM 要素はここで見ているプロパティを当然すべて持つので、
+ * 実行時の挙動は instanceof で書いた場合と変わらない。
+ */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (target === null || typeof target !== 'object') return false;
+  // any は使わず、必要なプロパティだけを見るための最小限の形に絞る。
+  const el = target as {
+    classList?: { contains(name: string): boolean };
+    closest?: (selector: string) => Element | null;
+    isContentEditable?: boolean;
+    tagName?: string;
+  };
+
+  // **最重要**: xterm.js はターミナルへのキー入力（IME 含む）を受けるために、
+  // 画面外の <textarea> を常時フォーカスさせている。つまりターミナルを操作している
+  // 間、document.activeElement は常にこの textarea になる。素朴に「input /
+  // textarea なら編集中」と判定すると、ターミナル操作中は常に編集中とみなされて
+  // **アプリのショートカットが1つも効かなくなる**。
+  //
+  // xterm はこの textarea に DOM 上の明示的な識別子（data-* 属性等）を公開していない
+  // ため、xterm.js が生成時に付与するクラス名 `xterm-helper-textarea` で見分ける
+  // （e2e テストも同じクラス名でこの要素を特定しており、このリポジトリでは既に
+  // xterm.js の実装詳細として許容している依存）。**xterm.js 側でこのクラス名が
+  // 変わると、この除外は静かに効かなくなり、ターミナル操作中にショートカットが
+  // 丸ごと死ぬ形で壊れる。** xterm.js のバージョンを上げたときは要確認。
+  if (el.classList?.contains('xterm-helper-textarea')) return false;
+
+  // 検索入力欄（TerminalPane.tsx の `.terminal-search input`）はあえて対象外にする。
+  // ここは Escape / Enter だけを自前で stopPropagation して処理しており、
+  // Cmd+F（検索を閉じる）・Cmd+G / Cmd+Shift+G（次/前を検索）はフォーカスの
+  // 有無に関わらずグローバルショートカットとして効くことを意図した設計になっている
+  // （useTerminal.ts の findInDirection のコメント参照、S45 のシナリオもこれを前提に
+  // している）。ここを編集中として素通しの対象に含めてしまうと、検索語を入力中は
+  // Cmd+F で閉じられなくなる（キー入力自体は input が受け取るが、Cmd+F に対応する
+  // 処理を input 側は持たないため何も起きなくなる）という新しい壊れ方をする。
+  if (el.closest?.('.terminal-search')) return false;
+
+  // contenteditable な要素（Issue #63 の要求）。
+  if (el.isContentEditable) return true;
+
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+}
+
 export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   if (!e.metaKey || e.ctrlKey || e.altKey) return null;
 
