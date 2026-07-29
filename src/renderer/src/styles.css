@@ -38,6 +38,7 @@
   --surface-input: #1c1c1c; /* 設定の入力欄 */
   --surface-textarea: #202020; /* メモの入力欄 */
   --surface-field: #333333; /* インライン編集の入力欄 */
+  --surface-float: #2a2a2a; /* 検索バーなど、ターミナルの上に浮く面 */
 
   /* -- 境界 -------------------------------------------------------------- */
   --border-subtle: #2a2a2a; /* 区切り線。1.4.11 の対象外（装飾） */
@@ -121,7 +122,7 @@ body,
 }
 
 body {
-  background: #1e1e1e;
+  background: var(--surface-1);
   color: #d4d4d4;
   font-family:
     -apple-system,
@@ -151,8 +152,8 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: #191919;
-  border-right: 1px solid #2a2a2a;
+  background: var(--surface-0);
+  border-right: 1px solid var(--border-subtle);
 }
 
 /* macOS の信号機ボタン（hiddenInset, trafficLightPosition: 16,16）と重ならないための余白。
@@ -166,7 +167,7 @@ body {
 .sidebar__tabs {
   display: flex;
   flex-shrink: 0;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-subtle);
   -webkit-app-region: no-drag;
 }
 
@@ -208,8 +209,8 @@ body {
   align-items: stretch;
   height: 36px;
   flex-shrink: 0;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--surface-tabbar);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .tab-bar__tabs {
@@ -233,13 +234,13 @@ body {
   min-width: 90px;
   max-width: 180px;
   color: #999;
-  border-right: 1px solid #2a2a2a;
+  border-right: 1px solid var(--border-subtle);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .tab-bar__tab.is-active {
-  background: #262626;
+  background: var(--surface-tab-active);
   color: #fff;
 }
 
@@ -261,8 +262,8 @@ body {
   font: inherit;
   font-size: 12px;
   color: inherit;
-  background: #333;
-  border: 1px solid #4a4a4a;
+  background: var(--surface-field);
+  border: 1px solid var(--border-control-strong);
   border-radius: 2px;
   padding: 0 2px;
   margin: 0;
@@ -299,7 +300,7 @@ body {
   padding: 0 12px;
   background: transparent;
   border: none;
-  border-left: 1px solid #2a2a2a;
+  border-left: 1px solid var(--border-subtle);
   color: #999;
   cursor: pointer;
   font-size: 12px;
@@ -318,7 +319,7 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: #1e1e1e;
+  background: var(--surface-1);
 }
 
 .terminal-pane {
@@ -356,15 +357,15 @@ body {
   z-index: 10;
   display: flex;
   gap: 4px;
-  background: #2a2a2a;
+  background: var(--surface-float);
   padding: 4px 6px;
   border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-float);
 }
 
 .terminal-search input {
-  background: #1e1e1e;
-  border: 1px solid #444;
+  background: var(--surface-1);
+  border: 1px solid var(--border-search);
   color: #d4d4d4;
   padding: 2px 6px;
   border-radius: 3px;
@@ -373,7 +374,7 @@ body {
 
 .terminal-search button {
   background: transparent;
-  border: 1px solid #444;
+  border: 1px solid var(--border-search);
   color: #d4d4d4;
   border-radius: 3px;
   cursor: pointer;
@@ -394,9 +395,9 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  background: #4a2020;
+  background: var(--notice-error-bg);
   color: #f4c7c7;
-  border: 1px solid #7a3030;
+  border: 1px solid var(--notice-error-border);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;
@@ -436,7 +437,7 @@ body {
   display: flex;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid #232323;
+  border-bottom: 1px solid var(--border-row);
   cursor: default;
 }
 
@@ -445,7 +446,7 @@ body {
 }
 
 .task-item--clickable:hover {
-  background: #222;
+  background: var(--surface-2);
 }
 
 .task-item__status-dot {
@@ -526,7 +527,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid #232323;
+  border-bottom: 1px solid var(--border-row);
 }
 
 .history-list__providers {
@@ -536,7 +537,7 @@ body {
 
 .history-list__providers button {
   background: transparent;
-  border: 1px solid #333;
+  border: 1px solid var(--border-control-muted);
   color: #999;
   font-size: 11px;
   padding: 2px 8px;
@@ -551,7 +552,7 @@ body {
 
 .history-list__reload {
   background: transparent;
-  border: 1px solid #333;
+  border: 1px solid var(--border-control-muted);
   color: #999;
   font-size: 11px;
   padding: 2px 8px;
@@ -561,13 +562,13 @@ body {
 
 .history-item {
   padding: 8px 12px;
-  border-bottom: 1px solid #232323;
+  border-bottom: 1px solid var(--border-row);
   cursor: pointer;
   font-size: 12px;
 }
 
 .history-item:hover {
-  background: #222;
+  background: var(--surface-2);
 }
 
 .history-item__title-row {
@@ -590,7 +591,7 @@ body {
 .history-item__action {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid #333;
+  border: 1px solid var(--border-control-muted);
   color: #999;
   font-size: 10px;
   line-height: 1;
@@ -612,8 +613,8 @@ body {
   font: inherit;
   font-size: 12px;
   color: inherit;
-  background: #333;
-  border: 1px solid #4a4a4a;
+  background: var(--surface-field);
+  border: 1px solid var(--border-control-strong);
   border-radius: 2px;
   padding: 0 2px;
   margin: 0;
@@ -665,8 +666,8 @@ body {
   font-size: 12px;
   line-height: 1.5;
   color: #ddd;
-  background: #202020;
-  border: 1px solid #333;
+  background: var(--surface-textarea);
+  border: 1px solid var(--border-control-muted);
   border-radius: 3px;
   padding: 6px;
   outline: none;
@@ -723,12 +724,12 @@ body {
 .memo-item {
   padding: 6px 8px;
   border: 1px solid transparent;
-  border-bottom-color: #232323;
+  border-bottom-color: var(--border-row);
   cursor: pointer;
 }
 
 .memo-item:hover {
-  background: #222;
+  background: var(--surface-2);
 }
 
 .memo-item.is-open {
@@ -770,16 +771,16 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #232323;
+  background: var(--surface-3);
   /* 入力欄を扱うため、body の user-select: none をこの中だけ戻す */
   user-select: text;
 }
 
 .settings__error {
   flex-shrink: 0;
-  background: #4a2020;
+  background: var(--notice-error-bg);
   color: #f4c7c7;
-  border-bottom: 1px solid #b05a5a;
+  border-bottom: 1px solid var(--settings-error-border);
   padding: 8px 16px;
   font-size: 12px;
 }
@@ -794,7 +795,7 @@ body {
 .settings__section + .settings__section {
   margin-top: 18px;
   padding-top: 14px;
-  border-top: 1px solid #303030;
+  border-top: 1px solid var(--border-section);
 }
 
 .settings__heading {
@@ -832,8 +833,8 @@ body {
   font: inherit;
   font-size: 12px;
   color: #ddd;
-  background: #1c1c1c;
-  border: 1px solid #3a3a3a;
+  background: var(--surface-input);
+  border: 1px solid var(--border-control);
   border-radius: 3px;
   padding: 3px 6px;
   outline: none;
@@ -862,7 +863,7 @@ body {
 .settings__button {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-control);
   border-radius: 3px;
   color: #ccc;
   cursor: pointer;
