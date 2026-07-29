@@ -35,8 +35,14 @@ export interface TerminalHandle {
   clear(): void;
   toggleSearch(): void;
   closeSearch(): void;
-  findNext(term: string): void;
-  findPrevious(term: string): void;
+  /**
+   * 検索語の更新。検索入力欄の onChange から呼ぶ。
+   * findNext / findPrevious はここで最後に渡された値を使うため、
+   * グローバルショートカット（Cmd+G 等）から入力欄のフォーカスなしに呼べる。
+   */
+  setSearchTerm(term: string): void;
+  findNext(): void;
+  findPrevious(): void;
 }
 
 export interface UseTerminalOptions {
@@ -76,6 +82,8 @@ export function useTerminal(
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchOpenRef = useRef(false);
+  // 検索入力欄の最新値。findNext / findPrevious をフォーカス無しで呼べるようにするための控え。
+  const searchTermRef = useRef('');
 
   // 最新の options を effect 外からも参照できるようにする（Terminal の再生成を避けるため）。
   const optionsRef = useRef(options);
@@ -200,6 +208,35 @@ export function useTerminal(
     term.options.screenReaderMode = options.screenReaderMode;
   }, [options.fontFamily, options.fontSize, options.theme, options.screenReaderMode]);
 
+  const openSearchBar = (): void => {
+    if (searchOpenRef.current) return;
+    searchOpenRef.current = true;
+    optionsRef.current.onSearchVisibilityChange(true);
+  };
+
+  /**
+   * 検索バーが閉じている状態で Cmd+G / Cmd+Shift+G が押されたときの挙動の決定。
+   *
+   * **バーを開くだけにし、検索は実行しない。** 前回の検索語をそのまま検索してしまうと、
+   * 検索欄自体が非表示のまま（＝画面のどこにも「何を検索したか」の手がかりが無いまま）
+   * ヒット箇所だけが動くことになる。`clear()` が「見えているものだけを消す」保守的な
+   * 挙動を選んだ（Cmd+K のコメント参照）のと同じ理由で、検索語が見えていない状態からの
+   * 検索実行は避け、まず検索欄を出してユーザーに確認してもらう。
+   */
+  const findInDirection = (direction: 'next' | 'previous'): void => {
+    if (!searchOpenRef.current) {
+      openSearchBar();
+      return;
+    }
+    const term = searchTermRef.current;
+    if (!term) return;
+    if (direction === 'next') {
+      searchAddonRef.current?.findNext(term, { incremental: true });
+    } else {
+      searchAddonRef.current?.findPrevious(term);
+    }
+  };
+
   const handleRef = useRef<TerminalHandle>({
     focus: () => termRef.current?.focus(),
     fit: () => {
@@ -232,14 +269,11 @@ export function useTerminal(
       }
       searchAddonRef.current?.clearDecorations();
     },
-    findNext: (term: string) => {
-      if (!term) return;
-      searchAddonRef.current?.findNext(term, { incremental: true });
+    setSearchTerm: (term: string) => {
+      searchTermRef.current = term;
     },
-    findPrevious: (term: string) => {
-      if (!term) return;
-      searchAddonRef.current?.findPrevious(term);
-    },
+    findNext: () => findInDirection('next'),
+    findPrevious: () => findInDirection('previous'),
   });
 
   return handleRef.current;

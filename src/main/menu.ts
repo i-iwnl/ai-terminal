@@ -97,7 +97,10 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
       submenu: [
         actionItem(win, '新しいシェルタブ', 'Cmd+T', { type: 'new-shell-tab' }),
         actionItem(win, '新しい Claude タブ', 'Cmd+Shift+C', { type: 'new-claude-tab' }),
-        actionItem(win, '新しい Gemini タブ', 'Cmd+Shift+G', { type: 'new-gemini-tab' }),
+        // gemini は Cmd+Shift+E（g-E-mini の E）。Cmd+Shift+G は macOS 全域の
+        // 「前を検索」の標準キーなので、Issue #62 でそちらへ明け渡した
+        // （検索中に反射で押すと本物の gemini が1本余計に起動していた）。
+        actionItem(win, '新しい Gemini タブ', 'Cmd+Shift+E', { type: 'new-gemini-tab' }),
         { type: 'separator' },
         actionItem(win, 'タブを閉じる', 'Cmd+W', { type: 'close-tab' }),
       ],
@@ -114,6 +117,8 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
         { role: 'selectAll', label: 'すべてを選択' },
         { type: 'separator' },
         actionItem(win, 'ターミナル内を検索', 'Cmd+F', { type: 'toggle-search' }),
+        actionItem(win, '次を検索', 'Cmd+G', { type: 'find-next' }),
+        actionItem(win, '前を検索', 'Cmd+Shift+G', { type: 'find-previous' }),
       ],
     },
     { label: '表示', submenu: viewSubmenu },

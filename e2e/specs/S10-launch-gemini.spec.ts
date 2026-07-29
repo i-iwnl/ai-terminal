@@ -19,7 +19,9 @@ test('S10 gemini を起動できる', async () => {
   const initialScreen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(initialScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
-  await window.keyboard.press('Meta+Shift+G');
+  // gemini の起動キーは Cmd+Shift+E（Issue #62。Cmd+Shift+G は macOS 全域の
+  // 「前を検索」の標準キーのため、gemini の起動から検索へ明け渡した）。
+  await window.keyboard.press('Meta+Shift+E');
 
   // gemini タブが開き、アクティブになること
   await expect(window.locator('.tab-bar__title').filter({ hasText: 'gemini' })).toBeVisible();
