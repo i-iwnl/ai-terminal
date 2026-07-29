@@ -129,30 +129,61 @@ describe('buildPtyEnv', () => {
   it('ELECTRON_ 系の環境変数を落とす', () => {
     // Electron が注入する変数をそのまま子プロセスへ渡すと、
     // 子側の Node/Electron が誤動作する
-    const env = buildPtyEnv({
-      ELECTRON_RUN_AS_NODE: '1',
-      ELECTRON_RENDERER_URL: 'http://localhost:5173',
-      PATH: '/usr/bin',
-    });
+    const env = buildPtyEnv(
+      {
+        ELECTRON_RUN_AS_NODE: '1',
+        ELECTRON_RENDERER_URL: 'http://localhost:5173',
+        PATH: '/usr/bin',
+      },
+      '1.2.3',
+    );
     expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
     expect(env.ELECTRON_RENDERER_URL).toBeUndefined();
     expect(env.PATH).toBe('/usr/bin');
   });
 
   it('色が出るよう TERM と COLORTERM を設定する', () => {
-    const env = buildPtyEnv({});
+    const env = buildPtyEnv({}, '1.2.3');
     expect(env.TERM).toBe('xterm-256color');
     expect(env.COLORTERM).toBe('truecolor');
   });
 
   it('LANG が未設定なら日本語ロケールを補い、設定済みなら尊重する', () => {
-    expect(buildPtyEnv({}).LANG).toBe('ja_JP.UTF-8');
-    expect(buildPtyEnv({ LANG: 'en_US.UTF-8' }).LANG).toBe('en_US.UTF-8');
+    expect(buildPtyEnv({}, '1.2.3').LANG).toBe('ja_JP.UTF-8');
+    expect(buildPtyEnv({ LANG: 'en_US.UTF-8' }, '1.2.3').LANG).toBe('en_US.UTF-8');
   });
 
   it('渡された環境を書き換えない', () => {
     const base = { ELECTRON_RUN_AS_NODE: '1' };
-    buildPtyEnv(base);
+    buildPtyEnv(base, '1.2.3');
     expect(base.ELECTRON_RUN_AS_NODE).toBe('1');
+  });
+
+  // Issue #61: ターミナルから `make dev` 等で起動すると、起動元の TERM_PROGRAM
+  // （例: Apple_Terminal）がそのまま子プロセスへ継承され、macOS の
+  // /etc/zshrc_Apple_Terminal がセッション復元を走らせて「Restored session: ...」
+  // という嘘の行が出る（何も復元していない）。何を継承しても ai-terminal に
+  // 固定することで、この因果を断つ。
+  it('TERM_PROGRAM が Apple_Terminal を継承していても ai-terminal に上書きする', () => {
+    const env = buildPtyEnv({ TERM_PROGRAM: 'Apple_Terminal' }, '1.2.3');
+    expect(env.TERM_PROGRAM).toBe('ai-terminal');
+  });
+
+  it('TERM_PROGRAM が iTerm.app を継承していても ai-terminal に上書きする', () => {
+    const env = buildPtyEnv({ TERM_PROGRAM: 'iTerm.app' }, '1.2.3');
+    expect(env.TERM_PROGRAM).toBe('ai-terminal');
+  });
+
+  it('TERM_PROGRAM が未設定でも ai-terminal になる', () => {
+    const env = buildPtyEnv({}, '1.2.3');
+    expect(env.TERM_PROGRAM).toBe('ai-terminal');
+  });
+
+  // TERM_PROGRAM_VERSION は TERM_PROGRAM とセットで意味を持つ値。TERM_PROGRAM だけ
+  // 上書きして VERSION を素通しすると「ai-terminal なのにバージョンは Apple Terminal
+  // のもの」という不整合な組み合わせが残る。ai-terminal 自身のバージョンに揃える。
+  it('TERM_PROGRAM_VERSION は継承した値を無視し、引数で渡したアプリのバージョンになる', () => {
+    const env = buildPtyEnv({ TERM_PROGRAM_VERSION: '470.2' }, '0.0.1');
+    expect(env.TERM_PROGRAM_VERSION).toBe('0.0.1');
   });
 });
