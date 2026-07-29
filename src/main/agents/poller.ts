@@ -11,6 +11,7 @@ import {
 // 状態の意味の単一の正。表示（TaskList）と同じ判定を使う。
 import { becameYourTurn, countYourTurn } from '@shared/agent-status';
 
+import { getAppPaths } from '../app-paths';
 import { getConfig } from '../config';
 import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
@@ -38,12 +39,16 @@ export function markOwnedSession(sessionId: string): void {
 /**
  * 絞り込み対象の cwd。Renderer が agents:list を呼ぶたびに更新される。
  *
- * 初期値はアプリを起動したディレクトリ。Renderer 側の共有 cwd
- * （src/renderer/src/lib/cwd.ts）も window.api.app.paths() 経由でこの process.cwd() を
- * 見ているので、出所は同じ。**ここを undefined から始めると、Renderer の最初の
+ * 初期値はアプリを起動したディレクトリ。Renderer 側のアクティブ cwd
+ * （src/renderer/src/lib/cwd.ts）も window.api.app.paths() 経由で同じ値を見ているので、
+ * 出所は同じ。**ここを undefined から始めると、Renderer の最初の
  * agents:list が届くまでのポーリングだけ絞り込みが効かず、一覧が一瞬ちらつく。**
+ *
+ * `process.cwd()` をそのまま使わず getAppPaths() を通すのは、Finder 起動で `/` に
+ * なる場合をホームへ倒すため（app-paths.ts の resolveLaunchCwd）。両者の出所が
+ * 分かれると、Renderer が最初の agents:list を送るまでの間だけ別の値で絞り込むことになる。
  */
-let lastKnownCwd: string | undefined = process.cwd();
+let lastKnownCwd: string | undefined = getAppPaths().cwd;
 
 /** 直前のポーリング結果。busy -> idle の遷移検知に使う。初回ポーリング前は undefined。 */
 let previousTasks: AgentTask[] | undefined;

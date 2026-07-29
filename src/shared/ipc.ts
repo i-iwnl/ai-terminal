@@ -65,6 +65,18 @@ export interface PtyInputRequest {
   data: string;
 }
 
+/**
+ * PTY プロセスの現在の作業ディレクトリ。
+ *
+ * シェルタブで `cd` した先を追跡するために使う。Renderer は Node API に触れないので、
+ * プロセスの cwd を読むのは Main の仕事（src/main/pty/cwd.ts）。
+ * 取得できなかった場合は `cwd: undefined` を返す（呼び出し側は直前の値を維持する）。
+ */
+export interface PtyCwdResult {
+  ptyId: string;
+  cwd?: string;
+}
+
 /** ウィンドウリサイズに伴う PTY のリサイズ */
 export interface PtyResizeRequest {
   ptyId: string;
@@ -368,6 +380,7 @@ export type AppAction =
 export const IpcInvoke = {
   ptySpawn: 'pty:spawn',
   ptyKill: 'pty:kill',
+  ptyCwd: 'pty:cwd',
   agentsList: 'agents:list',
   historyList: 'history:list',
   historySetTitle: 'history:set-title',
@@ -410,6 +423,11 @@ export interface RendererApi {
   pty: {
     spawn(req: SpawnPtyRequest): Promise<SpawnPtyResult>;
     kill(ptyId: string): Promise<void>;
+    /**
+     * その PTY プロセスがいま居るディレクトリ。
+     * シェルタブの `cd` に追従するために、アクティブなタブへ定期的に問い合わせる。
+     */
+    cwd(ptyId: string): Promise<PtyCwdResult>;
     input(req: PtyInputRequest): void;
     resize(req: PtyResizeRequest): void;
     /** 購読解除関数を返す */

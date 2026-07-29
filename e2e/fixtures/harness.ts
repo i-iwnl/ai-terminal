@@ -67,6 +67,13 @@ export interface LaunchedApp {
   home: string;
   /** アプリの作業ディレクトリ（履歴の探索キーになる） */
   workDir: string;
+  /**
+   * cwd 追従（Issue #58）の検証用に用意した2つ目の作業ディレクトリの絶対パス。
+   * アプリの起動時 cwd ではなく、シェルタブで `cd <otherWorkDir>` した先として使う。
+   * `~/.claude/projects/<encodeProjectDir(otherWorkDir)>/` に専用の履歴フィクスチャを
+   * 1件だけ置いてある（workDir 側の3件とはタイトルが明確に異なる）。
+   */
+  otherWorkDir: string;
 }
 
 export interface LaunchOptions {
@@ -215,6 +222,32 @@ function brokenSessionJsonl(): string {
 }
 
 /**
+ * 2つ目の作業ディレクトリ（otherWorkDir）専用の履歴（S43: cwd 追従の検証用）。
+ * workDir 側の3件（サイドバーのレイアウト修正 / タブの切り替えで.../ 壊れたエントリ）とは
+ * 一目で区別できるタイトルにしてある。件数だけでなく「どちらの履歴が出ているか」を
+ * 確認できることが本フィクスチャの目的なので、他の3件と文言が被らないようにする。
+ */
+function otherProjectSessionJsonl(cwd: string, sessionId: string): string {
+  return [
+    JSON.stringify({ type: 'mode', sessionId, cwd, timestamp: '2026-07-22T10:00:00.000Z' }),
+    JSON.stringify({
+      type: 'user',
+      sessionId,
+      cwd,
+      gitBranch: 'main',
+      timestamp: '2026-07-22T10:00:01.000Z',
+      message: { role: 'user', content: '別プロジェクトのログ集計バッチを直したい' },
+    }),
+    JSON.stringify({
+      type: 'ai-title',
+      sessionId,
+      aiTitle: '別プロジェクトのログ集計バッチ修正',
+      timestamp: '2026-07-22T10:00:02.000Z',
+    }),
+  ].join('\n');
+}
+
+/**
  * 隔離環境を構築してアプリを起動する。
  * 各テストで呼び、必ず closeApp で後始末する。
  */
@@ -226,6 +259,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'ai-terminal-e2e-')));
   const workDir = join(home, 'work', 'demo-project');
   mkdirSync(workDir, { recursive: true });
+  // cwd 追従（S43）の cd 先。アプリの起動時 cwd（workDir）とは別ディレクトリとして
+  // 常に用意しておく（履歴フィクスチャの有無に関わらず、cd 自体はどのシナリオでも可能にする）。
+  const otherWorkDir = join(home, 'work', 'other-project');
+  mkdirSync(otherWorkDir, { recursive: true });
 
   // シェルのプロンプトを固定する。
   // 既定のままだと実マシンのユーザー名とホスト名がプロンプトに出てしまい、
@@ -265,6 +302,16 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       const when = new Date(Date.UTC(2026, 6, 20 + index, 10, 0, 0));
       utimesSync(file, when, when);
     });
+
+    // 2つ目の作業ディレクトリ（otherWorkDir）専用の履歴。cwd 追従（S43）で
+    // 「cd した先の履歴に切り替わる」ことを、タイトルの違いまで確認するために使う。
+    const otherProjectDir = join(home, '.claude', 'projects', encodeProjectDir(otherWorkDir));
+    mkdirSync(otherProjectDir, { recursive: true });
+    const otherSessionId = '44444444-4444-4444-8444-444444444444';
+    const otherFile = join(otherProjectDir, `${otherSessionId}.jsonl`);
+    writeFileSync(otherFile, `${otherProjectSessionJsonl(otherWorkDir, otherSessionId)}\n`);
+    const otherWhen = new Date(Date.UTC(2026, 6, 23, 10, 0, 0));
+    utimesSync(otherFile, otherWhen, otherWhen);
   }
 
   // 偽 CLI を置く bin ディレクトリ（実行権限を確実に付ける）
@@ -428,7 +475,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     // 再試行は playwright.config.ts の retries に委ねる。
     const window = await app.firstWindow({ timeout: 15_000 });
     await window.waitForLoadState('domcontentloaded');
-    return { app, window, home, workDir };
+    return { app, window, home, workDir, otherWorkDir };
   } catch (err) {
     // ウィンドウが出ないまま失敗した Electron は、呼び出し側が LaunchedApp を
     // 受け取れないため誰にも close されない。ここで確実に始末する。

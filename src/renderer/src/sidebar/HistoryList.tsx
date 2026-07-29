@@ -32,15 +32,6 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
   const [loading, setLoading] = useState(false);
   const [cwdReady, setCwdReady] = useState(isSharedCwdResolved());
 
-  // cwd がまだ解決されていない場合、他の場所（App 側の起動処理）で解決中であっても
-  // ここでも解決を試みておく（resolveSharedCwd は idempotent なので二重に呼んでも安全）。
-  useEffect(() => {
-    if (isSharedCwdResolved()) return;
-    void resolveSharedCwd();
-    const unsubscribe = subscribeSharedCwd(() => setCwdReady(true));
-    return unsubscribe;
-  }, []);
-
   const load = useCallback(() => {
     if (!isSharedCwdResolved()) return;
     setLoading(true);
@@ -57,10 +48,34 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
       .finally(() => setLoading(false));
   }, [provider]);
 
+  // 購読コールバックから常に最新の load を呼べるようにする ref。
+  // load は provider に依存する useCallback なので、購読の張り直し無しに
+  // 最新版を呼びたい（後述）ときはこの ref 経由で参照する。
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
+  // cwd（アクティブなタブの作業ディレクトリ）が未解決なら他の場所（App 側の起動処理）で
+  // 解決中であってもここでも解決を試みる（resolveSharedCwd は idempotent なので二重に呼んでも安全）。
+  // 購読は cwd が変化するたび（cd への追従・タブ切り替え）に load を呼び直すために、
+  // 初回解決後もそのまま張り続ける。購読自体はマウント時の1回だけ張り、
+  // provider の切り替えで load が再生成されても購読を張り直さない
+  // （張り直すと購読漏れ・二重購読のループの温床になるため、loadRef 経由で最新版を呼ぶ）。
   useEffect(() => {
-    if (!cwdReady) return;
+    if (!isSharedCwdResolved()) {
+      void resolveSharedCwd();
+    }
+    const unsubscribe = subscribeSharedCwd(() => {
+      setCwdReady(true);
+      loadRef.current();
+    });
+    return unsubscribe;
+  }, []);
+
+  // provider の切り替え（load の再生成）で読み直す。cwd がまだ未解決なら load 内部の
+  // ガードで何もしない（解決した時点で上の購読が拾って読み直す）。
+  useEffect(() => {
     load();
-  }, [cwdReady, load]);
+  }, [load]);
 
   // タイトルのインライン編集。編集キーは stableId（gemini は内部 UUID が取れず
   // undefined のことがあり、その場合は編集不可 = 編集ボタンを出さない）。
