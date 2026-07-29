@@ -87,7 +87,14 @@
   --text-terminal: #d4d4d4; /* xterm の前景色に合わせた既定。役割が違うので段の外 */
 
   /* -- アクセント -------------------------------------------------------- */
-  --accent: #5b9cff; /* 選択・フォーカス。最も明るい面の上でも 5.37 */
+  --accent: #5b9cff; /* 選択。最も明るい面の上でも 5.37 */
+
+  /* -- フォーカス -------------------------------------------------------- */
+  /* **アクセント色はフォーカスリングに使えない。**
+     2.4.11 はフォーカスの有無で 3:1 の差を求めるが、
+     PR 5-4 で枠を #7a7a7a に上げた結果 --accent 対 --border-control は 1.70 しかない。
+     白なら 4.29（実測は S40）。上限の色なので、面が何であってもコントラストのコストがゼロ。 */
+  --focus-ring: #ffffff;
 
   /* -- 状態 -------------------------------------------------------------- */
   /* 意味の対応は src/shared/agent-status.ts が唯一の正。
@@ -718,6 +725,30 @@ body {
 
 .memo-panel__textarea:focus {
   border-color: var(--accent);
+}
+
+/* フォーカスの可視化。**outline-offset を負にして内側に描く。**
+   .sidebar__content と .tab-bar__tabs が overflow: auto なので、
+   外側に出すリング（正の offset や box-shadow）はスクロール領域の端で切られる。
+
+   .tab-bar__title-input と .history-item__title-input は、
+   outline: none だけがあって :focus 規則が存在しなかった
+   （= タブ名と履歴タイトルの編集中、フォーカスがどこにあるか一切分からない）。 */
+.tab-bar__title-input:focus,
+.history-item__title-input:focus,
+.memo-panel__textarea:focus,
+.settings__text:focus,
+.settings__number:focus,
+.settings__select:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+/* ボタンには :focus 規則が1つも無く、ブラウザ既定のリングに任せていた。
+   :focus-visible なのでクリックでは出ず、キーボードで辿ったときだけ出る。 */
+button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .memo-panel__target {

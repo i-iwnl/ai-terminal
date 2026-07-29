@@ -154,6 +154,22 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
 
   const settings = await measureContrast(dialog, settingsTargets);
 
+  // **フォーカスは、枠を測り終えてから当てる。**
+  // .settings__text:focus は border-color をアクセントに変えるので、
+  // 先にフォーカスすると「通常の枠」ではなくフォーカス時の枠を測ってしまう。
+  await dialog.locator('.settings__text').first().focus();
+  const focused = await measureContrast(dialog, [
+    {
+      // 2.4.11 は「フォーカスの有無で 3:1 の差」を求める。
+      // リングの色を、フォーカスしていないときの枠の色と比べる。
+      name: 'フォーカスリング（対 通常の枠）',
+      kind: 'non-text',
+      selector: '.settings__text:focus',
+      property: 'outline-color',
+      againstColor: '--border-control',
+    },
+  ]);
+
   await dialog.keyboard.press('Escape').catch(() => undefined);
 
   // --- 記録した値との突き合わせ -------------------------------------------
@@ -177,12 +193,14 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     '作業中のドット（対ホバー面）': { ratio: 5.72, wcag: 'pass' },
     // 設定ウィンドウ（最も明るい面）
     '設定の入力欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.30 から（PR 5-4）
+    // 2.4.11。**アクセント色では 1.70 で満たせない**（PR 5-4 で枠を明るくしたため）
+    'フォーカスリング（対 通常の枠）': { ratio: 4.29, wcag: 'pass' },
     '設定の注記の文字': { ratio: 4.86, wcag: 'pass' }, // 3.29 から。**ここが一番厳しい面**
     '設定の見出しの文字': { ratio: 11.81, wcag: 'pass' }, // 5.17 から（見出しを一段上げた）
     '設定の値の文字': { ratio: 11.81, wcag: 'pass' }, // 9.18 から
   };
 
-  const measured = { ...main, ...settings };
+  const measured = { ...main, ...settings, ...focused };
 
   // 期待値を較正するときに読む。落ちたときに「いくつだったか」が
   // レポートに残るので、記録の更新が推測にならない。
