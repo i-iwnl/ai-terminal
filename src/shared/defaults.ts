@@ -26,14 +26,14 @@ import type { AppConfig, TerminalTheme, WebhookConfig } from './ipc';
  * xterm が塗る領域の外周に色の違う帯が出る（Issue #20 の A-2）。
  */
 export const SURFACE = {
-  /** サイドバー。CSS の --surface-0 */
-  sidebar: '#191919',
+  /** サイドバー（最奥）。CSS の --surface-0 */
+  sidebar: '#141414',
   /** ターミナル背景・ウィンドウ既定。CSS の --surface-1 */
   base: '#1e1e1e',
   /** 行のホバー。CSS の --surface-2 */
   hover: '#222222',
-  /** 設定ウィンドウ・浮いた面。CSS の --surface-3 */
-  raised: '#232323',
+  /** 設定ウィンドウ・浮いた面（最前）。CSS の --surface-3 */
+  raised: '#282828',
 } as const;
 
 export const DEFAULT_THEME: TerminalTheme = {

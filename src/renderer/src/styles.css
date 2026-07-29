@@ -30,21 +30,23 @@
   color-scheme: dark;
 
   /* -- 面 ---------------------------------------------------------------- */
-  /* 数字が大きいほど手前。PR 5 で #141414 / #1b1b1b / #222222 / #2b2b2b の
-     4段に整える。いまは現行の実値をそのまま置いている。 */
-  --surface-0: #191919; /* サイドバー。PR 5 -> #141414 */
-  --surface-1: #1e1e1e; /* ターミナル背景・ウィンドウ既定。PR 5 -> #1b1b1b */
-  --surface-2: #222222; /* 行のホバー */
-  --surface-3: #232323; /* 設定ウィンドウ・浮いている面。PR 5 -> #2b2b2b */
+  /* 数字が大きいほど手前。**--surface-1（ターミナル背景）は動かさない。**
+     ここは画面の78%を占め、xterm が塗る背景と一致していなければならない
+     （ずれると .terminal-pane__container の padding の分だけ外周に帯が出る）。
+     動かす必然性が無いのに動かすと、既定テーマの変更・既存 config.json の移行・
+     E2E ハーネスの追従を丸ごと背負うことになる。
+     src/shared/defaults.ts の SURFACE と一致していること（単体テストが検査する）。 */
+  --surface-0: #141414; /* サイドバー（最奥） */
+  --surface-1: #1e1e1e; /* ターミナル背景・ウィンドウ既定 */
+  --surface-2: #222222; /* 行のホバー（対サイドバーで 1.16） */
+  --surface-3: #282828; /* 設定ウィンドウ・浮いた面（最前） */
 
-  /* 現行の CSS には意味と対応しない中間色が残っている。
-     PR 5 で上の4段へ畳む前提の、移行用トークン（PR 5 で削除する）。 */
-  --surface-tabbar: #1a1a1a; /* PR 5 -> --surface-1 へ畳む */
-  --surface-tab-active: #262626; /* PR 5 -> --surface-2 へ畳む */
-  --surface-input: #1c1c1c; /* 設定の入力欄 */
-  --surface-textarea: #202020; /* メモの入力欄 */
-  --surface-field: #333333; /* インライン編集の入力欄 */
-  --surface-float: #2a2a2a; /* 検索バーなど、ターミナルの上に浮く面 */
+  /* 選択中タブの塗り。**上の4段には畳めない。**
+     これは「奥行き」ではなく「状態」で、値はタブバー（--surface-1）との比で決まる。
+     --surface-3 に畳むと対 --surface-1 で 1.13 となり、現状の 1.15 より悪くなる。
+     #2e2e2e で 1.23。**それでも 1.4.11 の 3:1 には遠く、塗りだけで選択状態を
+     表しているのが本当の問題**（下線を足すのは次周の必須項目）。 */
+  --surface-tab-active: #2e2e2e;
 
   /* -- 境界 -------------------------------------------------------------- */
   --border-subtle: #2a2a2a; /* 区切り線。1.4.11 の対象外（装飾） */
@@ -52,7 +54,9 @@
   --border-section: #303030; /* 設定のセクション区切り */
   /* ここから下は「入力欄・ボタンの唯一の境界」に使われており、
      現状 1.4.11（3:1）を大きく割っている。PR 5 で #747474 に寄せる。 */
-  --border-control: #3a3a3a; /* 設定の入力欄（対 --surface-input で 1.38）。PR 5 -> #747474 */
+  /* 実測は S40（e2e/specs/S40-contrast-contract.spec.ts）が唯一の正。
+     手で書いた表は3周続けて誤った（原因はいつも「背景をどれと見なすか」）。 */
+  --border-control: #3a3a3a; /* 設定の入力欄。PR 5-4 -> #747474 */
   --border-control-muted: #333333; /* 履歴のボタン（対 --surface-0 で 1.39）。PR 5 -> #747474 */
   --border-control-strong: #4a4a4a; /* インライン編集・検索欄 */
   --border-search: #444444; /* 検索欄（対 --surface-1 で 1.71）。PR 5 -> #747474 */
@@ -225,7 +229,7 @@ body {
   align-items: stretch;
   height: 36px;
   flex-shrink: 0;
-  background: var(--surface-tabbar);
+  background: var(--surface-1);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -278,7 +282,7 @@ body {
   font: inherit;
   font-size: var(--fs-sm);
   color: inherit;
-  background: var(--surface-field);
+  background: var(--surface-3);
   border: 1px solid var(--border-control-strong);
   border-radius: var(--radius-sm);
   padding: 0 2px;
@@ -373,7 +377,7 @@ body {
   z-index: 10;
   display: flex;
   gap: var(--sp-1);
-  background: var(--surface-float);
+  background: var(--surface-3);
   padding: var(--sp-1) 6px;
   border-radius: 4px;
   box-shadow: var(--shadow-float);
@@ -629,7 +633,7 @@ body {
   font: inherit;
   font-size: var(--fs-sm);
   color: inherit;
-  background: var(--surface-field);
+  background: var(--surface-3);
   border: 1px solid var(--border-control-strong);
   border-radius: var(--radius-sm);
   padding: 0 2px;
@@ -682,7 +686,7 @@ body {
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
   color: var(--text-primary);
-  background: var(--surface-textarea);
+  background: var(--surface-1);
   border: 1px solid var(--border-control-muted);
   border-radius: var(--radius-md);
   padding: 6px;
@@ -849,7 +853,7 @@ body {
   font: inherit;
   font-size: var(--fs-sm);
   color: var(--text-primary);
-  background: var(--surface-input);
+  background: var(--surface-1);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   padding: 3px 6px;
