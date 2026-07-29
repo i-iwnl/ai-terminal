@@ -59,8 +59,26 @@ describe('matchShortcut', () => {
     expect(matchShortcut(keyEvent({ key: 'c', metaKey: true, shiftKey: true }))).toEqual({
       type: 'new-claude-tab',
     });
-    expect(matchShortcut(keyEvent({ key: 'g', metaKey: true, shiftKey: true }))).toEqual({
+    // gemini は Cmd+Shift+E（g-E-mini の E）。Cmd+Shift+G は「前を検索」に明け渡した
+    // （下の再発防止テスト参照）。
+    expect(matchShortcut(keyEvent({ key: 'e', metaKey: true, shiftKey: true }))).toEqual({
       type: 'new-gemini-tab',
+    });
+  });
+
+  // Issue #62: Cmd+Shift+G は Safari / Xcode / TextEdit など macOS 全域で「前を検索」の
+  // 標準キー。ここを以前は gemini の起動に割り当てており、検索中に反射で押すと
+  // 本物の gemini が1本余計に起動する事故があった（Cmd+K を画面消去に残した経緯と
+  // 同じ型の事故）。二度と gemini の起動に割り当てないことをここで固定する。
+  it('Cmd+Shift+G は前を検索に割り当てる（gemini の起動ではない）', () => {
+    expect(matchShortcut(keyEvent({ key: 'g', metaKey: true, shiftKey: true }))).toEqual({
+      type: 'find-previous',
+    });
+  });
+
+  it('Cmd+G は次を検索に割り当てる', () => {
+    expect(matchShortcut(keyEvent({ key: 'g', metaKey: true }))).toEqual({
+      type: 'find-next',
     });
   });
 

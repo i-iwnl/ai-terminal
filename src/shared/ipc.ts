@@ -375,6 +375,8 @@ export type AppAction =
   | { type: 'new-claude-tab' }
   | { type: 'new-gemini-tab' }
   | { type: 'toggle-search' }
+  | { type: 'find-next' }
+  | { type: 'find-previous' }
   | { type: 'toggle-settings' }
   | { type: 'clear-terminal' };
 

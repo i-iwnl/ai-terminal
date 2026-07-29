@@ -67,9 +67,14 @@ test('S36 アプリケーションメニューが定義され、再読み込み�
 
   expect(byLabel.get('新しいシェルタブ')?.accelerator).toBe('Cmd+T');
   expect(byLabel.get('新しい Claude タブ')?.accelerator).toBe('Cmd+Shift+C');
-  expect(byLabel.get('新しい Gemini タブ')?.accelerator).toBe('Cmd+Shift+G');
+  // gemini は Cmd+Shift+E（Issue #62）。Cmd+Shift+G は macOS 全域の「前を検索」の
+  // 標準キーで、検索中に反射で押すと本物の gemini が1本余計に起動する事故があった。
+  expect(byLabel.get('新しい Gemini タブ')?.accelerator).toBe('Cmd+Shift+E');
   expect(byLabel.get('タブを閉じる')?.accelerator).toBe('Cmd+W');
   expect(byLabel.get('ターミナル内を検索')?.accelerator).toBe('Cmd+F');
+  // 次を検索 / 前を検索も Issue #62 で追加。前を検索が Cmd+Shift+G を引き取っている。
+  expect(byLabel.get('次を検索')?.accelerator).toBe('Cmd+G');
+  expect(byLabel.get('前を検索')?.accelerator).toBe('Cmd+Shift+G');
   expect(byLabel.get('設定...')?.accelerator).toBe('Cmd+,');
 
   // Cmd+K は「画面を消去」。iTerm2 / Terminal.app / Ghostty と揃える。

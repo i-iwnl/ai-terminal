@@ -86,6 +86,16 @@ export default function App(): ReactElement {
         if (id) handlesRef.current.get(id)?.toggleSearch();
         break;
       }
+      case 'find-next': {
+        const id = api.activeTabId;
+        if (id) handlesRef.current.get(id)?.findNext();
+        break;
+      }
+      case 'find-previous': {
+        const id = api.activeTabId;
+        if (id) handlesRef.current.get(id)?.findPrevious();
+        break;
+      }
       case 'clear-terminal': {
         const id = api.activeTabId;
         if (id) handlesRef.current.get(id)?.clear();

@@ -94,23 +94,29 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
           <input
             autoFocus
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              // useTerminal 側にも控えておく。グローバルショートカット（Cmd+G 等）は
+              // この入力欄にフォーカスが無い状態でも呼ばれるため、React state ではなく
+              // handle が持つ最新値を見て検索する。
+              handle.setSearchTerm(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.stopPropagation();
                 handle.closeSearch();
               } else if (e.key === 'Enter') {
                 e.stopPropagation();
-                if (e.shiftKey) handle.findPrevious(searchTerm);
-                else handle.findNext(searchTerm);
+                if (e.shiftKey) handle.findPrevious();
+                else handle.findNext();
               }
             }}
             placeholder="検索"
           />
-          <button onClick={() => handle.findPrevious(searchTerm)} title="前を検索">
+          <button onClick={() => handle.findPrevious()} title="前を検索">
             前
           </button>
-          <button onClick={() => handle.findNext(searchTerm)} title="次を検索">
+          <button onClick={() => handle.findNext()} title="次を検索">
             次
           </button>
           <button onClick={() => handle.closeSearch()} title="検索を閉じる">
