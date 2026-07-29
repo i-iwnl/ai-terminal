@@ -145,6 +145,12 @@
   --sp-4: 16px;
   --sp-6: 24px;
 
+  /* -- ターゲットサイズ ---------------------------------------------------- */
+  /* WCAG 2.2 の 2.5.8 Target Size（AA）。閉じるボタン類が軒並みこれを割っていた
+     （Issue #20 の調査で 8x14 〜 40x17）。値は仕様が定める数値そのもので、
+     他のトークンのような実測の余地は無い。 */
+  --target-size-min: 24px;
+
   /* -- 角丸と影 ---------------------------------------------------------- */
   --radius-sm: 2px;
   --radius-md: 3px;
@@ -778,6 +784,50 @@ body {
 button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
+}
+
+/* WCAG 2.2 の 2.5.8 Target Size（AA、最小 24x24 CSS px）対応。
+ *
+ * 見た目のボタン自体は小さいまま変えず、::before の透明な当たり判定だけを
+ * 24x24 まで広げる。position: absolute の疑似要素は通常フローから外れるため、
+ * タブバーの高さ 36px・履歴行の詰まり方といった既存のレイアウトを一切押し広げない
+ * （min-width / min-height を直接足すとここが動く。design-review/reference/design-rules.md 3章）。
+ *
+ * width/height は max(100%, --target-size-min) にしてあるので、
+ * **すでに 24px 以上ある辺は広げない**（縮めもしない）。これにより:
+ *   - 履歴の「メモ」「編集」・履歴のプロバイダ切替 / 更新・検索の「前」「次」「x」は
+ *     幅がもともと 24px 以上あるため高さだけが伸び、隣のボタンの当たり判定とは重ならない
+ *     （幅方向には一切広がらないため）
+ *   - タブの閉じる・通知バナーの閉じる・メモの閉じるは隣に別のボタンが無いため、
+ *     広がった分がテキストや余白に重なっても押し間違いは増えない
+ *
+ * 対象は Issue #20 調査時点の7種類のうち6種類。設定の閉じるボタンは
+ * #25（PR #35）で設定が独立ウィンドウ化された際に画面上のボタンごと無くなり
+ * （Escape / Cmd+W / OS のクローズボタンのみになった）、対象が消滅している。 */
+.tab-bar__close,
+.notice-banner button,
+.memo-panel__close,
+.history-item__action,
+.history-list__providers button,
+.history-list__reload,
+.terminal-search button {
+  position: relative;
+}
+
+.tab-bar__close::before,
+.notice-banner button::before,
+.memo-panel__close::before,
+.history-item__action::before,
+.history-list__providers button::before,
+.history-list__reload::before,
+.terminal-search button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, var(--target-size-min));
+  height: max(100%, var(--target-size-min));
 }
 
 .memo-panel__target {
