@@ -24,6 +24,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// アプリの既定値をそのまま使う。**e2e は tsconfig の @shared エイリアスの
+// 対象外なので相対パスで読む**（エイリアスにすると Playwright の変換で解決できない）。
+import { DEFAULT_THEME } from '../../src/shared/defaults';
+
 // package.json が "type": "module" のため __dirname は使えない
 const REPO_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const FIXTURES_DIR = join(REPO_ROOT, 'e2e/fixtures');
@@ -136,6 +140,17 @@ export function encodeProjectDir(cwd: string): string {
   return cwd.replaceAll('/', '-');
 }
 
+/**
+ * E2E で書き込む config.json の中身。
+ *
+ * **theme はアプリの既定値をそのまま使う（自前で書かない）。**
+ * ここに色を手で書いていたせいで、`src/shared/defaults.ts` の既定色を変えても
+ * E2E とスクリーンショットには届かない状態になっていた。
+ * ターミナルの背景は CSS の面と一致していなければならない（Issue #20 の A-2）ので、
+ * 片方だけ動くと、撮影した画像すべてに 4px の帯が写る。
+ *
+ * theme 以外は「速く・決定的に」するための E2E 固有の値なので、ここで指定する。
+ */
 const DEFAULT_CONFIG = {
   fontFamily: 'Menlo, monospace',
   fontSize: 13,
@@ -146,12 +161,7 @@ const DEFAULT_CONFIG = {
   notifyOnIdle: true,
   notifySound: false,
   scopeAgentsToCwd: false,
-  theme: {
-    background: '#1e1e1e',
-    foreground: '#d4d4d4',
-    cursor: '#d4d4d4',
-    selectionBackground: '#264f78',
-  },
+  theme: DEFAULT_THEME,
 };
 
 /** 正常な履歴 JSONL（title あり） */

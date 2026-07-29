@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
+import { SURFACE } from '@shared/defaults';
 
 import { registerPtyHandlers, disposePtyAll } from './pty/manager';
 import { registerAgentHandlers } from './agents/poller';
@@ -39,7 +40,9 @@ function createWindow(): BrowserWindow {
     // ターミナルアプリらしい見た目（macOS の信号機ボタンをタイトルバーに埋め込む）
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: '#1e1e1e',
+    // ライブリサイズ中に macOS が塗る色。CSS の --surface-1 とずれると、
+    // ウィンドウを掴んで動かしている間だけ違う色の帯が見える。
+    backgroundColor: SURFACE.base,
     webPreferences: {
       // package.json が "type": "module" のため、electron-vite は preload を
       // ESM（.mjs）として出力する。拡張子を .js にすると読み込みに失敗する。

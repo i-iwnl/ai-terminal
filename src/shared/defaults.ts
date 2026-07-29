@@ -14,8 +14,30 @@
 
 import type { AppConfig, TerminalTheme, WebhookConfig } from './ipc';
 
+/**
+ * 面の色。**CSS の `--surface-*` と同じ値でなければならない。**
+ *
+ * CSS 変数は Main プロセスから読めないため、この2つは構造的に統一できない。
+ * 揃っていることは `test/unit/css-tokens.test.ts` が機械で突き合わせる
+ * （「揃えてある」というコメントだけで守るのを、このリポジトリは一度失敗している）。
+ *
+ * **とくに `base` は、CSS の面と xterm が塗る背景の両方になる。**
+ * `.terminal-pane__container` には padding があるので、片方だけ変えると
+ * xterm が塗る領域の外周に色の違う帯が出る（Issue #20 の A-2）。
+ */
+export const SURFACE = {
+  /** サイドバー。CSS の --surface-0 */
+  sidebar: '#191919',
+  /** ターミナル背景・ウィンドウ既定。CSS の --surface-1 */
+  base: '#1e1e1e',
+  /** 行のホバー。CSS の --surface-2 */
+  hover: '#222222',
+  /** 設定ウィンドウ・浮いた面。CSS の --surface-3 */
+  raised: '#232323',
+} as const;
+
 export const DEFAULT_THEME: TerminalTheme = {
-  background: '#1e1e1e',
+  background: SURFACE.base,
   foreground: '#d4d4d4',
   cursor: '#d4d4d4',
   selectionBackground: '#264f78',
