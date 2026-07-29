@@ -12,6 +12,7 @@ import { registerAppPathHandlers } from './app-paths';
 import { registerApplicationMenu } from './menu';
 import { registerAccessibilityHandlers } from './accessibility';
 import { registerSettingsWindowHandlers } from './settings-window';
+import { ensureLoginShellPath } from './shell-path';
 
 // dev 起動（非パッケージ実行）と安定版 .app の userData を分離する。
 // 同じ productName を共有するため、分けないと同時起動時に localStorage や
@@ -20,6 +21,11 @@ import { registerSettingsWindowHandlers } from './settings-window';
 if (!app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')) {
   app.setPath('userData', `${app.getPath('userData')}-dev`);
 }
+
+// Finder 起動では launchd の最小 PATH しか継承しないため、ログインシェルの PATH を
+// 補完する。Electron の初期化と並行して始め、IPC ハンドラ登録前（= claude / gemini を
+// 探しに行く前）に await で確定させる。
+const shellPathReady = ensureLoginShellPath();
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -68,7 +74,11 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  // PATH が確定する前にポーリングや PTY 起動が走ると ENOENT になるため、ここで待つ。
+  // ensureLoginShellPath はタイムアウト付きで、失敗しても resolve する（起動を止めない）。
+  await shellPathReady;
+
   mainWindow = createWindow();
 
   // 既定メニューを自前のものに差し替える。
