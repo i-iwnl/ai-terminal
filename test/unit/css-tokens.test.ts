@@ -35,7 +35,10 @@ const { root, rest } = splitRoot(CSS);
  * 衝突が解消したら消すこと（消し忘れは下の「もう重複していない名前が残っていない」が捕まえる）。
  */
 const INTENTIONAL_DUPLICATES = new Set<string>([
-  // **いまは1件も無い。**
+  // フォーカスリングと選択中タブの文字が、どちらも #ffffff。
+  // **役割が違う**（前者は 2.4.11 のフォーカス表示、後者は選択状態の文字）。
+  // どちらも「上限の色」であることに意味があるので、畳むと片方の根拠が消える。
+  '--focus-ring',
   //
   // PR 5-2 で3件（--border-row / --surface-field / --surface-float）、
   // PR 5-3 で1件（--status-unknown。相方だった --text-faint が消えた）が
