@@ -37,6 +37,8 @@ make unit          # 単体テストのみ（vitest。純粋関数だけを対�
 make e2e           # E2E（Playwright + Electron。ウィンドウは表示しない）
 make e2e-visible   # E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ）
 make build         # 本番ビルド
+make package       # 安定版の .app / dmg を dist/ に生成（ローカル用・署名は ad-hoc）
+make install-app   # package まで一括で行い /Applications へ入れ替える（起動中は中止する）
 make docker-verify # typecheck + lint + build を Docker コンテナ内で実行
 ```
 

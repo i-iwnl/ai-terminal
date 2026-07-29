@@ -7,13 +7,13 @@
 // 全書き換え write / registerHandlers）を雛形にして揃えている。
 
 import { ipcMain } from 'electron';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { IpcInvoke, type HistoryProvider, type SetSessionTitleRequest } from '@shared/ipc';
+import { dataDir } from '../data-dir';
 
-const TITLES_DIR = join(homedir(), '.ai-terminal');
+const TITLES_DIR = dataDir();
 const TITLES_PATH = join(TITLES_DIR, 'session-titles.json');
 
 /** 保存キーの型。provider:stableId -> title */

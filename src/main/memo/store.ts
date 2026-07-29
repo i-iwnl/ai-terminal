@@ -10,7 +10,6 @@
 // どちらも並び替えに強い（行番号由来の sessionId は使わない）。
 
 import { ipcMain } from 'electron';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -21,8 +20,9 @@ import {
   type MemoEntry,
   type SetMemoRequest,
 } from '@shared/ipc';
+import { dataDir } from '../data-dir';
 
-const MEMO_DIR = join(homedir(), '.ai-terminal');
+const MEMO_DIR = dataDir();
 const MEMO_PATH = join(MEMO_DIR, 'memos.json');
 
 /** 全体メモの保存キー。セッションキーは `session:` 始まりなので衝突しない。 */
