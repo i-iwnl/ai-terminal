@@ -26,6 +26,11 @@ export interface ClaudeAgentsResult {
   tasks: AgentTask[];
   /** 取得・パースに失敗した場合の理由。成功時は undefined */
   error?: string;
+  /**
+   * error の機械判定用。'not-found' は claude が PATH に無い（ENOENT）ことを表し、
+   * 呼び出し側（poller.ts）が PATH の再解決を試みる判断に使う。
+   */
+  errorKind?: 'not-found' | 'timeout' | 'failed';
 }
 
 /**
@@ -52,30 +57,34 @@ export async function listClaudeAgents(cwd?: string): Promise<ClaudeAgentsResult
     });
     stdout = result.stdout;
   } catch (err) {
-    return { tasks: [], error: describeExecError(err) };
+    const described = describeExecError(err);
+    return { tasks: [], error: described.message, errorKind: described.kind };
   }
 
   return parseAgentsJson(stdout);
 }
 
-/** execFile が失敗したときのエラーを、日本語の短い説明に変換する。 */
-function describeExecError(err: unknown): string {
+/** execFile が失敗したときのエラーを、日本語の短い説明と機械判定用の種別に変換する。 */
+function describeExecError(err: unknown): { message: string; kind: 'not-found' | 'timeout' | 'failed' } {
   if (err && typeof err === 'object') {
     const e = err as NodeJS.ErrnoException & { killed?: boolean; stderr?: string };
 
     if (e.code === 'ENOENT') {
-      return 'claude コマンドが見つかりません（PATH を確認してください）';
+      return { message: 'claude コマンドが見つかりません（PATH を確認してください）', kind: 'not-found' };
     }
     if (e.killed) {
-      return `claude agents --json の実行がタイムアウトしました（${EXEC_TIMEOUT_MS}ms）`;
+      return {
+        message: `claude agents --json の実行がタイムアウトしました（${EXEC_TIMEOUT_MS}ms）`,
+        kind: 'timeout',
+      };
     }
     const stderrSnippet = typeof e.stderr === 'string' && e.stderr.trim().length > 0
       ? `: ${e.stderr.trim().slice(0, 200)}`
       : '';
     const message = e.message ?? '不明なエラー';
-    return `claude agents --json の実行に失敗しました（${message}）${stderrSnippet}`;
+    return { message: `claude agents --json の実行に失敗しました（${message}）${stderrSnippet}`, kind: 'failed' };
   }
-  return 'claude agents --json の実行に失敗しました（不明なエラー）';
+  return { message: 'claude agents --json の実行に失敗しました（不明なエラー）', kind: 'failed' };
 }
 
 /**

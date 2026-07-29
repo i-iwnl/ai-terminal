@@ -343,7 +343,7 @@ node scripts/fix-node-pty.mjs
 
 **`claude コマンドが見つかりません` と表示される**
 
-`claude` が PATH にあるか確認する。アプリはログインシェル（`$SHELL -l`）で PTY を起動するので、`.zprofile` などで PATH を通していれば拾える。
+ターミナルで `claude` が動くか確認する。アプリは起動時にログインシェル（`$SHELL -i -l`）から PATH を取得して補完するので、`.zprofile` や `.zshrc` で PATH を通していれば、Finder / Dock から起動したパッケージ版でも拾える。ターミナルでは動くのにアプリでだけ見つからない場合は、`echo $SHELL` が普段使っているシェルを指しているかを確認する。
 
 **タスク一覧が空のまま**
 
