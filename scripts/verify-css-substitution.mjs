@@ -83,12 +83,23 @@ if (current.length === base.length && current.every((line, i) => line === base[i
 }
 
 console.log(`[FAIL] トークンを展開した結果が ${BASE_REV} と一致しない（値が変わっている）`);
-const baseSet = new Set(base);
-const currentSet = new Set(current);
-for (const line of base) {
-  if (!currentSet.has(line)) console.log(`  - ${line}`);
-}
-for (const line of current) {
-  if (!baseSet.has(line)) console.log(`  + ${line}`);
+
+// **出現回数まで見る。** 集合で比べると「4箇所あった 10px が1箇所になった」のように
+// 既に存在する値へ寄せた変更が1行も出ない（相手の値が base にも current にもあるため）。
+// 値を変える PR ではこれが主な変更の形なので、集合比較では受け入れ基準として使えない。
+const countBy = (lines) => {
+  const out = new Map();
+  for (const line of lines) out.set(line, (out.get(line) ?? 0) + 1);
+  return out;
+};
+const baseCount = countBy(base);
+const currentCount = countBy(current);
+for (const line of new Set([...baseCount.keys(), ...currentCount.keys()])) {
+  const b = baseCount.get(line) ?? 0;
+  const c = currentCount.get(line) ?? 0;
+  if (b === c) continue;
+  if (c === 0) console.log(`  - ${line} (${b}箇所 -> 0)`);
+  else if (b === 0) console.log(`  + ${line} (0 -> ${c}箇所)`);
+  else console.log(`  ~ ${line} (${b}箇所 -> ${c}箇所)`);
 }
 process.exit(1);
