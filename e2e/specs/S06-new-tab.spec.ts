@@ -15,7 +15,9 @@ test('S06 新しいシェルタブを開ける', async () => {
   const { window } = launched;
 
   // 起動直後に開く最初のシェルタブが表示されるまで待つ。
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 直接の子孫（>）ではなく子孫セレクタにする。role="tablist" 化（Issue #20 PR 9）で
+  // タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の3階層になったため。
+  const tabs = window.locator('.tab-bar__tab');
   await expect(tabs).toHaveCount(1);
 
   // ショートカット（Cmd+T）でタブを増やす。

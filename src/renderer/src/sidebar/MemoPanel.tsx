@@ -3,6 +3,11 @@
 // 保存は明示ボタンではなく、入力停止から一定時間後の自動保存 ＋ blur 時の保存。
 // ターミナルを触りながら書き殴る用途なので、保存操作を意識させないことを優先する。
 // Main 側は本文が空になったらそのメモを削除するため、消す操作も「全部消す」で足りる。
+//
+// Issue #20 PR 9: セッションメモ一覧の行は `<li onClick>` で、キーボードでは
+// 到達できなかった。#64 / PR #80（TaskList.tsx）の流儀に合わせ、`<li>` は
+// 保ったまま中身を <button> にする。行にメモ以外のインタラクティブ要素が
+// 無い（TaskList のような div/button の分岐が不要）ため、全行を常に <button> にする。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HistoryProvider, ListMemosResult, SetMemoRequest } from '@shared/ipc';
@@ -246,29 +251,47 @@ export default function MemoPanel({ target, onSelectTarget }: MemoPanelProps) {
                 target !== null &&
                 target.provider === memo.provider &&
                 target.stableId === memo.stableId;
+              const title = memo.title ?? `セッション ${(memo.stableId ?? '').slice(0, 8)}`;
+              const preview = previewOf(memo.body);
+              // 視覚順（タイトル -> 本文冒頭 -> プロバイダ -> 更新時刻）をそのまま
+              // 読み上げ順にする。「開く」を明示するのは、タイトル文字列だけでは
+              // 押すと何が起きるか伝わらないため（history-item__row と同じ理由）。
+              const ariaLabel = [
+                title,
+                preview,
+                memo.provider,
+                formatRelativeTime(memo.updatedAt),
+                '開く',
+              ]
+                .filter((part): part is string => part !== undefined && part !== '')
+                .join('、');
               return (
                 <li
                   key={`${memo.provider ?? ''}:${memo.stableId ?? ''}`}
                   className={`memo-item${isOpen ? ' is-open' : ''}`}
-                  onClick={() => {
-                    // provider / stableId は Main が保存キーから復元して必ず埋めるが、
-                    // 型の上では optional なのでここで確定させる。
-                    if (!memo.stableId || !memo.provider) return;
-                    onSelectTarget({
-                      provider: memo.provider,
-                      stableId: memo.stableId,
-                      title: memo.title ?? `セッション ${memo.stableId.slice(0, 8)}`,
-                    });
-                  }}
                 >
-                  <div className="memo-item__title">
-                    {memo.title ?? `セッション ${(memo.stableId ?? '').slice(0, 8)}`}
-                  </div>
-                  <div className="memo-item__preview">{previewOf(memo.body)}</div>
-                  <div className="memo-item__meta">
-                    <span>{memo.provider}</span>
-                    <span>{formatRelativeTime(memo.updatedAt)}</span>
-                  </div>
+                  <button
+                    type="button"
+                    className="memo-item__row"
+                    aria-label={ariaLabel}
+                    onClick={() => {
+                      // provider / stableId は Main が保存キーから復元して必ず埋めるが、
+                      // 型の上では optional なのでここで確定させる。
+                      if (!memo.stableId || !memo.provider) return;
+                      onSelectTarget({
+                        provider: memo.provider,
+                        stableId: memo.stableId,
+                        title,
+                      });
+                    }}
+                  >
+                    <div className="memo-item__title">{title}</div>
+                    <div className="memo-item__preview">{preview}</div>
+                    <div className="memo-item__meta">
+                      <span>{memo.provider}</span>
+                      <span>{formatRelativeTime(memo.updatedAt)}</span>
+                    </div>
+                  </button>
                 </li>
               );
             })}

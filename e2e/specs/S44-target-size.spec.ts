@@ -80,7 +80,9 @@ test('S44 小さいボタンの当たり判定が 24x24 CSS px 以上ある', as
   // 1) タブの閉じるボタン。
   //    1枚目のまま閉じるとタブが0枚になり、自動で新しいシェルが開く挙動
   //    （S08）を誘発してしまうので、2枚目を開いてからそちらの閉じるボタンを測る。
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 直接の子孫（>）ではなく子孫セレクタにする。role="tablist" 化（Issue #20 PR 9）で
+  // タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の3階層になったため。
+  const tabs = window.locator('.tab-bar__tab');
   await expect(tabs).toHaveCount(1);
   await window.keyboard.press('Meta+t');
   await expect(tabs).toHaveCount(2);
