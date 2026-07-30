@@ -19,6 +19,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import { matchShortcut } from '../lib/shortcuts';
 import { subscribePty } from './ptyStream';
+import { shouldSendResize, type ResizeDims } from './resizeGate';
 
 /** unicode-graphemes アドオンが登録する Unicode バージョン文字列 */
 const GRAPHEME_UNICODE_VERSION = '15-graphemes';
@@ -88,6 +89,33 @@ export function useTerminal(
   // 最新の options を effect 外からも参照できるようにする（Terminal の再生成を避けるため）。
   const optionsRef = useRef(options);
   optionsRef.current = options;
+
+  // 直前に PTY へ送った cols/rows。同値なら resize IPC を送らない（resizeGate.ts）。
+  // インスタンススコープの ref に持つこと（ペインが増えても他インスタンスと混ざらない）。
+  const lastResizeRef = useRef<ResizeDims | null>(null);
+
+  /**
+   * コンテナのサイズに合わせて fit し、値が変わっていれば PTY にも resize を伝える。
+   * ResizeObserver / 初回 RAF（内部呼び出し）と TerminalHandle.fit（外部呼び出し）の
+   * 唯一の実体。ref 経由でしか状態を読まないため、マウント時に作った関数のまま
+   * ずっと使い回せる（TerminalHandle 側は初回レンダーで一度だけ生成されるため）。
+   */
+  const fit = (): void => {
+    const container = containerRef.current;
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!container || !term || !fitAddon) return;
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
+    try {
+      fitAddon.fit();
+    } catch {
+      return;
+    }
+    const dims: ResizeDims = { cols: term.cols, rows: term.rows };
+    if (!shouldSendResize(lastResizeRef.current, dims)) return;
+    lastResizeRef.current = dims;
+    window.api.pty.resize({ ptyId: optionsRef.current.ptyId, cols: dims.cols, rows: dims.rows });
+  };
 
   // Terminal 本体の生成はマウント時に一度だけ行う（ptyId が変わることは実運用上ない）。
   useEffect(() => {
@@ -169,20 +197,10 @@ export function useTerminal(
       },
     );
 
-    const doFit = (): void => {
-      if (container.clientWidth === 0 || container.clientHeight === 0) return;
-      try {
-        fitAddon.fit();
-      } catch {
-        return;
-      }
-      window.api.pty.resize({ ptyId, cols: term.cols, rows: term.rows });
-    };
-
-    const resizeObserver = new ResizeObserver(() => doFit());
+    const resizeObserver = new ResizeObserver(() => fit());
     resizeObserver.observe(container);
     // 初回レイアウト確定後に一度フィットさせる。
-    const initialFitId = window.requestAnimationFrame(doFit);
+    const initialFitId = window.requestAnimationFrame(fit);
 
     return () => {
       window.cancelAnimationFrame(initialFitId);
@@ -239,19 +257,7 @@ export function useTerminal(
 
   const handleRef = useRef<TerminalHandle>({
     focus: () => termRef.current?.focus(),
-    fit: () => {
-      const container = containerRef.current;
-      const term = termRef.current;
-      const fitAddon = fitAddonRef.current;
-      if (!container || !term || !fitAddon) return;
-      if (container.clientWidth === 0 || container.clientHeight === 0) return;
-      try {
-        fitAddon.fit();
-      } catch {
-        return;
-      }
-      window.api.pty.resize({ ptyId: optionsRef.current.ptyId, cols: term.cols, rows: term.rows });
-    },
+    fit,
     clear: () => {
       // xterm の clear() は「現在行を残して、それ以外とスクロールバックを消す」。
       // PTY には触らないので、実行中のプロセスもシェルの状態も影響を受けない。
