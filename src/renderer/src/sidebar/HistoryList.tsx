@@ -5,6 +5,19 @@
 //
 // cwd（作業ディレクトリ）は非同期に解決されるため、解決前は '' を渡して
 // 無駄な失敗を起こさず、「取得中」であることが分かる表示にする。
+//
+// Issue #20 PR 9: 行は `<li onClick>` で resume していたが、キーボードでは
+// 到達できなかった（tabindex も role も無い）。#64 / PR #80（TaskList.tsx）の
+// 流儀に合わせ、`<li>` は保ったまま resume する部分だけを内側の <button> にする。
+// 「メモ」「編集」は資料上ずっと押せるボタンなので、TaskList のような
+// 「押せない行は非対話のまま」という分岐は無い（全行が resume 可能）。
+//
+// ただしこの行には resume 用の <button> の他に「メモ」「編集」という
+// **別の**インタラクティブ要素がある。<button> の中に <button> は入れ子にできない
+// （HTML の内容モデル上、<button> はインタラクティブコンテンツの子孫を許さない）ため、
+// resume 用ボタンは行の中身のうちタイトル・メタ・エラー表示だけを包み、
+// 「メモ」「編集」は兄弟として外に出す。編集中（input 表示中）はどちらも
+// レンダリングしない（元の実装と同じ）。
 
 import {
   useCallback,
@@ -118,47 +131,82 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
       });
   };
 
-  // タイトル表示部分。parseError の縮退表示・通常表示のどちらからも呼び、
-  // 編集ボタン / インライン input への切り替えを共通化する。
-  const renderTitle = (entry: SessionHistoryEntry, displayTitle: string) => {
-    if (entry.stableId !== undefined && editingStableId === entry.stableId) {
+  /** メタ情報（更新時刻・git ブランチ・解析エラー）。編集中・非編集中どちらでも同じものを出す。 */
+  const renderMeta = (entry: SessionHistoryEntry) => (
+    <>
+      <div className="history-item__meta">
+        <span>{formatRelativeTime(entry.updatedAt)}</span>
+        {entry.gitBranch && <span>{entry.gitBranch}</span>}
+      </div>
+      {entry.parseError && (
+        <div className="history-item__error">解析エラー: {entry.parseError}</div>
+      )}
+    </>
+  );
+
+  const renderEntry = (entry: SessionHistoryEntry) => {
+    const displayTitle = sessionDisplayTitle(entry);
+    const stableId = entry.stableId;
+    const isEditingThisRow = stableId !== undefined && editingStableId === stableId;
+
+    if (isEditingThisRow) {
       return (
-        <input
-          className="history-item__title-input"
-          aria-label="履歴タイトルを編集"
-          value={draft}
-          autoFocus
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => setDraft(e.target.value)}
-          onClick={(e: MouseEvent<HTMLInputElement>) => e.stopPropagation()}
-          onDoubleClick={(e: MouseEvent<HTMLInputElement>) => e.stopPropagation()}
-          onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-            if (e.key === 'Enter') {
-              // IME の変換確定の Enter では編集を確定しない。
-              if (e.nativeEvent.isComposing) return;
-              e.preventDefault();
-              // blur が発火して onBlur の二重確定にならないよう、
-              // 確定を先に済ませてから編集状態を抜ける。
-              commitEditing(entry, displayTitle);
-              e.currentTarget.blur();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              cancelEditing();
-              e.currentTarget.blur();
-            }
-          }}
-          onBlur={() => commitEditing(entry, displayTitle)}
-        />
+        <div>
+          <input
+            className="history-item__title-input"
+            aria-label="履歴タイトルを編集"
+            value={draft}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Enter') {
+                // IME の変換確定の Enter では編集を確定しない。
+                if (e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                // blur が発火して onBlur の二重確定にならないよう、
+                // 確定を先に済ませてから編集状態を抜ける。
+                commitEditing(entry, displayTitle);
+                e.currentTarget.blur();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEditing();
+                e.currentTarget.blur();
+              }
+            }}
+            onBlur={() => commitEditing(entry, displayTitle)}
+          />
+          {renderMeta(entry)}
+        </div>
       );
     }
-    // stableId を局所の const に写しておく。プロパティのままだと、
-    // コールバックの中では「undefined ではない」という絞り込みが維持されない。
-    const stableId = entry.stableId;
+
+    // 読み上げの文には「再開する」という操作の意味を明示する（見た目のタイトル文字列
+    // だけでは、押すと何が起きるかが伝わらないため）。視覚順（タイトル -> 相対時刻 ->
+    // ブランチ -> 解析エラー）をそのまま読み上げ順にする。
+    const ariaLabel = [
+      displayTitle,
+      formatRelativeTime(entry.updatedAt),
+      entry.gitBranch,
+      entry.parseError !== undefined ? `解析エラー: ${entry.parseError}` : undefined,
+      '再開する',
+    ]
+      .filter((part): part is string => part !== undefined && part !== '')
+      .join('、');
+
     return (
-      <div className="history-item__title-row">
-        <div className="history-item__title">{displayTitle}</div>
+      <div className="history-item__content">
+        <button
+          type="button"
+          className="history-item__row"
+          aria-label={ariaLabel}
+          onClick={() => onResume(entry)}
+        >
+          <div className="history-item__title">{displayTitle}</div>
+          {renderMeta(entry)}
+        </button>
         {stableId !== undefined && (
-          <>
+          <div className="history-item__actions">
             <button
               type="button"
               className="history-item__action"
@@ -166,11 +214,7 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
               onClick={(e: MouseEvent<HTMLButtonElement>) => {
                 // メモを開くだけで resume は走らせない。
                 e.stopPropagation();
-                onOpenMemo({
-                  provider: entry.provider,
-                  stableId,
-                  title: displayTitle,
-                });
+                onOpenMemo({ provider: entry.provider, stableId, title: displayTitle });
               }}
             >
               メモ
@@ -186,7 +230,7 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
             >
               編集
             </button>
-          </>
+          </div>
         )}
       </div>
     );
@@ -194,6 +238,7 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
 
   return (
     <div className="history-list">
+      <h2 className="history-list__heading">履歴</h2>
       <div className="history-list__toolbar">
         <div className="history-list__providers">
           <button
@@ -229,42 +274,11 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
 
       <ul>
         {cwdReady &&
-          entries.map((entry) => {
-            // 編集中の行はクリックしても resume に波及させない。
-            // input 外の余白クリックは blur -> commitEditing が先に走るが、
-            // その click ハンドラの実行時点ではまだ再レンダー前の
-            // editingStableId（編集中の値）を参照するため、このクリックでは resume しない。
-            const isEditingThisRow = entry.stableId !== undefined && editingStableId === entry.stableId;
-            return (
-              <li
-                key={entry.sessionId}
-                className="history-item"
-                onClick={() => {
-                  if (isEditingThisRow) return;
-                  onResume(entry);
-                }}
-              >
-                {entry.parseError ? (
-                  <div>
-                    {/* 縮退表示でも、上書きタイトル（Main が title に重ねて返す）があればそちらを出す。 */}
-                    {renderTitle(entry, sessionDisplayTitle(entry))}
-                    <div className="history-item__meta">
-                      <span>{formatRelativeTime(entry.updatedAt)}</span>
-                    </div>
-                    <div className="history-item__error">解析エラー: {entry.parseError}</div>
-                  </div>
-                ) : (
-                  <div>
-                    {renderTitle(entry, sessionDisplayTitle(entry))}
-                    <div className="history-item__meta">
-                      <span>{formatRelativeTime(entry.updatedAt)}</span>
-                      {entry.gitBranch && <span>{entry.gitBranch}</span>}
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
+          entries.map((entry) => (
+            <li key={entry.sessionId} className="history-item">
+              {renderEntry(entry)}
+            </li>
+          ))}
       </ul>
     </div>
   );

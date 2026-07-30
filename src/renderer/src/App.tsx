@@ -10,6 +10,7 @@ import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
+import { tabButtonId, tabPanelId } from './tabs/tabAriaIds';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
 // styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
@@ -254,6 +255,9 @@ export default function App(): ReactElement {
               }}
               ptyId={tab.ptyId}
               active={tab.id === tabsApi.activeTabId}
+              // タブバーの role="tab" と対にする（id の生成規則は tabs/tabAriaIds.ts が正）。
+              panelId={tabPanelId(tab.id)}
+              labelledBy={tabButtonId(tab.id)}
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
               theme={config.theme}

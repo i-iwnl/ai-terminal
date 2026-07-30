@@ -297,6 +297,14 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* role="tablist" 自体のコンテナ。ARIA の tablist は「子は role="tab" だけ」が
+   要件のため、隣の「+」ボタン（タブではない）は含めない。1つ外側の
+   .tab-bar__tabs が両者を横並びにする役目を引き継ぐ。 */
+.tab-bar__tablist {
+  display: flex;
+  align-items: stretch;
+}
+
 /* タブの並びの右側の余白部分もドラッグ領域にする */
 .tab-bar__drag-region {
   flex: 1;
@@ -312,7 +320,6 @@ body {
   max-width: 180px;
   color: var(--text-secondary);
   border-right: 1px solid var(--border-subtle);
-  cursor: pointer;
   white-space: nowrap;
 }
 
@@ -323,6 +330,27 @@ body {
 
 .tab-bar__tab.is-exited {
   color: var(--status-exited);
+}
+
+/* タブの選択操作。role="tab" はこの <button> に付け、閉じるボタンとは
+   兄弟にする（<button> の中に <button> を入れ子にできないため）。
+   見た目は元の <div onClick> と揃える必要があるので、ボタンの既定スタイルを
+   ここで打ち消す（task-item__row / history-item__row と同じ考え方）。 */
+.tab-bar__tab-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .tab-bar__title {
@@ -682,10 +710,17 @@ button.task-item__row:hover {
   border-radius: var(--radius-md);
 }
 
+.history-list__heading {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: normal;
+}
+
 .history-item {
   padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border-row);
-  cursor: pointer;
   font-size: var(--fs-sm);
 }
 
@@ -693,10 +728,33 @@ button.task-item__row:hover {
   background: var(--surface-2);
 }
 
-.history-item__title-row {
+/* 通常表示（resume 用ボタン + メモ/編集）の横並び。編集中（input 表示）は
+   このラッパーを使わず、input を直接 .history-item の子にする
+   （history-item__title-input 側。padding は .history-item 自身が持つので
+   どちらの分岐でも同じ余白になる）。 */
+.history-item__content {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
+}
+
+/* resume を実行する本体（Issue #20 PR 9: <li onClick> の解体）。
+   「メモ」「編集」という別のインタラクティブ要素が同じ行にあるため、
+   <button> の中に入れ子にはできない（task-item__row と違い、履歴は
+   全行が resume 可能なので div/button の分岐は無く常に <button>）。 */
+.history-item__row {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .history-item__title {
@@ -704,8 +762,13 @@ button.task-item__row:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
-  min-width: 0;
+}
+
+/* resume 用ボタンの兄弟。<button> に入れ子にできないためここに独立して置く。 */
+.history-item__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* 行のホバー時だけ出す操作ボタン（メモ / 編集）。
@@ -913,19 +976,33 @@ button:focus-visible {
 }
 
 .memo-item {
-  padding: 6px var(--sp-2);
   border: 1px solid transparent;
   border-bottom-color: var(--border-row);
-  cursor: pointer;
-}
-
-.memo-item:hover {
-  background: var(--surface-2);
 }
 
 .memo-item.is-open {
   border-color: var(--accent);
   border-radius: var(--radius-md);
+}
+
+/* 行全体を resume 相当で開く本体（Issue #20 PR 9: <li onClick> の解体）。
+   メモ一覧の行には他のインタラクティブ要素が無いため、task-item__row のような
+   div/button の分岐は無く常に <button>。 */
+.memo-item__row {
+  display: block;
+  width: 100%;
+  padding: 6px var(--sp-2);
+  margin: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.memo-item__row:hover {
+  background: var(--surface-2);
 }
 
 .memo-item__title {

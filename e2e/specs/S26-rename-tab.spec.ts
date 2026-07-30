@@ -14,7 +14,9 @@ test.afterEach(async () => {
 test('S26 タブタイトルをダブルクリックで編集できる', async () => {
   const { window } = launched;
 
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 直接の子孫（>）ではなく子孫セレクタにする。role="tablist" 化（Issue #20 PR 9）で
+  // タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の3階層になったため。
+  const tabs = window.locator('.tab-bar__tab');
   await expect(tabs).toHaveCount(1);
 
   const titleSpan = tabs.first().locator('.tab-bar__title');

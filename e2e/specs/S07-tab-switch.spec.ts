@@ -40,7 +40,9 @@ test('S07 タブを切り替えても各タブの内容が保持される', asyn
 
   const screens = window.locator('.terminal-pane__container .xterm-screen');
   const helperTextareas = window.locator('.xterm-helper-textarea');
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 直接の子孫（>）ではなく子孫セレクタにする。role="tablist" 化（Issue #20 PR 9）で
+  // タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の3階層になったため。
+  const tabs = window.locator('.tab-bar__tab');
 
   // --- タブ1: 目印を出力する ---
   await expect(tabs).toHaveCount(1);

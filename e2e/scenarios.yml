@@ -490,3 +490,57 @@ scenarios:
       assertive の読み上げを割り込んで中断しない。
       aria-label とランドマークの role を読むだけなので、PTY の出力や
       タイミングに依存せず安定する。
+
+  # --- タブとサイドバー行のキーボード到達性（Issue #20 PR 9） -----------------
+  - id: S51
+    title: タブに Tab キーで到達でき、矢印キーで roving tabindex が機能する
+    spec: S51-tab-roving-tabindex.spec.ts
+    readme: false
+    note: >-
+      タブが `<div onClick>` のままで role も tabindex も無く、Tab キーでは
+      到達できなかった。role="tablist" / role="tab" と roving tabindex を
+      実装した。レビューで2件の不具合が出た。
+      1件目は、閉じるボタンに tabIndex を明示しておらず既定値 0 のままで、
+      Tab の停止点が「1 + タブ枚数」になっていたこと。tabIndex={-1} で
+      修正し、能力を減らさないよう role="tab" にフォーカスした状態の
+      Delete / Backspace でそのタブを閉じる経路（WAI-ARIA APG 推奨）を
+      足した。
+      2件目は、矢印キーで「移動 = 選択」にする automatic activation では、
+      選択が変わるたびに TerminalPane.tsx の既存の仕組みがフォーカスを
+      端末へ奪い、xterm が Tab を自前で処理するせいでタブリストへ戻れず、
+      矢印キーでの移動が実質1ホップに制限されていたこと。APG が
+      「activate でフォーカスが移る場合は manual activation」と定めている
+      とおり、矢印キーはフォーカスだけを動かし選択は Enter / Space で
+      切り替える方式に変更した。
+      本 spec は、閉じるボタンが停止点にならないこと、矢印キーを2回以上
+      連続で押して選択を変えずに移動し続けられること（ここが本題）、
+      Enter と Space の両方で初めて選択が切り替わること、Delete と
+      Backspace でキーボードだけでタブを閉じられること、そして
+      role="tab" の aria-controls が指す先に実在する role="tabpanel" が
+      あり逆向きの aria-labelledby も対になっていること（属性の有無だけを
+      見るとリンク切れを緑のまま見逃すため）を検証する。
+
+  - id: S52
+    title: キーボードだけで履歴一覧の resume・メモ・編集ボタンに到達できる
+    spec: S52-history-row-keyboard.spec.ts
+    readme: false
+    note: >-
+      履歴一覧の行が `<li onClick>` のままで resume していた。#64 / PR #80
+      （TaskList.tsx）の流儀に合わせ `<li>` を保ったまま resume 部分だけを
+      <button> にするが、同じ行に「メモ」「編集」という別のインタラクティブ
+      要素があるため、<button> の入れ子にはできず兄弟にする必要がある
+      （<button> は対話的な内容を含められない）。
+      Tab だけで resume ボタン・メモ・編集の3つに独立して到達でき
+      （入れ子による崩れが無いことの証明）、Enter で実際に resume が
+      走ることを見る。
+
+  - id: S53
+    title: キーボードだけでメモ一覧の行に到達し、Enter でメモが開く
+    spec: S53-memo-row-keyboard.spec.ts
+    readme: false
+    note: >-
+      セッションメモ一覧の行が `<li onClick>` のままだった。他の
+      インタラクティブ要素が無いため行全体を1つの <button> にできる
+      （TaskList.tsx のような div / button の分岐は不要）。
+      S30 と同じ手順でメモを1件作成したあと、Tab だけで一覧の行に到達し、
+      Enter で該当セッションのメモが読み込まれることを見る。

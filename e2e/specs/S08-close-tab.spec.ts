@@ -29,7 +29,9 @@ test('S08 タブを閉じられ、最後の1枚を閉じると新しいシェル
   const cwdName = workDir.split('/').pop() as string;
   const promptPattern = new RegExp(`${escapeRegExp(cwdName)}\\s*[%#]`);
 
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 直接の子孫（>）ではなく子孫セレクタにする。role="tablist" 化（Issue #20 PR 9）で
+  // タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の3階層になったため。
+  const tabs = window.locator('.tab-bar__tab');
 
   // 起動直後の1枚目のタブ。
   await expect(tabs).toHaveCount(1);

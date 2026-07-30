@@ -12,6 +12,13 @@ import { buildDropInsertion, pathsFromUriList } from '../lib/dropPath';
 export interface TerminalPaneProps {
   ptyId: string;
   active: boolean;
+  /**
+   * このペインを指す DOM の id。タブバーの `role="tab"` が `aria-controls` で参照する。
+   * ARIA 仕様は tab に対応する tabpanel を要求するので、対にして初めて role が嘘にならない。
+   */
+  panelId: string;
+  /** このペインを説明する `role="tab"` の要素の id（`aria-labelledby` に使う）。 */
+  labelledBy: string;
   fontFamily: string;
   fontSize: number;
   theme: TerminalTheme;
@@ -36,7 +43,7 @@ function extractDroppedPaths(dataTransfer: DataTransfer): string[] {
 }
 
 const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function TerminalPane(
-  { ptyId, active, fontFamily, fontSize, theme, screenReaderMode, onExit },
+  { ptyId, active, panelId, labelledBy, fontFamily, fontSize, theme, screenReaderMode, onExit },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -86,6 +93,13 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
   return (
     <div
       className={`terminal-pane${active ? '' : ' terminal-pane--hidden'}`}
+      // タブバーの role="tab" と対になる tabpanel。ARIA 仕様は tab に aria-controls で
+      // 対応する tabpanel を要求するので、片方だけ足すと role が嘘になる。
+      // 非アクティブなペインは terminal-pane--hidden（visibility: hidden）で
+      // アクセシビリティツリーから除かれるため、露出する tabpanel は常に1個。
+      id={panelId}
+      role="tabpanel"
+      aria-labelledby={labelledBy}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >

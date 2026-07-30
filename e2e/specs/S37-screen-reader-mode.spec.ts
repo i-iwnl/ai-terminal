@@ -61,7 +61,9 @@ test('S37 設定でターミナルをスクリーンリーダーから読める�
   // 複数ペインが同時に visible になり、visibility: hidden による偶然の遮断（描画側も
   // 消える）が効かなくなるため。次にここを触る人が「1個で十分では」と緩めないよう、
   // 「タブが複数あっても1個」を明示的な不変条件としてテストに残す。
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 直接の子孫（>）ではなく子孫セレクタにする。role="tablist" 化（Issue #20 PR 9）で
+  // タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の3階層になったため。
+  const tabs = window.locator('.tab-bar__tab');
   await expect(tabs).toHaveCount(1);
 
   await window.keyboard.press('Meta+t');
