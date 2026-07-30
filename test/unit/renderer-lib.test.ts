@@ -11,7 +11,11 @@ import {
   sessionDisplayTitle,
   basename,
 } from '../../src/renderer/src/lib/format';
-import { isEditableTarget, matchShortcut } from '../../src/renderer/src/lib/shortcuts';
+import {
+  isEditableTarget,
+  matchShortcut,
+  passesModifierGate,
+} from '../../src/renderer/src/lib/shortcuts';
 
 /** KeyboardEvent の必要な部分だけを組み立てる（DOM を用意せずに判定を試す）。 */
 function keyEvent(init: {
@@ -93,6 +97,46 @@ describe('isEditableTarget', () => {
   });
 });
 
+describe('passesModifierGate', () => {
+  // matchShortcut の入口ガードそのものを、AppAction の割り当て有無から切り離して固定する。
+  // ここが「矢印キーに限って altKey を許可する」変更の本体。
+  // shortcuts.ts のガード変更だけを revert すると、1番目のケースがここで赤くなる
+  // （matchShortcut 経由の toBeNull() 比較だと revert 前後で結果が変わらず検出できない）。
+
+  it('Cmd+Option+矢印 はガードを通す（これがガード変更そのもの）', () => {
+    expect(
+      passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 'ArrowLeft' }),
+    ).toBe(true);
+    expect(
+      passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 'ArrowRight' }),
+    ).toBe(true);
+    expect(
+      passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 'ArrowUp' }),
+    ).toBe(true);
+    expect(
+      passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 'ArrowDown' }),
+    ).toBe(true);
+  });
+
+  it('矢印キー以外は Cmd+Option でもガードを通さない', () => {
+    expect(passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 't' })).toBe(
+      false,
+    );
+  });
+
+  it('Cmd 無しの Option+矢印 はガードを通さない（端末の単語移動と衝突しない）', () => {
+    expect(
+      passesModifierGate({ metaKey: false, ctrlKey: false, altKey: true, key: 'ArrowLeft' }),
+    ).toBe(false);
+  });
+
+  it('ctrlKey が同時なら矢印キーの例外に関わらずガードを通さない', () => {
+    expect(
+      passesModifierGate({ metaKey: true, ctrlKey: true, altKey: true, key: 'ArrowRight' }),
+    ).toBe(false);
+  });
+});
+
 describe('matchShortcut', () => {
   it('Cmd 無しのキーはすべて素通しする', () => {
     // ターミナルへの入力を奪わないための最重要の性質
@@ -101,9 +145,49 @@ describe('matchShortcut', () => {
     expect(matchShortcut(keyEvent({ key: '1' }))).toBeNull();
   });
 
-  it('Cmd と Ctrl / Alt の同時押しは対象外にする', () => {
+  it('Cmd と Ctrl の同時押しは対象外にする', () => {
     expect(matchShortcut(keyEvent({ key: 't', metaKey: true, ctrlKey: true }))).toBeNull();
+  });
+
+  // Option+英数字キーは macOS で特殊文字の合成に使われる（例: Option+e はアクセント記号の
+  // dead key）ため、矢印キー以外は altKey が付いていたら今までどおり無条件で対象外にする。
+  it('矢印キー以外は Cmd+Alt でも対象外にする', () => {
     expect(matchShortcut(keyEvent({ key: 't', metaKey: true, altKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'w', metaKey: true, altKey: true }))).toBeNull();
+  });
+
+  // Issue #56（ターミナル分割表示）のペイン間移動に Cmd+Option+矢印 を使う計画があるため、
+  // 矢印キーだけは altKey ガードの例外にする（矢印キーは Option と組み合わせても文字を
+  // 生成しないため、Option+英数字キーと違って安全）。ガードそのものの変更は上の
+  // `passesModifierGate` の describe で固定済み。
+  //
+  // ここで固定するのは別の事実: 「何を割り当てるか」はこの PR の担当ではない
+  // （AppAction はまだ増やしていない）ため、matchShortcut 経由では現時点で
+  // Cmd+Option+矢印 に対応する操作が無く、結果は null のままになる。
+  // 後続 PR（design-review.md の PR 4 以降）でここに AppAction を割り当てたとき、
+  // このテストが（意図して）赤くなることでその変化に気づけるようにするための記録。
+  it('Cmd+Option+矢印 は、まだ操作が割り当たっていないので matchShortcut は null を返す', () => {
+    expect(matchShortcut(keyEvent({ key: 'ArrowUp', metaKey: true, altKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'ArrowDown', metaKey: true, altKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'ArrowLeft', metaKey: true, altKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'ArrowRight', metaKey: true, altKey: true }))).toBeNull();
+  });
+
+  // Cmd が付いていない Option+矢印 は、Terminal.app / iTerm2 / シェルの readline で
+  // 「単語単位のカーソル移動」として日常的に使われている。matchShortcut は metaKey を
+  // 必須にしているため、矢印キーの例外を足してもこの組み合わせは横取りされないはずで、
+  // それをここで固定する（Issue #56 design-review.md の懸念事項）。
+  it('Cmd 無しの Option+矢印 は今までどおり素通しする（端末の単語移動と衝突しない）', () => {
+    expect(matchShortcut(keyEvent({ key: 'ArrowLeft', altKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'ArrowRight', altKey: true }))).toBeNull();
+  });
+
+  // ctrlKey は altKey の例外に関わらず常にガードで弾く（Ctrl+矢印 を分割の機能に使う
+  // 計画は無い）。
+  it('矢印キーでも Ctrl が同時に押されていれば対象外にする', () => {
+    expect(
+      matchShortcut(keyEvent({ key: 'ArrowRight', metaKey: true, ctrlKey: true, altKey: true })),
+    ).toBeNull();
   });
 
   it('タブ操作を判定する', () => {
