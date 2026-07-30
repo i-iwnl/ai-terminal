@@ -3,6 +3,12 @@
 //
 // 履歴一覧の「メモ」ボタンからメモタブへ飛ばせるよう、選択中のセッションメモは
 // 両方の親であるこのコンポーネントが持つ。
+//
+// ランドマークは <nav> にした（Issue #56 PR 0-c）。ここが切り替えるタスク/履歴/メモは
+// アプリの3つの主要な行き先であり、ターミナル本体（<main>）と対等な「別の場所へ移る」操作
+// なので、補助的な内容を示す <aside>（role="complementary"）より <nav>（role="navigation"）
+// が実態に合う。中の3ボタン自体に role="tablist" を付けるかどうかは Issue #20 PR 9 の
+// スコープなので、ここでは構造（ランドマーク）だけを変える。
 
 import { useState } from 'react';
 import type { SessionHistoryEntry } from '@shared/ipc';
@@ -28,7 +34,7 @@ export default function Sidebar({ onFocusTaskTab, canFocusTaskTab, onResumeHisto
   };
 
   return (
-    <aside className="sidebar">
+    <nav className="sidebar" aria-label="サイドバー">
       <div className="sidebar__drag-region" />
       <div className="sidebar__tabs">
         <button className={tab === 'tasks' ? 'is-active' : ''} onClick={() => setTab('tasks')}>
@@ -46,6 +52,6 @@ export default function Sidebar({ onFocusTaskTab, canFocusTaskTab, onResumeHisto
         {tab === 'history' && <HistoryList onResume={onResumeHistory} onOpenMemo={openMemo} />}
         {tab === 'memo' && <MemoPanel target={memoTarget} onSelectTarget={setMemoTarget} />}
       </div>
-    </aside>
+    </nav>
   );
 }

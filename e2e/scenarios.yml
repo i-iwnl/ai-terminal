@@ -470,3 +470,23 @@ scenarios:
       対応するタブがアクティブになり実際に xterm の隠し textarea まで
       フォーカスが移ることを見る。押せない行（other-project-idle）が
       依然として <div> のまま非対話であることも合わせて確認する。
+
+  # --- ランドマークと live region（Issue #56 PR 0-c） --------------------------
+  - id: S48
+    title: サイドバーが nav、ターミナル領域が main のランドマークとして存在し、status live region がちょうど1個ある
+    spec: S48-landmarks.spec.ts
+    readme: false
+    note: >-
+      Issue #56（分割表示）の前提工事。分割そのものは1行も入らない。
+      ランドマークが無いままだと、ペインが増えたときに構造の手がかりが
+      さらに埋もれる。Sidebar.tsx の <aside> を <nav aria-label="サイドバー">
+      に、App.tsx の .main を <main> にし、.app 直下に role="status" の
+      live region をちょうど1個だけ置いた（PTY 終了の告知に紐づけてある。
+      更新されない空の live region は ARIA の嘘になるため）。
+      計画書は「現状ランドマークは0件」としていたが、実際には <aside>
+      （暗黙の role="complementary"）が初期コミットから存在していた。
+      xterm 内部の .xterm-accessibility（S37 が「露出1個」を固定している
+      aria-live="assertive"）とは別系統で、こちらは暗黙 polite なので
+      assertive の読み上げを割り込んで中断しない。
+      aria-label とランドマークの role を読むだけなので、PTY の出力や
+      タイミングに依存せず安定する。

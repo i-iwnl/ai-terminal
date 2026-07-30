@@ -229,3 +229,45 @@ assertive が N 個同時に露出する。**2ペインで claude と gemini を
    ランドマーク `<main>` / `<nav>`。現状ランドマークは0件）
 3. 進捗の表は `overview.md`。**内容の正は `design-review.md` の表**
 4. `known-issues.md` の 1-8（#67 検索バーのはみ出し）は依然未着手。分割の周で踏んだ時点で該当 PR に含める
+
+## 2026-07-30 - PR 0-c: ランドマークと live region
+
+導入計画の3本目（10本中3本目）。PR #84。分割表示のコードは1行も入っていない。
+
+### 実施内容
+
+- `App.tsx` の `<div className="main">` を `<main className="main">` に
+- `Sidebar.tsx` の `<aside className="sidebar">` を `<nav className="sidebar" aria-label="サイドバー">` に
+- `.notice-banner` に `role="alert"`（`SettingsWindow.tsx` の前例に合わせた）
+- `.app` 直下に `role="status"` の live region を1個。**PTY 終了の告知に紐づけた**
+- 新規 E2E S48
+
+### 設計判断
+
+- **`role="status"` を空のプレースホルダにしなかった。** 「実際には更新されない live region」は
+  ARIA の嘘そのもの。PTY の終了は現状 `TabBar` の終了バッジ（視覚のみ）でしか分からず、
+  非視覚的な手がかりがゼロだったので、そこに紐づけた
+- **S37 の不変条件とは競合しない。** S37 が測るのは xterm 内部の `.xterm-accessibility`
+  （`aria-live="assertive"`、アクティブなタブ1個分）。新設の `role="status"` は暗黙 `polite` で、
+  assertive の読み上げを割り込んで中断しない。design-review 0-4 が問題視した
+  「assertive 同士が発話を潰し合う」事象とは別種
+- サイドバーは `<nav>` にした。タスク / 履歴 / メモ はアプリの3つの主要な行き先で、
+  補助的内容を示す `<aside>`（`complementary`）より実態に合う
+- `.app-status` は `position: absolute` なので `.app` の flex レイアウトに影響しない。
+  `styles.css` を触らずインライン style に留めた（この周の対象外なので）
+
+### 教訓
+
+- **計画書の「現状ランドマークは0件」は事実誤認だった。** `Sidebar.tsx` には初期コミットから
+  `<aside>`（暗黙の `role="complementary"`）が存在していた。0-c の対応自体は変わらないが、
+  **design-review.md の前提が実コードとずれていた2件目**（1件目は 0-b の行番号ずれ）。
+  **計画書の「現状はこうなっている」は、着手時に必ず実コードで測り直すこと**
+
+### 次に再開するとき最初に読むべきこと
+
+1. **次は PR 1**（`shortcuts.ts:15` の altKey ガードを**矢印キーに限って**緩める +
+   冒頭コメントと `test/unit/renderer-lib.test.ts:36-39` の不変条件を意図的に更新）。
+   これで前提工事（0-a / 0-b / 0-c / 1）が終わり、**PR 2 から分割表示の本体**に入る
+2. **PR 0-b の GUI 手動検証が依然として未了。** vim / htop / tmux でタブを往復すること
+3. `role="alert"` は E2E で検証していない。`notice` を確実に出す手段が無く
+   （node-pty が同期的に投げない）、S11 のコメントが同じ理由でタイミング依存だと記録している
