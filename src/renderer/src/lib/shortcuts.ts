@@ -1,7 +1,20 @@
 // アプリ全体のキーボードショートカット判定。
 //
 // Cmd（metaKey）系の組み合わせだけを対象にする。Ctrl+C など端末本来のキー入力とは
-// 絶対に衝突しない設計にするため、ctrlKey / altKey が同時に押されている場合は無視する。
+// 絶対に衝突しない設計にするため、ctrlKey が同時に押されている場合は無条件で無視する。
+// altKey も原則同様に無視するが、**矢印キー（ArrowUp/Down/Left/Right）だけは例外**にする。
+//
+// 理由: macOS では Option+英数字キーは特殊文字の入力に使われる（例: Option+e は
+// アクセント記号を合成する dead key、Option+u はウムラウトの合成キー）ため、
+// Option 付きの英数字キーをショートカットとして横取りすると文字入力そのものを壊す。
+// 一方、矢印キーは Option と組み合わせても文字を生成しない純粋なナビゲーションキーで、
+// `Option+←/→` は Terminal.app / iTerm2 / シェルの readline / 一般的な Cocoa の
+// テキスト編集コンテキストで「単語単位のカーソル移動」として広く使われている
+// 既存の慣習でもある。この慣習と衝突しないよう、`matchShortcut` は `metaKey` が
+// 付いていない `Option+矢印` には一切反応しない（後述のガードを参照）。
+// `Cmd+Option+矢印` は Issue #56（ターミナル分割表示）でペイン間移動に使う計画があり、
+// そのための地ならしとしてここでガードだけを緩めておく（実際に何の操作を割り当てるかは
+// 後続 PR の担当。このファイルでは AppAction を増やさない）。
 //
 // **キーを実際に拾うのはここ1箇所。** メニュー（src/main/menu.ts）は同じキーを
 // 表示するだけで登録しない（registerAccelerator: false）。両方が登録すると二重発火する。
@@ -68,8 +81,44 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
 }
 
+/**
+ * altKey が同時に押されていても許可する例外キー。
+ *
+ * 矢印キーは Option と組み合わせても文字を生成しないため、Option+英数字キー
+ * （特殊文字の合成に使われる）と違って安全にショートカットへ回せる。
+ * 冒頭コメント参照。
+ */
+function isArrowKey(key: string): boolean {
+  return key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight';
+}
+
+/**
+ * このキーイベントの修飾キーの組み合わせが、アプリのショートカットとして
+ * 扱ってよい形かを判定する（`matchShortcut` の入口ガード）。
+ *
+ * どのキーに何を割り当てるか（`AppAction` への変換）とは独立に、
+ * 「そもそも候補として扱ってよいか」だけをここで固定する。こうしておくと、
+ * まだ `AppAction` を割り当てていないキー（例: Issue #56 のペイン間移動を
+ * 予定している `Cmd+Option+矢印`）についても、ガードの挙動そのものを
+ * `matchShortcut` の戻り値（実際の割り当てが無ければ常に null）を介さずに
+ * 直接テストできる。`resizeGate.ts` の `shouldSendResize` などと同じ、
+ * 判定だけを持つ小さな純粋関数として切り出す形に揃えてある。
+ *
+ * - metaKey が無ければ常に false（Cmd 無しのキーは触らない）
+ * - ctrlKey が同時なら常に false（Ctrl+C 等、端末本来の入力と衝突しない）
+ * - altKey が同時なら、矢印キー以外は false（Option+英数字は特殊文字の合成に使われる。
+ *   矢印キーは文字を生成しないため例外にする。冒頭コメント参照）
+ */
+export function passesModifierGate(
+  e: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'altKey' | 'key'>,
+): boolean {
+  if (!e.metaKey || e.ctrlKey) return false;
+  if (e.altKey && !isArrowKey(e.key)) return false;
+  return true;
+}
+
 export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
-  if (!e.metaKey || e.ctrlKey || e.altKey) return null;
+  if (!passesModifierGate(e)) return null;
 
   const key = e.key.toLowerCase();
 
