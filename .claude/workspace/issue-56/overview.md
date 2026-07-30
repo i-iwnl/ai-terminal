@@ -64,7 +64,7 @@
 |---|---|---|
 | 0-a | `screenReaderMode` をアクティブなペインだけに + S37 拡張 | **完了**（PR #74） |
 | 0-b | `doFit` と `handle.fit` の1本化 + 同値の `pty.resize` を送らない | **完了**（PR #81） |
-| 0-c | `role="alert"` / `role="status"` / ランドマーク | 未着手 |
+| 0-c | `role="alert"` / `role="status"` / ランドマーク | **完了**（PR #84） |
 | 1 | `shortcuts.ts` の altKey ガードを矢印キーに限って緩める | 未着手 |
 | 2 〜 9 | 分割表示の本体（木の導入から README まで） | 未着手 |
 

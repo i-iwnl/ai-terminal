@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import Sidebar from './sidebar/Sidebar';
@@ -11,9 +11,30 @@ import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
 
+// role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
+// styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
+// 本体に直書きしないためのものであり、これは色を持たない構造的な非表示テクニック）。
+// 新しいクラスを styles.css に足すと、この PR の対象外である CSS 側の変更が発生するため
+// インライン style に留める。
+const STATUS_REGION_STYLE: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+};
+
 export default function App(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [notice, setNotice] = useState<string | null>(null);
+  // .app 直下に置く role="status" 用の告知文。PTY の終了は現状 TabBar の
+  // 終了バッジ（視覚のみ）でしか分からないため、ここで非視覚的にも拾えるようにする。
+  // 空文字のときは何も読み上げられない（初期状態でここが鳴ることはない）。
+  const [exitAnnouncement, setExitAnnouncement] = useState('');
   // OS の支援技術（VoiceOver 等）が動いているか。
   // 動いていれば設定に関わらず screenReaderMode を有効にする。
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
@@ -170,6 +191,13 @@ export default function App(): ReactElement {
 
   const handleExit = useCallback((event: PtyExitEvent) => {
     tabsApiRef.current.markExited(event.ptyId, { exitCode: event.exitCode, signal: event.signal });
+    // markExited 呼び出し前の tabs から探す（タイトルは終了で変わらないのでどちらでも同じ）。
+    const tab = tabsApiRef.current.tabs.find((t) => t.ptyId === event.ptyId);
+    if (tab) {
+      setExitAnnouncement(
+        `${tab.title} が終了しました（コード ${event.exitCode}）`,
+      );
+    }
   }, []);
 
   const canFocusTaskTab = useCallback(
@@ -206,7 +234,7 @@ export default function App(): ReactElement {
         canFocusTaskTab={canFocusTaskTab}
         onResumeHistory={resumeHistory}
       />
-      <div className="main">
+      <main className="main">
         <TabBar
           tabs={tabsApi.tabs}
           activeTabId={tabsApi.activeTabId}
@@ -246,13 +274,28 @@ export default function App(): ReactElement {
           {tabsApi.tabs.length === 0 && <div className="terminal-stack__empty">タブがありません</div>}
         </div>
         {notice && (
-          <div className="notice-banner">
+          <div className="notice-banner" role="alert">
             <span>{notice}</span>
             <button onClick={() => setNotice(null)} aria-label="閉じる" title="閉じる">
               x
             </button>
           </div>
         )}
+      </main>
+      {/*
+        .app 直下に置く唯一の role="status" live region（0-c）。
+        現状の中身は PTY 終了の告知だけ（handleExit 参照）。0-a（S37）が固定した
+        「支援技術に露出している live region は常に1個」という不変条件は、
+        xterm 内部の .xterm-accessibility（aria-live="assertive"、アクティブなタブ1個分だけ
+        生成される）を指すもので、ここは対象外の別系統。role="status" の暗黙 aria-live は
+        "polite" なので、xterm 側が assertive で読み上げ中でもそれを割り込んで
+        中断することはなく、キューの後ろに回るだけ（design-review.md 0-4 が問題視した
+        「assertive 同士が互いの発話を潰す」事象とは別種）。
+        分割表示（Issue #56）でペインが複数になっても、この告知は
+        タブ単位のまま1個で足りる（ペイン単位の告知は将来の PR の対象）。
+      */}
+      <div className="app-status" role="status" style={STATUS_REGION_STYLE}>
+        {exitAnnouncement}
       </div>
     </div>
   );
