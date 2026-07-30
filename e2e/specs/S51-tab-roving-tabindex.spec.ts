@@ -149,6 +149,13 @@ test('S51 タブに Tab キーで到達でき、矢印キーで roving tabindex 
   // --- 4b. Enter で初めて選択が切り替わる ----------------------------------
   // フォーカスが消えたタブ（閉じた1枚目）にあったので、roving tabindex は
   // 選択中のタブ（現在の1枚目 = 元の3枚目）へ戻っているはず。
+  // **Shift+Tab を押す前に roving tabindex が落ち着くのを待つ。**
+  // タブを閉じると focusedTabId を選択中のタブへ戻す effect が走るが、それが
+  // 反映されるまでの一瞬、どのタブボタンにも tabIndex=0 が無い状態がありうる。
+  // その瞬間に Shift+Tab を押すとタブリストごと飛び越してしまい、テストが
+  // 不安定になる（実際に1回落ちた）。toHaveAttribute は自動で再試行するので、
+  // ここで待てば以降の Shift+Tab は決定的になる。
+  await expect(tabButtons.nth(1)).toHaveAttribute('tabindex', '0');
   await window.locator('.tab-bar__new').focus();
   await window.keyboard.press('Shift+Tab');
   expect(await isFocused(tabButtons.nth(1)), '閉じた後は選択中のタブへ戻る').toBe(true);

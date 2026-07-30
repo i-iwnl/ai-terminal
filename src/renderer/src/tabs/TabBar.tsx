@@ -35,6 +35,34 @@
 // させるだけで済み、ここで明示的なハンドリングは要らない）。
 // TerminalPane.tsx 側のフォーカス処理そのものは直さない（クリックを含む
 // アプリ全体の既存設計として正しい。「選んだら打てる」）。
+//
+// Issue #20 PR 10: 閉じるボタンをトレーリング側（右・常時表示）からリーディング側
+// （左）へ移し、ホバー時とアクティブ時にだけ見えるようにした（Terminal.app /
+// Safari と同じ配置。CSS 側は opacity と pointer-events の両方を切り替える。
+// opacity だけだと非表示のあいだも当たり判定が反応してしまい、常時表示していた
+// 頃と実害が変わらない）。閉じるボタンの tabIndex={-1} と Delete / Backspace
+// 経路（PR 9）は表示条件と無関係に動くため、キーボード操作性は変わらない。
+// あわせて先頭に状態専用の固定幅スロットを追加した（終了マークのみ実装。
+// 「あなたの番」ドットの配線は別 PR）。
+//
+// レビュー差し戻し: タブタイトルの既定を basename(cwd) にした結果、同じ
+// リポジトリで claude と gemini を1本ずつ開くとタイトルが両方とも同じ文字列に
+// なり、プロバイダを見分ける手がかりが画面から消えていた（文字マーク $/C/G は
+// 却下済み、色相は未実装のままだった）。Issue #20 C の設計は
+// 「タイトルは basename(cwd)、プロバイダはタブ自体の色相」を**セット**で
+// 解く前提だったため、`tab-bar__tab--${kind}` クラス（styles.css の
+// `--tab-provider-*` トークンで色を持つ）を追加した。
+// **色相だけに頼らない**（デザイン原則2: 色覚特性下では色相が消える。PR 8 で
+// 初版の提案色が1型色覚下でむしろ悪化した実例がある）。そのため
+// `providerLabel()` を title 属性（ツールチップ）と role="tab" の
+// アクセシブルネームの両方に添える。aria-label を使うので、可視テキスト
+// （タブタイトル）を先頭にそのまま含める（WCAG 2.5.3 Label in Name。
+// 可視テキストとアクセシブルネームが食い違うと音声操作が壊れる）。
+// **残る限界**: ツールチップは常時可視ではない（ホバーで初めて出る）ため、
+// 色覚特性を持つ晴眼のユーザーは、ホバーするまでプロバイダを色以外の手段で
+// 判別できない。文字マークとタブ最小幅の拡大はどちらも却下済みなので、
+// この限界は解消しようとせず記録するに留める
+// （.claude/workspace/issue-20/known-issues.md 参照）。
 
 import {
   useEffect,
@@ -47,6 +75,7 @@ import {
 import type { TabState } from './useTabs';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
+import { providerLabel } from './tabProvider';
 
 export interface TabBarProps {
   tabs: TabState[];
@@ -165,13 +194,49 @@ export default function TabBar({
           {tabs.map((tab, index) => {
             const isEditing = tab.id === editingTabId;
             const isActive = tab.id === activeTabId;
+            const provider = providerLabel(tab.kind);
+            // 可視テキスト（タブタイトル）を先頭に含める（WCAG 2.5.3 Label in
+            // Name）。aria-label を使うとボタンの子要素のテキストは無視される
+            // ため、タイトル・プロバイダ・終了状態のすべてをここで組み立て直す。
+            const tabAccessibleLabel = [tab.title, provider, tab.exit ? '終了' : undefined]
+              .filter((part): part is string => part !== undefined && part !== '')
+              .join('、');
             return (
               <div
                 key={tab.id}
-                className={`tab-bar__tab${isActive ? ' is-active' : ''}${
+                className={`tab-bar__tab tab-bar__tab--${tab.kind}${isActive ? ' is-active' : ''}${
                   tab.exit ? ' is-exited' : ''
                 }`}
               >
+                {/* 先頭の固定幅スロット。状態専用（Issue #20 C）。プロバイダの区別は
+                    タブ自体の色相に譲り、ここでは「あなたの番／通常／終了」だけを表す。
+                    「あなたの番」ドットの配線は別 PR（タスク一覧の購読を TabBar 側にも
+                    持ち込む必要があり、この PR の見積もりを超えるため見送った。詳細は
+                    このタブの実装 PR の報告を参照）。ここでは終了マークのみ実装する。
+                    装飾要素なので aria-hidden にする（「終了」は下の末尾バッジが
+                    テキストとして既に伝えている）。 */}
+                <span
+                  className={`tab-bar__state-slot${tab.exit ? ' tab-bar__state-slot--exited' : ''}`}
+                  aria-hidden="true"
+                />
+                <button
+                  className="tab-bar__close"
+                  // role="tab" のタブリストは「停止点が1つ」であるべき（roving
+                  // tabindex）。閉じるボタンは既定の tabIndex 0 のままだと
+                  // タブの枚数だけ余分な停止点を作ってしまうため、明示的に
+                  // 外す。キーボードから閉じる手段は role="tab" 側の
+                  // Delete / Backspace に用意してある（マウスでの操作性は
+                  // このボタンのまま変わらない）。
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(tab.id);
+                  }}
+                  aria-label="タブを閉じる"
+                  title="タブを閉じる"
+                >
+                  x
+                </button>
                 {isEditing ? (
                   <input
                     className="tab-bar__title-input"
@@ -217,6 +282,11 @@ export default function TabBar({
                     className="tab-bar__tab-button"
                     onClick={() => onSelect(tab.id)}
                     onKeyDown={(e) => handleTabKeyDown(e, index)}
+                    // プロバイダは色相だけに頼らない（原則2）。ツールチップに
+                    // プロバイダ名を出し、アクセシブルネームにも含める
+                    // （tabAccessibleLabel は可視テキストを先頭に持つ）。
+                    title={provider}
+                    aria-label={tabAccessibleLabel}
                   >
                     <span
                       className="tab-bar__title"
@@ -230,24 +300,6 @@ export default function TabBar({
                     {tab.exit && <span className="tab-bar__exit-badge">終了</span>}
                   </button>
                 )}
-                <button
-                  className="tab-bar__close"
-                  // role="tab" のタブリストは「停止点が1つ」であるべき（roving
-                  // tabindex）。閉じるボタンは既定の tabIndex 0 のままだと
-                  // タブの枚数だけ余分な停止点を作ってしまうため、明示的に
-                  // 外す。キーボードから閉じる手段は role="tab" 側の
-                  // Delete / Backspace に用意してある（マウスでの操作性は
-                  // このボタンのまま変わらない）。
-                  tabIndex={-1}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose(tab.id);
-                  }}
-                  aria-label="タブを閉じる"
-                  title="タブを閉じる"
-                >
-                  x
-                </button>
               </div>
             );
           })}

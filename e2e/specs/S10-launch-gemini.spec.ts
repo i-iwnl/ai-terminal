@@ -23,8 +23,11 @@ test('S10 gemini を起動できる', async () => {
   // 「前を検索」の標準キーのため、gemini の起動から検索へ明け渡した）。
   await window.keyboard.press('Meta+Shift+E');
 
-  // gemini タブが開き、アクティブになること
-  await expect(window.locator('.tab-bar__title').filter({ hasText: 'gemini' })).toBeVisible();
+  // gemini タブが開き、アクティブになること。
+  // Issue #20 PR 10 でタブタイトルの既定が basename(cwd) になったため、
+  // 'gemini' 固定ではなく起動ディレクトリ（ハーネスの workDir）の
+  // basename である 'demo-project' が出る（e2e/fixtures/harness.ts 参照）。
+  await expect(window.locator('.tab-bar__title').filter({ hasText: 'demo-project' })).toBeVisible();
 
   // .xterm-screen は xterm.js の DOM レンダラが注入する <style>（カーソル点滅の
   // keyframes 等）まで textContent に含んでしまうため、実際に描画された行だけを

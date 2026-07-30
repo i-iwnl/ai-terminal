@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PtyKind, SpawnPtyRequest } from '@shared/ipc';
 import { getSharedCwd, setSharedCwd } from '../lib/cwd';
 import { forgetPty } from '../terminal/ptyStream';
+import { resolveAgentTabTitle } from './tabTitle';
 
 // シェルの cd への追従ポーリング間隔。
 // エージェントタブ（claude / gemini）は自分から cd しないので対象外。
@@ -147,7 +148,6 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   const newAgentTab = useCallback(
     async (kind: 'claude' | 'gemini', opts?: SpawnOpts): Promise<void> => {
       const isResume = Boolean(opts?.resumeSessionId ?? opts?.geminiResumeTarget);
-      const title = opts?.title ?? (isResume ? `${kind} (再開)` : kind);
       let cwd = opts?.cwd;
       if (cwd === undefined) {
         const activeTab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
@@ -165,6 +165,8 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           : undefined;
         cwd = cwd ?? fallback;
       }
+      // タイトルの決定は cwd が確定してから行う（既定値が basename(cwd) のため）。
+      const title = resolveAgentTabTitle(kind, cwd, isResume, opts?.title);
       return spawn(kind, title, { ...opts, cwd });
     },
     [spawn],

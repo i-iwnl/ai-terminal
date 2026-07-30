@@ -27,8 +27,11 @@ test('S09 claude を起動すると session-id が渡る', async () => {
 
   await window.keyboard.press('Meta+Shift+C');
 
-  // claude タブが開き、アクティブになること
-  await expect(window.locator('.tab-bar__title').filter({ hasText: 'claude' })).toBeVisible();
+  // claude タブが開き、アクティブになること。
+  // Issue #20 PR 10 でタブタイトルの既定が basename(cwd) になったため、
+  // 'claude' 固定ではなく起動ディレクトリ（ハーネスの workDir）の
+  // basename である 'demo-project' が出る（e2e/fixtures/harness.ts 参照）。
+  await expect(window.locator('.tab-bar__title').filter({ hasText: 'demo-project' })).toBeVisible();
 
   // アクティブなタブ（非表示でない terminal-pane）の実際に描画された行に ARGS 行が出ること。
   // xterm.js の DOM レンダラは .xterm-screen の子に <style> タグ（カーソル点滅の

@@ -42,8 +42,16 @@ test.afterEach(async () => {
 const TEXT_MIN = 4.5;
 const NON_TEXT_MIN = 3.0;
 
+/** 正規表現の特殊文字をエスケープする（workDir のディレクトリ名をそのままパターン化するため）。
+ *  S07 / S08 と同じ理由（zsh のログインシェル起動直後の前置きメッセージに早期マッチしない）。 */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test('S40 画面のコントラスト比が、記録した値から動いていない', async () => {
-  const { window } = launched;
+  const { window, workDir } = launched;
+  const cwdName = workDir.split('/').pop() as string;
+  const promptPattern = new RegExp(`${escapeRegExp(cwdName)}\\s*[%#]`);
 
   // --- 本体ウィンドウ -----------------------------------------------------
 
@@ -55,6 +63,28 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
   // 「非選択タブの文字」が測れない**（測れない項目は下のキー検査で落ちる）
   await window.keyboard.press('Meta+t');
   await expect(window.locator('.tab-bar__tab')).toHaveCount(2, { timeout: 15_000 });
+
+  // Issue #20 PR 10（差し戻し後）: 終了マーク（.tab-bar__state-slot--exited）を
+  // 測るため、いま追加した2枚目のタブのシェルを実際に終了させる。
+  // 1枚目（起動時の最初のタブ）は「非選択タブの文字」測定がそのまま拾うので、
+  // ここで終了させるのは2枚目に限る（1枚目が exited になると
+  // `.tab-bar__tab.is-exited` の色に上書きされ、既存の測定値が変わってしまう）。
+  const newShellScreen = window
+    .locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-screen')
+    .first();
+  await expect(newShellScreen).toContainText(promptPattern, { timeout: 20_000 });
+  await window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-helper-textarea').focus();
+  await window.keyboard.type('exit');
+  await window.keyboard.press('Enter');
+  await expect(window.locator('.tab-bar__tab.is-exited')).toHaveCount(1, { timeout: 15_000 });
+
+  // Issue #20 PR 10（差し戻し後）: プロバイダの色相アクセント
+  // （.tab-bar__tab--claude / --gemini）を測るため、claude と gemini のタブも開く。
+  // 1枚目（シェル・非選択・非終了）が `.tab-bar__tab--shell` の測定を拾う。
+  await window.keyboard.press('Meta+Shift+C');
+  await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(1, { timeout: 15_000 });
+  await window.keyboard.press('Meta+Shift+E');
+  await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
 
   // 検索バーを開く（浮いた面と枠を測るため）
   await window.keyboard.press('Meta+f');
@@ -114,6 +144,51 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       selector: '.task-item--working .task-item__status-dot',
       property: 'background-color',
       againstColor: '--surface-2',
+    },
+    // --- Issue #20 PR 10（差し戻し後）: プロバイダの色相アクセントと終了マーク ---
+    //
+    // border-top-color は `contrast.ts` の既定挙動どおり（border 系のプロパティは
+    // 自分の背景ではなく親の実効背景と比べる）で、明示的な against は要らない。
+    // 親を辿ると `.tab-bar__tablist` / `.tab-bar__tabs` はどちらも背景を持たず、
+    // `.tab-bar`（--surface-1）に行き着く。1枚目のタブ（シェル・非選択・非終了）は
+    // `.tab-bar__tab--shell` にも一致するので、そちらを測る
+    // （claude / gemini は起動順の都合でこの時点でも非選択とは限らないが、
+    // border-top-color は is-active の影響を受けないため計測値は変わらない）。
+    {
+      // 末尾を「枠」にしてあるのは装飾語ではなく、下の「記録した値との
+      // 突き合わせ」にある非テキスト/テキストの閾値振り分け（名前に
+      // '塗り'/'枠'/'ドット' を含むかで判定する簡易ヒューリスティック）を
+      // 正しく非テキスト（3:1）側に倒すため。text 側（4.5:1）に倒れると、
+      // このアクセントの実測値（4.5 未満のものがある）で誤って落ちる。
+      name: 'シェルタブの色相の枠（対タブバー）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--shell',
+      property: 'border-top-color',
+    },
+    {
+      name: 'claude タブの色相の枠（対タブバー）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--claude',
+      property: 'border-top-color',
+    },
+    {
+      name: 'gemini タブの色相の枠（対タブバー）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--gemini',
+      property: 'border-top-color',
+    },
+    {
+      // 終了マーク（先頭スロット）は塗り（background-color）なので border 系とは
+      // 扱いが違う。既定の実効背景解決は「自分自身から」始まり、この要素は
+      // 自分の塗りそのものが非透明なので**自分自身と比較する 1.0 になってしまう**
+      // （「選択中タブの塗り」と同じ理由で against が要る）。このマーク（2枚目の
+      // タブ）は claude / gemini を開いたあとで非選択になっているため、
+      // 実際に見えている背景は `.tab-bar` と同じ --surface-1。
+      name: '終了マークの塗り（先頭スロット・対タブバー）',
+      kind: 'non-text',
+      selector: '.tab-bar__state-slot--exited',
+      property: 'background-color',
+      against: '.tab-bar',
     },
   ];
 
@@ -193,6 +268,19 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     '選択中タブの塗り（対タブバー）': { ratio: 1.23, wcag: 'fail' },
     '検索欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.51 から（PR 5-4）
     '作業中のドット（対ホバー面）': { ratio: 5.72, wcag: 'pass' },
+    // Issue #20 PR 10（差し戻し後）: プロバイダの色相アクセントと終了マーク。
+    // **この4件は WCAG の相対輝度式で手計算した値であり、実機の
+    // getComputedStyle 実測ではない。** このファイルの他の値と同じ運用
+    // （このテストを実際に一度走らせ、失敗時にログへ出る実測値へ更新する）
+    // での較正がまだ済んでいない。次に S40 を実行する人は、ここを
+    // 実測値へ置き換えること。
+    // 対 --surface-1（#1e1e1e）での手計算: shell #8a8f98 = 5.13,
+    // claude #c96442 = 4.27, gemini #4a90c4 = 4.82, 終了マーク #d47b7b = 5.49
+    // （終了マークの色 --status-exited は既存トークンの値をそのまま使っている）。
+    'シェルタブの色相の枠（対タブバー）': { ratio: 5.13, wcag: 'pass' },
+    'claude タブの色相の枠（対タブバー）': { ratio: 4.27, wcag: 'pass' },
+    'gemini タブの色相の枠（対タブバー）': { ratio: 4.82, wcag: 'pass' },
+    '終了マークの塗り（先頭スロット・対タブバー）': { ratio: 5.49, wcag: 'pass' },
     // 設定ウィンドウ（最も明るい面）
     '設定の入力欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.30 から（PR 5-4）
     // 2.4.11。**アクセント色では 1.70 で満たせない**（PR 5-4 で枠を明るくしたため）

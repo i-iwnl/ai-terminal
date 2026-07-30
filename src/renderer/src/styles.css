@@ -105,6 +105,24 @@
   --status-error: #e08a8a; /* 一覧の解析エラー */
   --status-exited: #d47b7b; /* 終了したタブ */
 
+  /* -- タブのプロバイダ ---------------------------------------------------- */
+  /* プロバイダ（claude / gemini / シェル）をタブ自体の色相で表す（Issue #20 C）。
+     レビュー差し戻し: タブタイトルの既定を basename(cwd) にした結果、同じ
+     リポジトリで claude と gemini を1本ずつ開くとタイトルが同じ文字列になり、
+     プロバイダを見分ける手がかりが画面から消えていたため追加した。
+     **色相だけに頼らない**（デザイン原則2。色覚特性下では色相が消える。
+     PR 8 で初版の提案色が1型色覚下でむしろ悪化した実例がある）。
+     TabBar.tsx 側で title 属性（ツールチップ）と role="tab" のアクセシブル
+     ネームにプロバイダ名（文字）を必ず添える。
+     対 --surface-1 / --surface-tab-active のいずれでも非テキスト 3:1 を
+     満たす（e2e/specs/S40-contrast-contract.spec.ts が実測する）。
+     **残る限界**: ツールチップは常時可視ではないため、色覚特性を持つ晴眼の
+     ユーザーは、ホバーするまでプロバイダを色以外の手段で判別できない
+     （.claude/workspace/issue-20/known-issues.md に記録）。 */
+  --tab-provider-shell: #8a8f98;
+  --tab-provider-claude: #c96442;
+  --tab-provider-gemini: #4a90c4;
+
   /* -- 通知バナー -------------------------------------------------------- */
   /* 帯そのものが面に埋もれないこと。設定ウィンドウ（--surface-3）の上が一番厳しく、
      従来の #4a2020 は対 --surface-3 で 1.07 = 塗りが完全に同化していた。 */
@@ -332,6 +350,46 @@ body {
   color: var(--status-exited);
 }
 
+/* プロバイダ（claude / gemini / シェル）をタブ上端の2pxで表す。
+   `*` の box-sizing: border-box（このファイル冒頭）により、border-top を
+   足してもタブの外形高さ（36px の行に stretch）は変わらない。
+   色だけに頼らないための文字（title 属性・アクセシブルネーム）は
+   TabBar.tsx 側で必ず添える（このファイル冒頭の --tab-provider-* のコメント参照）。 */
+.tab-bar__tab--shell {
+  border-top: 2px solid var(--tab-provider-shell);
+}
+
+.tab-bar__tab--claude {
+  border-top: 2px solid var(--tab-provider-claude);
+}
+
+.tab-bar__tab--gemini {
+  border-top: 2px solid var(--tab-provider-gemini);
+}
+
+/* 先頭の固定幅スロット。プロバイダの区別はタブの色相に譲り、ここでは
+   「あなたの番／通常／終了」の状態専用に使う（Issue #20 C。先頭の文字マーク
+   `$`/`C`/`G` は却下済み。design-rules.md 参照）。通常は空のまま幅だけ
+   確保し、他の状態が現れたときにタブ幅が動かないようにする。
+   「あなたの番」の 6px ドットの配線は別 PR（タスク一覧の購読を TabBar 側にも
+   持ち込む必要があり、この PR の見積もりを超えるため見送った）。
+   装飾要素（TabBar.tsx 側で aria-hidden）なのでクリックも奪わない。 */
+.tab-bar__state-slot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* 終了したタブの印。将来の「あなたの番」ドット（丸）と形を変えて、
+   色だけに頼らないようにする（原則2）。色は既存の終了バッジ・文字色と
+   同じ --status-exited を使う（対 --surface-1 で 5.49、対
+   --surface-tab-active で 4.47。非テキストの 3:1 はもちろんテキストの
+   4.5:1 も満たすため、装飾要素としての追加検証は不要）。 */
+.tab-bar__state-slot--exited {
+  background: var(--status-exited);
+}
+
 /* タブの選択操作。role="tab" はこの <button> に付け、閉じるボタンとは
    兄弟にする（<button> の中に <button> を入れ子にできないため）。
    見た目は元の <div onClick> と揃える必要があるので、ボタンの既定スタイルを
@@ -380,6 +438,10 @@ body {
   color: var(--status-exited);
 }
 
+/* リーディング側（左）に置く。Terminal.app / Safari と同じ配置
+   （却下: 常時表示のトレーリング側は Windows 流。design-rules.md 参照）。
+   ホバー時とアクティブ時にだけ実際に押せるようにする。JSX 側で DOM の並びも
+   タイトルより前に変えてあるので、位置の変更は CSS の表示条件だけで足りる。 */
 .tab-bar__close {
   background: transparent;
   border: none;
@@ -387,6 +449,17 @@ body {
   cursor: pointer;
   padding: 0 2px;
   font-size: var(--fs-sm);
+  opacity: 0;
+  /* opacity だけで隠すと、非表示のあいだも 24x24 の当たり判定（下の
+     ::before）が反応してしまい、常時表示していた頃と実害が変わらない。
+     pointer-events も同時に切り替えて、非表示のあいだはクリックを素通しする。 */
+  pointer-events: none;
+}
+
+.tab-bar__tab:hover .tab-bar__close,
+.tab-bar__tab.is-active .tab-bar__close {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .tab-bar__new {
