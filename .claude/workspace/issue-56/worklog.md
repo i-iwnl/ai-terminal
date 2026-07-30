@@ -185,3 +185,47 @@ assertive が N 個同時に露出する。**2ペインで claude と gemini を
 ---
 
 <!-- 以降、作業のたびにセクションを追記 -->
+
+## 2026-07-30 - PR 0-b: `doFit` と `handle.fit` の1本化 + 同値の `pty.resize` を送らない
+
+導入計画の2本目（10本中2本目）。PR #81。分割表示のコードは1行も入っていない。
+
+### 実施内容
+
+- `useTerminal.ts` の `doFit`（マウント effect 内のローカル関数）と `handle.fit`（`handleRef` 内）を、
+  フック本体スコープの単一の `fit` に統合。ResizeObserver・初回 `requestAnimationFrame`・
+  `TerminalHandle.fit` の3経路がすべてこの1関数を指す
+- 直前に送った cols/rows を `lastResizeRef`（`useRef`）に持ち、同値なら `pty.resize` を送らない
+- 判定を `terminal/resizeGate.ts` の純粋関数 `shouldSendResize` に切り出し、
+  `test/unit/resize-gate.test.ts` で5件固定
+
+### 設計判断
+
+- **直前値はインスタンススコープの `useRef` に置いた。** モジュールスコープの変数に置くと、
+  ペインが複数になった瞬間に全ペインで1つの直前値を奪い合って壊れる。
+  PR 7（スプリッタ）の関門「ドラッグ中は `pty:resize` が飛ばず `mouseup` 後に1回だけ」は
+  この置き場所に乗っている
+- 統合後の `fit` は refs しか読まないので、`handleRef` が初回レンダーの closure を
+  保持し続けても stale にならない（`useImperativeHandle` の `handle` の同一性も安定）
+- 2経路の差分は2つだけで、どちらも観測可能な挙動を変えずに寄せられた:
+  null ガード（`handle.fit` 側に統一）と `ptyId` の参照タイミング（毎回 `optionsRef.current` を読む側に統一）
+
+### 教訓
+
+- **「挙動不変」は「送るシグナルが不変」を意味しない。** `TerminalPane.tsx:62` は
+  タブがアクティブになるたび `handle.fit()` を呼び、これまでは**寸法が同じでも毎回
+  `pty.resize` が飛んで子プロセスに SIGWINCH が届いていた**。vim / htop / tmux は
+  SIGWINCH で再描画するので、タブ切り替え時の再描画がこれに暗黙に依存していた可能性がある。
+  今回それが止まる。**寸法は不変・シグナルは減る**という差なので E2E では捕まらない
+- design-review.md 記載の行番号（`doFit`(164-172) / `handle.fit`(205-217)）は実コードと
+  ずれていた（着手時点で 197-206 / 242-254）。**行番号ではなく関数名で特定すること**
+
+### 次に再開するとき最初に読むべきこと
+
+1. **GUI 手動検証が未了。** vim / htop / tmux を開いてタブを往復し、
+   同値 `pty.resize` の停止でタブ切り替え時の再描画が壊れていないことを目で確認する。
+   E2E では絶対に捕まらない（`/terminal` skill の GUI 手動検証の手順に従う）
+2. **次は PR 0-c**（`.notice-banner` に `role="alert"` + `.app` 直下に `role="status"` を1つ +
+   ランドマーク `<main>` / `<nav>`。現状ランドマークは0件）
+3. 進捗の表は `overview.md`。**内容の正は `design-review.md` の表**
+4. `known-issues.md` の 1-8（#67 検索バーのはみ出し）は依然未着手。分割の周で踏んだ時点で該当 PR に含める
