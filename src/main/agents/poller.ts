@@ -16,6 +16,7 @@ import { getConfig } from '../config';
 import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
 import { listClaudeAgents } from './claude';
+import { computeYourTurnSince } from './yourTurnSince';
 
 // エージェント（実行中タスク一覧）の取得とポーリング。
 //
@@ -52,6 +53,24 @@ let lastKnownCwd: string | undefined = getAppPaths().cwd;
 
 /** 直前のポーリング結果。busy -> idle の遷移検知に使う。初回ポーリング前は undefined。 */
 let previousTasks: AgentTask[] | undefined;
+
+/**
+ * セッションごとの「あなたの番になった時刻」（epoch ミリ秒）。
+ *
+ * プロセス内メモリのみに保持する（永続化しない）。**アプリ / Main プロセスの再起動で
+ * 失われる。** 再起動直後にちょうど「あなたの番」のセッションがあっても、次に
+ * 作業中 <-> あなたの番を1往復するまでは待たせている時間を表示できない
+ * （AgentTask.yourTurnSince が undefined のまま = 縮退表示。鉄則5）。
+ *
+ * ポーリングが1〜2周期分欠測しても（Main の一時的な遅延など）実害は無い。
+ * 検知した時点の Date.now() を記録するだけなので、記録される時刻は実際の遷移
+ * より最大で1ポーリング間隔ぶん遅れうるが、致命的な誤差にはならない。
+ *
+ * 更新ロジックそのもの（遷移の判定）は `computeYourTurnSince`（./yourTurnSince.ts）に
+ * 純粋関数として切り出してあり、単体テストはそちらが持つ。ここでは
+ * その結果をモジュールスコープへ代入するだけにする。
+ */
+let yourTurnSince = new Map<string, number>();
 
 /** ポーリング対象の BrowserWindow。破棄されていれば送信しない。 */
 let targetWindow: BrowserWindow | null = null;
@@ -106,9 +125,30 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
   const tasks: AgentTask[] = result.tasks.map((task) => ({
     ...task,
     ownedByApp: ownedSessionIds.has(task.sessionId),
+    // 直近の遷移検知（updateYourTurnSince）の結果をそのまま載せる。
+    // ここでは検知そのものは行わない（前回との比較が要るため runPollCycle 側の責務）。
+    yourTurnSince: yourTurnSince.get(task.sessionId),
   }));
 
   return { tasks, error: result.error, fetchedAt: Date.now() };
+}
+
+/**
+ * 前回・今回の一覧を比較し、「あなたの番になった時刻」の記録（モジュールスコープの
+ * `yourTurnSince`）を更新する。判定そのもの（遷移の検知・記録の消去）は
+ * `computeYourTurnSince`（純粋関数。単体テストはそちらが持つ）に委ねる。
+ *
+ * `detectAndNotifyCompletions` と判定基準（becameYourTurn）は同じだが、
+ * こちらは `config.notifyOnIdle` に関係なく常に動く。**「待たせている時間」の表示は
+ * 通知設定とは独立した機能**（通知を切っている人も一覧の待ち時間は見たい）。
+ */
+function updateYourTurnSince(previous: AgentTask[] | undefined, current: AgentTask[]): void {
+  yourTurnSince = computeYourTurnSince(yourTurnSince, previous, current, Date.now());
+}
+
+/** yourTurnSince マップの最新値で AgentTask[] を作り直す（更新直後に呼ぶ）。 */
+function withYourTurnSince(tasks: AgentTask[]): AgentTask[] {
+  return tasks.map((task) => ({ ...task, yourTurnSince: yourTurnSince.get(task.sessionId) }));
 }
 
 /** 1回分のポーリングサイクル。完了後、必ず次回をスケジュールする。 */
@@ -119,6 +159,12 @@ async function runPollCycle(): Promise<void> {
     // 取得エラー時は「一覧が全部消えた」ように見えてしまい誤通知になりうるため、
     // 完了通知の判定はスキップする（previousTasks も更新しない = 次に成功したときに正しく比較できる）。
     if (!event.error) {
+      // 「あなたの番になった時刻」の記録は通知設定に関係なく更新する。
+      // 今回の周期で検知した遷移をこの周期の表示にも即座に反映させるため、
+      // マップ更新の直後に event.tasks を作り直す（次の周期まで待たせない）。
+      updateYourTurnSince(previousTasks, event.tasks);
+      event.tasks = withYourTurnSince(event.tasks);
+
       detectAndNotifyCompletions(event.tasks);
       updateDockBadge(event.tasks);
     }

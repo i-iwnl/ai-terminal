@@ -568,18 +568,20 @@ test('screenshots S12 実行中タスク一覧', async () => {
   await expect(items).toHaveCount(2, { timeout: 15_000 });
 
   await annotateAndShoot(window, 'S12-task-list.png', [
-    // 番号と配置は行の並び順に合わせる（フィクスチャは busy の行が先）。
+    // 番号と配置は行の並び順に合わせる。Issue #20 B（PR 8）で「あなたの番」
+    // グループが先頭に来るようになったため、フィクスチャの定義順（busy が先）とは
+    // 逆に、あなたの番（idle）の行が上、作業中（busy）の行が下に描画される。
     // 意味と番号を優先して入れ替えると、吹き出しが下の行に重なって隠す。
     {
-      selector: '.task-item--working',
+      selector: '.task-item--your-turn',
       number: 1,
-      caption: '作業中: エージェントが動いているタスク',
+      caption: 'あなたの番: 入力を待っているタスク（強調される側。グループの先頭に来る）',
       side: 'right',
     },
     {
-      selector: '.task-item--your-turn',
+      selector: '.task-item--working',
       number: 2,
-      caption: 'あなたの番: 入力を待っているタスク（強調される側）',
+      caption: '作業中: エージェントが動いているタスク',
       side: 'below',
     },
   ]);

@@ -37,6 +37,17 @@ export function formatElapsed(startedAtMs: number, nowMs: number = Date.now()): 
   return `${seconds}秒`;
 }
 
+/**
+ * 「あなたの番」になってからの経過時間を「3分待たせています」のような文言にする。
+ *
+ * `formatElapsed` はセッション起動からの通算（例: 「37時間28分」）で、
+ * 「何分待たせているか」には答えられない。`sinceMs` には
+ * `AgentTask.yourTurnSince`（poller.ts が busy -> 非busy の遷移を検知した時刻）を渡す。
+ */
+export function formatWaitingSince(sinceMs: number, nowMs: number = Date.now()): string {
+  return `${formatElapsed(sinceMs, nowMs)}待たせています`;
+}
+
 /** cwd のパスから末尾のディレクトリ名（ベース名）だけを取り出す。 */
 export function basename(path: string | undefined): string {
   if (!path) return '(不明)';

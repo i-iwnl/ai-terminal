@@ -113,6 +113,21 @@ export interface AgentTask {
   startedAt?: number;
   /** このアプリ自身が起動したセッションか */
   ownedByApp: boolean;
+  /**
+   * 「あなたの番」になった時刻（epoch ミリ秒）。
+   *
+   * `src/main/agents/poller.ts` が busy -> 非busy の遷移を検知した瞬間の
+   * `Date.now()` を保持し、ここに載せて渡す。`startedAt` はセッション起動からの
+   * 通算でしかなく「何分待たせているか」には使えないため、この値を別に持つ。
+   *
+   * 次のいずれかの場合は undefined になる（縮退表示: 待たせている時間を出さないだけで、
+   * 一覧自体は表示する）:
+   * - 現在の状態が working（作業中）または unknown（不明）
+   * - このアプリの起動後、まだこのセッションの遷移を1度も観測していない
+   *   （起動時から既に「あなたの番」だった、直前にアプリ / Main プロセスが
+   *   再起動して遷移の記憶が失われた等）
+   */
+  yourTurnSince?: number;
 }
 
 /** タスク一覧のスナップショット（Main -> Renderer の push） */
