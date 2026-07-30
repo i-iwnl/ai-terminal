@@ -474,7 +474,14 @@ test('screenshots S06 タブを増やす', async () => {
   launched = await launchApp();
   const { window } = launched;
 
-  const tabs = window.locator('.tab-bar__tabs > .tab-bar__tab');
+  // 子孫セレクタで引く。タブは .tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab の
+  // 3階層になったため（Issue #20 PR 9 / PR #86 で role="tablist" の直接の子を
+  // role="tab" だけにするために .tab-bar__tablist を挟んだ）。
+  //
+  // **PR 9 は e2e/specs/*.spec.ts しか掃き出しておらず、e2e 直下にあるこのファイルが
+  // glob から漏れていた。** make e2e は screenshots を別 config で走らせるので
+  // 気づかないまま main に入っている（make e2e-screenshots を回して初めて落ちる）。
+  const tabs = window.locator('.tab-bar__tabs .tab-bar__tab');
   await expect(tabs).toHaveCount(1);
 
   await window.keyboard.press('Meta+t');
@@ -508,7 +515,10 @@ test('screenshots S09 claude を起動する', async () => {
   await expect(initialScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
 
   await window.keyboard.press('Meta+Shift+C');
-  await expect(window.locator('.tab-bar__title').filter({ hasText: 'claude' })).toBeVisible();
+  // Issue #20 PR 10 でタブタイトルの既定が basename(cwd) になったため、
+  // 'claude' 固定ではなく起動ディレクトリの basename 'demo-project' が出る
+  // （e2e/fixtures/harness.ts の workDir 参照）。
+  await expect(window.locator('.tab-bar__title').filter({ hasText: 'demo-project' })).toBeVisible();
 
   const activeRows = window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-rows').first();
   await expect(activeRows).toContainText('FAKE CLAUDE READY', { timeout: 20_000 });
