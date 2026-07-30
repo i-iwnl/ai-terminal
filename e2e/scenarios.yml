@@ -544,3 +544,17 @@ scenarios:
       （TaskList.tsx のような div / button の分岐は不要）。
       S30 と同じ手順でメモを1件作成したあと、Tab だけで一覧の行に到達し、
       Enter で該当セッションのメモが読み込まれることを見る。
+
+  - id: S54
+    title: タブが10枚を超えてもキーボードだけで最後のタブへ到達できる
+    spec: S54-tab-reach-beyond-nine.spec.ts
+    readme: false
+    note: >-
+      Issue #65 の再発防止。タブの切り替えは長らく Cmd+1〜Cmd+9 しか無く、
+      10枚目以降のタブにはキーボードから到達できなかった。Issue #20 の PR 9
+      （PR #86）で入れた role="tablist" + roving tabindex がこれを解消している。
+      S51 は3枚での roving tabindex の挙動そのものを見るが、枚数が増えて
+      タブバーが横スクロールに入ったときにフォーカスした要素が画面外へ
+      出たままにならないかは見ていない。ここはコード読解では潰せないため、
+      実際に12枚開いて End と ArrowLeft で10〜12枚目へ到達し、
+      toBeInViewport() と Enter による切り替えまで確認する。
