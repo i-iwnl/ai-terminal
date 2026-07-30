@@ -8,6 +8,8 @@ import {
   toTaskState,
   countYourTurn,
   becameYourTurn,
+  groupTasksForDisplay,
+  formatGroupHeading,
   TASK_STATE_LABEL,
 } from '../../src/shared/agent-status';
 
@@ -70,5 +72,74 @@ describe('becameYourTurn', () => {
   it('未知の語への遷移も「作業が終わった」側に数える', () => {
     // 通知が来ないことには気づけないので、迷ったら通知する側に倒す
     expect(becameYourTurn('busy', 'waiting_for_input')).toBe(true);
+  });
+});
+
+describe('groupTasksForDisplay', () => {
+  it('「あなたの番」を先頭、次に「作業中」、未知の状態は末尾にする', () => {
+    // CLI が返した順（working, unknown, your-turn）のままでは、あなたの番が
+    // 一覧の下に沈む。ここを並べ替えるのが groupTasksForDisplay の役目。
+    const tasks = [
+      { status: 'busy', sessionId: 'w1' },
+      { status: 'weird', sessionId: 'u1' },
+      { status: 'idle', sessionId: 'y1' },
+    ];
+    const groups = groupTasksForDisplay(tasks);
+    expect(groups.map((g) => g.state)).toEqual(['your-turn', 'working', 'unknown']);
+    expect(groups[0].tasks.map((t) => t.sessionId)).toEqual(['y1']);
+    expect(groups[1].tasks.map((t) => t.sessionId)).toEqual(['w1']);
+    expect(groups[2].tasks.map((t) => t.sessionId)).toEqual(['u1']);
+  });
+
+  it('未知の状態を「あなたの番」グループに混ぜない', () => {
+    // CLI が waiting_for_input のような新しい値を返し始めても、
+    // 「あなたの番」の件数・グループに紛れ込ませない（誤って人間を急かさない）。
+    const groups = groupTasksForDisplay([{ status: 'waiting_for_input', sessionId: 'u1' }]);
+    expect(groups).toEqual([{ state: 'unknown', tasks: [{ status: 'waiting_for_input', sessionId: 'u1' }] }]);
+  });
+
+  it('タスクが1件も無いグループは結果から除く', () => {
+    const groups = groupTasksForDisplay([{ status: 'busy', sessionId: 'w1' }]);
+    expect(groups).toEqual([{ state: 'working', tasks: [{ status: 'busy', sessionId: 'w1' }] }]);
+  });
+
+  it('空配列は空配列を返す', () => {
+    expect(groupTasksForDisplay([])).toEqual([]);
+  });
+
+  it('「あなたの番」グループ内は、待たせている時間が長い順（yourTurnSince が古い順）に並ぶ', () => {
+    const tasks = [
+      { status: 'idle', sessionId: 'recent', yourTurnSince: 300 },
+      { status: 'idle', sessionId: 'oldest', yourTurnSince: 100 },
+      { status: 'idle', sessionId: 'middle', yourTurnSince: 200 },
+    ];
+    const groups = groupTasksForDisplay(tasks);
+    expect(groups[0].tasks.map((t) => t.sessionId)).toEqual(['oldest', 'middle', 'recent']);
+  });
+
+  it('遷移時刻が不明なタスクは、あなたの番グループの中で既知のものより後ろに送る', () => {
+    const tasks = [
+      { status: 'idle', sessionId: 'unknown-wait' },
+      { status: 'idle', sessionId: 'known-wait', yourTurnSince: 100 },
+    ];
+    const groups = groupTasksForDisplay(tasks);
+    expect(groups[0].tasks.map((t) => t.sessionId)).toEqual(['known-wait', 'unknown-wait']);
+  });
+
+  it('作業中・不明のグループは CLI が返した順のまま並べ替えない', () => {
+    const tasks = [
+      { status: 'busy', sessionId: 'w2' },
+      { status: 'busy', sessionId: 'w1' },
+    ];
+    const groups = groupTasksForDisplay(tasks);
+    expect(groups[0].tasks.map((t) => t.sessionId)).toEqual(['w2', 'w1']);
+  });
+});
+
+describe('formatGroupHeading', () => {
+  it('ラベルと件数を併記する', () => {
+    expect(formatGroupHeading('your-turn', 2)).toBe('あなたの番 2件');
+    expect(formatGroupHeading('working', 3)).toBe('作業中 3件');
+    expect(formatGroupHeading('unknown', 1)).toBe('不明 1件');
   });
 });

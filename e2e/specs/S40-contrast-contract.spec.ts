@@ -105,11 +105,13 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       property: 'border-top-color',
     },
     {
-      // 一覧の先頭は busy = 作業中（緑）。ホバーしたときの面と比べる
-      // （行はホバーで --surface-2 に変わるので、最悪ケースはそちら）
+      // Issue #20 B（PR 8）で一覧は「あなたの番」グループが先頭になり、
+      // busy（作業中）の行はもう先頭とは限らない。`.task-item--working` で
+      // 明示的に絞り込み、DOM の並び順に依存しないようにする。
+      // ホバーしたときの面と比べる（行はホバーで --surface-2 に変わるので、最悪ケースはそちら）
       name: '作業中のドット（対ホバー面）',
       kind: 'non-text',
-      selector: '.task-item__status-dot',
+      selector: '.task-item--working .task-item__status-dot',
       property: 'background-color',
       againstColor: '--surface-2',
     },

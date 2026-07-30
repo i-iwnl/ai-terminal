@@ -5,7 +5,12 @@
 // 判定の境界をここで固定する。
 
 import { describe, expect, it } from 'vitest';
-import { formatRelativeTime, sessionDisplayTitle, basename } from '../../src/renderer/src/lib/format';
+import {
+  formatRelativeTime,
+  formatWaitingSince,
+  sessionDisplayTitle,
+  basename,
+} from '../../src/renderer/src/lib/format';
 import { isEditableTarget, matchShortcut } from '../../src/renderer/src/lib/shortcuts';
 
 /** KeyboardEvent の必要な部分だけを組み立てる（DOM を用意せずに判定を試す）。 */
@@ -179,6 +184,22 @@ describe('formatRelativeTime', () => {
   it('未来の時刻でも負の値を表示しない', () => {
     // ファイルの mtime が未来になっている環境がありうる
     expect(formatRelativeTime(NOW + 100_000, NOW)).toBe('たった今');
+  });
+});
+
+describe('formatWaitingSince', () => {
+  const NOW = Date.UTC(2026, 6, 28, 12, 0, 0);
+
+  it('「あなたの番」になってからの経過を「待たせています」の形にする', () => {
+    // formatElapsed 自体（秒/分/時間の切り替え）は既存の実装をそのまま使うので、
+    // ここでは「待たせています」という文言が付くことだけを確認する。
+    expect(formatWaitingSince(NOW - 3 * 60_000, NOW)).toBe('3分0秒待たせています');
+  });
+
+  it('セッション起動からの通算（formatElapsed）とは別の起点を使う', () => {
+    // 遷移直後（sinceMs === nowMs）は「0秒待たせています」になる。
+    // これが「37時間28分」のような通算表示に化けないことが、この関数を足した理由そのもの。
+    expect(formatWaitingSince(NOW, NOW)).toBe('0秒待たせています');
   });
 });
 

@@ -51,6 +51,68 @@ export function countYourTurn(tasks: ReadonlyArray<{ status?: string }>): number
   return tasks.filter((task) => toTaskState(task.status) === 'your-turn').length;
 }
 
+/** 表示順（グループ単位）の唯一の正。 */
+const DISPLAY_ORDER: readonly TaskState[] = ['your-turn', 'working', 'unknown'];
+
+/** グループ化した表示用の1グループ分。 */
+export interface TaskGroup<T> {
+  state: TaskState;
+  tasks: T[];
+}
+
+/**
+ * タスク一覧の表示順を決める。
+ *
+ * **「あなたの番」を先頭に固定する。** CLI が返した順のままだと、あなたの番の行が
+ * 一覧の下に沈んで見落とされる（Issue #20 B）。
+ *
+ * **未知の状態は「あなたの番」に混ぜず、3つ目のグループとして末尾に置く。**
+ * CLI が `waiting_for_input` のような新しい値を返し始めても、そのグループが
+ * 「あなたの番」の件数に紛れ込まない（誤って人間を急かさない）ようにするため。
+ *
+ * グループ内の並びは次の観点をそのまま使う:
+ * - あなたの番: 待たせている時間が長い順（`yourTurnSince` が古いタスクほど先頭）。
+ *   遷移時刻が不明なタスク（縮退表示）は既知のものより後ろへ送る。
+ * - 作業中 / 不明: CLI が返した順を保つ（安定ソートなので並び替えない）。
+ *
+ * タスクが1件も無いグループは結果から除く（見出しだけの空グループを描かせない）。
+ */
+export function groupTasksForDisplay<T extends { status?: string; yourTurnSince?: number }>(
+  tasks: readonly T[],
+): TaskGroup<T>[] {
+  const groups = new Map<TaskState, T[]>(DISPLAY_ORDER.map((state) => [state, []]));
+
+  for (const task of tasks) {
+    groups.get(toTaskState(task.status))?.push(task);
+  }
+
+  const yourTurn = groups.get('your-turn');
+  if (yourTurn) {
+    groups.set(
+      'your-turn',
+      [...yourTurn].sort((a, b) => {
+        const aSince = a.yourTurnSince ?? Number.POSITIVE_INFINITY;
+        const bSince = b.yourTurnSince ?? Number.POSITIVE_INFINITY;
+        return aSince - bSince;
+      }),
+    );
+  }
+
+  return DISPLAY_ORDER.map((state) => ({ state, tasks: groups.get(state) ?? [] })).filter(
+    (group) => group.tasks.length > 0,
+  );
+}
+
+/**
+ * グループ見出しの文言。「あなたの番 2件」のように件数を併記する。
+ *
+ * 色相の違いは手がかりに数えない、という原則（Issue #20 デザイン原則2）に従い、
+ * グループの境界は色に頼らずこの見出しの語と件数だけで伝わるようにする。
+ */
+export function formatGroupHeading(state: TaskState, count: number): string {
+  return `${TASK_STATE_LABEL[state]} ${count}件`;
+}
+
 /**
  * 「エージェントが作業を終えて人間の番になった」遷移か。
  * 通知・Dock バウンスの発火条件として使う。

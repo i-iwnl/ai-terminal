@@ -565,13 +565,17 @@ button.task-item__row:hover {
 }
 
 /* 状態は色だけでなく語でも示す。色覚特性によっては橙と緑が区別できない。
-   **すぐ右に並ぶ生の値（--text-tertiary）と同じ濃さにしない。**
-   同じ行・同じ大きさ・同じ太さで 8px 離れているだけなので、
+   **同じ行に並ぶ生の値（--text-tertiary、.task-item__meta 側）と同じ濃さにしない。**
    色の差が無くなると「訳」と「CLI が言ったこと」の主従が消える。
    4.5:1 を保ったまま secondary と tertiary の間に段は作れない（差は最大 1.27）ので、
-   下げるのではなく上げる。実測 2.43（現状 1.68 より良い）。 */
+   下げるのではなく上げる。実測 2.43（現状 1.68 より良い）。
+
+   Issue #20 B（PR 8）: 走査は左から右なので、状態語は .task-item__name の
+   先頭（名前より左）に置く。flex-shrink: 0 は行が狭くて .task-item__name が
+   詰まっても、状態語（最優先の情報）を .task-item__badge と同様に潰れさせないため。 */
 .task-item__state {
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 /* CLI が返した生の値。翻訳ラベルより一段弱く見せる */
@@ -617,6 +621,27 @@ button.task-item__row:hover {
    ただし折り返す単位は項目であって語ではない（「あなたの / 番」と割れさせない）。 */
 .task-item__meta > span {
   white-space: nowrap;
+}
+
+/* グループ見出しで区切る（Issue #20 B）。ソートだけでは境界が視覚以外に伝わらないため、
+   「あなたの番 2件」のような見出しを必ず挟む。前後のグループとの境界は
+   .memo-panel__section と同じ考え方（見出し自体の余白で区切り、線は増やさない）。
+
+   **ここに border を足さないこと。** サイドバーの面は --surface-0 (#141414) で、
+   --border-subtle (#2a2a2a) を重ねてもコントラスト比は 1.31 しかなく見えない
+   （非テキストの 3:1 に遠く届かない）。見えない線を足すと「区切りは引いてある」と
+   誤解したまま、実際には余白だけで区切られている状態になる。
+   区切りを線で見せる必要が出たら --border-control を使う。 */
+.task-group + .task-group {
+  margin-top: var(--sp-3);
+}
+
+.task-group__heading {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: normal;
 }
 
 .history-list__toolbar {
