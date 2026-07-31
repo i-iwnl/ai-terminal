@@ -9,11 +9,36 @@
 // もう1つの役割は発見可能性。macOS でショートカットを見つける正規の場所はメニューバーで、
 // ここに載っていないキーは「存在しない」のと同じ（VoiceOver のメニュー走査でも辿れない）。
 
-import { app, Menu, shell, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
-import { IpcEvent, type AppAction } from '@shared/ipc';
+import { app, ipcMain, Menu, shell, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import { IpcEvent, IpcSend, type AppAction } from '@shared/ipc';
 import { openSettingsWindow } from './settings-window';
 
 const REPOSITORY_URL = 'https://github.com/i-iwnl/ai-terminal';
+
+/**
+ * 「タブを閉じる」メニュー項目の id。`Menu.getMenuItemById()` で後から引いて
+ * ラベルを書き換えるための目印（Issue #56 PR 4。ペイン数が動くたびに
+ * 「タブを閉じる（N ペイン）」の N を更新する。updateCloseTabLabel 参照）。
+ */
+const CLOSE_TAB_MENU_ITEM_ID = 'file-close-tab';
+
+/** 直近に構築したメニューの「タブを閉じる」項目。ウィンドウ再生成のたびに張り直す。 */
+let closeTabMenuItem: Electron.MenuItem | null = null;
+
+function closeTabLabel(paneCount: number): string {
+  return paneCount > 1 ? `タブを閉じる（${paneCount} ペイン）` : 'タブを閉じる';
+}
+
+/**
+ * アクティブなタブのペイン数に応じて「タブを閉じる」のラベルを書き換える。
+ * 何本の PTY が失われるかをメニューの時点で見せるための仕掛け
+ * （design-review.md「確定している仕様」）。メニューがまだ構築されていない
+ * 一瞬（起動直後）は黙って何もしない。
+ */
+export function updateCloseTabLabel(paneCount: number): void {
+  if (!closeTabMenuItem) return;
+  closeTabMenuItem.label = closeTabLabel(paneCount);
+}
 
 /** 開発起動かどうか。index.ts の判定と揃えてある */
 function isDev(): boolean {
@@ -96,13 +121,26 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
       label: 'ファイル',
       submenu: [
         actionItem(win, '新しいシェルタブ', 'Cmd+T', { type: 'new-shell-tab' }),
+        // 分割は「新しいシェルタブ」の直下（design-review.md 提案 B'）。
+        // 分割で作るのはシェルペインが主用途で、「新しいターミナルを作る」操作の
+        // 仲間として「表示」ではなく「ファイル」に置く。
+        actionItem(win, '右に分割', 'Cmd+D', { type: 'split-pane', dir: 'row' }),
+        actionItem(win, '下に分割', 'Cmd+Shift+D', { type: 'split-pane', dir: 'column' }),
         actionItem(win, '新しい Claude タブ', 'Cmd+Shift+C', { type: 'new-claude-tab' }),
         // gemini は Cmd+Shift+E（g-E-mini の E）。Cmd+Shift+G は macOS 全域の
         // 「前を検索」の標準キーなので、Issue #62 でそちらへ明け渡した
         // （検索中に反射で押すと本物の gemini が1本余計に起動していた）。
         actionItem(win, '新しい Gemini タブ', 'Cmd+Shift+E', { type: 'new-gemini-tab' }),
         { type: 'separator' },
-        actionItem(win, 'タブを閉じる', 'Cmd+W', { type: 'close-tab' }),
+        // Cmd+W は「ペインを閉じる」に意味を持つ（意味変更。1枚しか無ければ
+        // 結果としてタブが閉じる。useTabs.ts の closeActivePane 参照）。
+        actionItem(win, 'ペインを閉じる', 'Cmd+W', { type: 'close-pane' }),
+        // 「タブを閉じる」は明示的にタブ全体（何本の PTY が動いていても全部）を
+        // 閉じる操作で、**キーは持たない**（design-review.md「却下した提案」:
+        // Cmd+Shift+W は macOS 全域で「ウィンドウを閉じる」と学習されているため
+        // 新設しない。メニューだけが入口）。ラベルの N はアクティブなタブの
+        // ペイン数に応じて updateCloseTabLabel が書き換える。
+        { ...actionItem(win, closeTabLabel(1), undefined, { type: 'close-tab' }), id: CLOSE_TAB_MENU_ITEM_ID },
       ],
     },
     {
@@ -148,8 +186,23 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
 
 /**
  * アプリケーションメニューを組み立てて適用する。
- * ウィンドウ生成後に1度だけ呼ぶ。
+ * ウィンドウ生成後に1度だけ呼ぶ（ウィンドウを作り直したときは張り直しも必要。
+ * index.ts の app.on('activate') 参照）。
  */
 export function registerApplicationMenu(win: BrowserWindow): void {
-  Menu.setApplicationMenu(Menu.buildFromTemplate(buildTemplate(win)));
+  const menu = Menu.buildFromTemplate(buildTemplate(win));
+  Menu.setApplicationMenu(menu);
+  closeTabMenuItem = menu.getMenuItemById(CLOSE_TAB_MENU_ITEM_ID);
+}
+
+/**
+ * Renderer からのペイン数通知を受けて「タブを閉じる」のラベルを更新する IPC ハンドラ。
+ * ウィンドウ生成とは独立に、アプリ起動時に1度だけ登録すればよい
+ * （registerApplicationMenu と違い、ウィンドウを作り直しても登録し直す必要は無い）。
+ */
+export function registerMenuHandlers(): void {
+  ipcMain.on(IpcSend.menuPaneCount, (_event, paneCount: unknown) => {
+    if (typeof paneCount !== 'number') return;
+    updateCloseTabLabel(paneCount);
+  });
 }

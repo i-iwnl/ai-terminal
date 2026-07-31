@@ -115,6 +115,9 @@ const api: RendererApi = {
   menu: {
     onAction: (listener: (action: AppAction) => void): (() => void) =>
       subscribe<AppAction>(IpcEvent.menuAction, listener),
+    reportPaneCount: (count: number): void => {
+      ipcRenderer.send(IpcSend.menuPaneCount, count);
+    },
   },
   session: {
     onFocus: (listener: (agentSessionId: string) => void): (() => void) =>

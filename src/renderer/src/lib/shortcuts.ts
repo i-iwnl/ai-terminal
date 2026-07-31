@@ -137,11 +137,19 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
     if (key === 'e') return { type: 'new-gemini-tab' };
     // 前を検索。上の理由により Cmd+Shift+G を gemini の起動から取り戻す。
     if (key === 'g') return { type: 'find-previous' };
+    // 下に分割（Issue #56 PR 4。design-review.md 提案 B'）。
+    if (key === 'd') return { type: 'split-pane', dir: 'column' };
     return null;
   }
 
   if (key === 't') return { type: 'new-shell-tab' };
-  if (key === 'w') return { type: 'close-tab' };
+  // Cmd+W は「ペインを閉じる」（意味変更。design-review.md「確定している仕様」）。
+  // タブそのものを閉じる操作（close-tab）はメニュー専用になり、キーは持たない
+  // （Cmd+Shift+W は macOS 全域で「ウィンドウを閉じる」と学習されているため
+  // 新設しない）。
+  if (key === 'w') return { type: 'close-pane' };
+  // 右に分割。
+  if (key === 'd') return { type: 'split-pane', dir: 'row' };
   if (key === 'f') return { type: 'toggle-search' };
   // 次を検索。Safari / Xcode / TextEdit と同じ、macOS 全域の「次を検索」キー。
   if (key === 'g') return { type: 'find-next' };

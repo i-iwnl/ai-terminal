@@ -6,7 +6,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PtyKind, SpawnPtyRequest } from '@shared/ipc';
 import { getSharedCwd, setSharedCwd } from '../lib/cwd';
 import { forgetPty } from '../terminal/ptyStream';
-import { createPaneTree, updateLeaf, type PaneLeaf } from './paneTree';
+import {
+  canSplitPane,
+  closePane,
+  createPaneTree,
+  describeSplitRejection,
+  flattenPaneTree,
+  getLeaf,
+  splitPane,
+  updateLeaf,
+  type PaneCellMetrics,
+  type PaneLeaf,
+  type SplitDirection,
+} from './paneTree';
 import { findTabByPtyId, tabLeaf, type TabState } from './tabPane';
 import { resolveAgentTabTitle } from './tabTitle';
 
@@ -26,6 +38,9 @@ export interface SpawnOpts {
   title?: string;
 }
 
+/** `splitActivePane` の結果。拒否された場合は理由（通知バナーにそのまま出せる文）を持つ。 */
+export type SplitPaneOutcome = { ok: true } | { ok: false; reason: string };
+
 export interface UseTabsResult {
   tabs: TabState[];
   activeTabId: string | null;
@@ -35,6 +50,21 @@ export interface UseTabsResult {
   closeTab: (id: string) => Promise<void>;
   markExited: (ptyId: string, exit: { exitCode: number; signal?: number }) => void;
   renameTab: (id: string, title: string) => void;
+  /**
+   * アクティブなタブのアクティブなペインを、指定した方向へ分割する（Issue #56 PR 4）。
+   * `metrics` は呼び出し側（App.tsx）が対象ペインの `TerminalHandle.getCellMetrics()`
+   * で実測した値。分割の可否は幅・高さの比率ではなく実セル寸法で判定する
+   * （design-review.md U3。呼び出し側は必ず実測してから呼ぶこと）。
+   */
+  splitActivePane: (dir: SplitDirection, metrics: PaneCellMetrics) => Promise<SplitPaneOutcome>;
+  /**
+   * アクティブなタブのアクティブなペインを閉じる（Cmd+W。意味変更）。
+   * ペインが1枚しか無い場合は、結果としてタブそのものを閉じる
+   * （design-review.md「確定している仕様」）。
+   */
+  closeActivePane: () => Promise<void>;
+  /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
+  setActivePaneInTab: (tabId: string, paneId: string) => void;
 }
 
 // 初期の桁数/行数。マウント後すぐに fitAddon.fit() で実サイズに補正される。
@@ -66,21 +96,29 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   // reject した場合・cwd が取得できなかった場合は何もしない（直前の値を維持する）。
   // 2秒間隔のポーリングから呼ばれるため、console.warn 等のログは出さない
   // （出すとログがすぐ埋まる。lsof が一時的に失敗するのは珍しくない）。
-  const refreshTabCwd = useCallback((ptyId: string): void => {
+  //
+  // **tabId と ptyId を別に受け取る。** 分割（Issue #56 PR 4）前は
+  // `tab.id === アクティブな leaf の ptyId` が常に成立していたため ptyId だけで
+  // 事足りたが、分割後にアクティブなペインが（タブ生成時の leaf ではない）
+  // 別の leaf に移ると、そのペインの ptyId は tab.id と一致しなくなる。
+  // 「このタブが今アクティブか」の判定に ptyId をそのまま使うと常に false になり、
+  // サイドバーの共有 cwd が更新されなくなる。
+  const refreshTabCwd = useCallback((tabId: string, ptyId: string): void => {
     window.api.pty
       .cwd(ptyId)
       .then((result) => {
         if (!result.cwd) return;
         setTabs((prev) => {
-          const tab = findTabByPtyId(prev, ptyId);
-          if (!tab || tabLeaf(tab).cwd === result.cwd) return prev;
-          const paneId = tabLeaf(tab).paneId;
+          const tab = prev.find((t) => t.id === tabId);
+          if (!tab) return prev;
+          const leaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === ptyId);
+          if (!leaf || leaf.cwd === result.cwd) return prev;
           return prev.map((t) =>
-            t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, paneId, { cwd: result.cwd }) } : t,
+            t.id === tabId ? { ...t, layout: updateLeaf(t.layout, leaf.paneId, { cwd: result.cwd }) } : t,
           );
         });
         // このタブがまだアクティブなら、サイドバーへもそのまま反映する。
-        if (activeTabIdRef.current === ptyId) {
+        if (activeTabIdRef.current === tabId) {
           setSharedCwd(result.cwd);
         }
       })
@@ -92,42 +130,54 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   // アクティブなタブが切り替わったら、待たずにそのタブの cwd を共有値へ反映する
   // （サイドバーは常に「いま見ているタブの文脈」を映すのが狙い）。
   // シェルタブなら、記録済みの値だけでなく実プロセスへ問い合わせ直して最新化し、
-  // 以降は cd への追従のためポーリングする。対象はアクティブなタブ1枚だけ。
+  // 以降は cd への追従のためポーリングする。対象はアクティブなタブの**アクティブな
+  // ペイン**1枚だけ（分割後、非アクティブなペインの cd 追従は非目標のまま。
+  // design-review.md は OSC 7 による実 cwd 追跡そのものを非目標にしている）。
   //
   // PTY のメタ（cwd / kind / ptyId）は木の leaf に持たせてある（design-review Q4）ので、
-  // まず tabLeaf() でそのタブの唯一の leaf を引いてから読む（PR 3 の時点では木は
-  // 常に leaf 1枚なので、実質「そのタブの PTY のメタ」を引くのと同じ）。
+  // tabLeaf() でそのタブの「今表示すべき」leaf を引いてから読む。
+  //
+  // 依存配列に activePaneId を含める。分割でアクティブなペインが変わっても
+  // activeTabId 自体は変わらないため、含めないとポーリング対象が古い leaf の
+  // ままになる（サイドバーが別ペインの cwd を表示し続ける）。
+  const activePaneIdForCwdPolling = tabs.find((t) => t.id === activeTabId)?.activePaneId ?? null;
   useEffect(() => {
     const tab = tabsRef.current.find((t) => t.id === activeTabId);
     if (!tab) return;
     const leaf = tabLeaf(tab);
     setSharedCwd(leaf.cwd);
     if (leaf.ptyKind !== 'shell') return;
+    const tabId = tab.id;
     const ptyId = leaf.ptyId;
-    refreshTabCwd(ptyId);
+    refreshTabCwd(tabId, ptyId);
     const timer = window.setInterval(() => {
-      refreshTabCwd(ptyId);
+      refreshTabCwd(tabId, ptyId);
     }, CWD_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [activeTabId, refreshTabCwd]);
+  }, [activeTabId, activePaneIdForCwdPolling, refreshTabCwd]);
 
-  const spawn = useCallback(
-    async (kind: PtyKind, title: string, opts?: SpawnOpts): Promise<void> => {
-      const cwd = opts?.cwd ?? getSharedCwd();
+  // PTY を1本起動して PaneLeaf を組み立てるだけの、副作用の小さい単位。
+  // 新しいタブを作る（spawn、下）と、既存タブの中にペインを増やす
+  // （splitActivePane、後述）の両方から使う共通経路。
+  // 失敗時は onError を呼んで null を返す（呼び出し側で「起動しなかった」として扱う）。
+  const spawnLeaf = useCallback(
+    async (
+      kind: PtyKind,
+      title: string,
+      cwd: string | undefined,
+      resumeOpts?: Pick<SpawnOpts, 'resumeSessionId' | 'geminiResumeTarget'>,
+    ): Promise<PaneLeaf | null> => {
       const req: SpawnPtyRequest = {
         kind,
         cwd,
         cols: INITIAL_COLS,
         rows: INITIAL_ROWS,
-        resumeSessionId: opts?.resumeSessionId,
-        geminiResumeTarget: opts?.geminiResumeTarget,
+        resumeSessionId: resumeOpts?.resumeSessionId,
+        geminiResumeTarget: resumeOpts?.geminiResumeTarget,
       };
       try {
         const result = await window.api.pty.spawn(req);
-        // PTY のメタは全て leaf に持たせる（design-review Q4）。木は常に leaf 1枚
-        // （splitPane はこの PR のどこからも呼ばない）ので、paneId は tab.id と
-        // 同じ値（spawn 結果の ptyId）を採番時に使う。
-        const newLeaf: PaneLeaf = {
+        return {
           kind: 'leaf',
           paneId: result.ptyId,
           ptyId: result.ptyId,
@@ -136,19 +186,31 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           agentSessionId: result.agentSessionId,
           cwd,
         };
-        const tab: TabState = {
-          id: result.ptyId,
-          layout: createPaneTree(newLeaf),
-          activePaneId: newLeaf.paneId,
-          createdAt: Date.now(),
-        };
-        setTabs((prev) => [...prev, tab]);
-        setActiveTabIdState(result.ptyId);
       } catch (err) {
         onError(describeSpawnError(err, kind));
+        return null;
       }
     },
     [onError],
+  );
+
+  const spawn = useCallback(
+    async (kind: PtyKind, title: string, opts?: SpawnOpts): Promise<void> => {
+      const cwd = opts?.cwd ?? getSharedCwd();
+      const newLeaf = await spawnLeaf(kind, title, cwd, opts);
+      if (!newLeaf) return;
+      // PTY のメタは全て leaf に持たせる（design-review Q4）。新しいタブを作る
+      // 経路では、paneId は tab.id と同じ値（spawn 結果の ptyId）を採番時に使う。
+      const tab: TabState = {
+        id: newLeaf.ptyId,
+        layout: createPaneTree(newLeaf),
+        activePaneId: newLeaf.paneId,
+        createdAt: Date.now(),
+      };
+      setTabs((prev) => [...prev, tab]);
+      setActiveTabIdState(newLeaf.ptyId);
+    },
+    [spawnLeaf],
   );
 
   const newShellTab = useCallback(() => spawn('shell', 'zsh'), [spawn]);
@@ -185,15 +247,24 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     async (id: string): Promise<void> => {
       const tab = tabsRef.current.find((t) => t.id === id);
       if (!tab) return;
-      const leaf = tabLeaf(tab);
-      try {
-        await window.api.pty.kill(leaf.ptyId);
-      } catch (err) {
-        // 既に終了している場合などは失敗しうる。タブは閉じてよいので無視する。
-        console.warn('[tabs] PTY の終了に失敗しました', err);
-      }
-      // 購読者がいないまま溜まった出力を破棄する（閉じたタブの分を残さない）。
-      forgetPty(leaf.ptyId);
+      // タブを閉じるときは、木に何枚ペインがあっても**全部**の PTY を kill する。
+      // 分割（Issue #56 PR 4）前は木が常に leaf 1枚だったので `tabLeaf(tab)`
+      // （アクティブな leaf 1枚だけ）で足りていたが、分割後にそのまま使うと
+      // 非アクティブなペインの PTY が2本目以降漏れて、閉じたはずのタブの裏で
+      // claude / gemini が動き続ける（design-review.md 提案 E'）。
+      const leaves = flattenPaneTree(tab.layout);
+      await Promise.all(
+        leaves.map(async (leaf) => {
+          try {
+            await window.api.pty.kill(leaf.ptyId);
+          } catch (err) {
+            // 既に終了している場合などは失敗しうる。タブは閉じてよいので無視する。
+            console.warn('[tabs] PTY の終了に失敗しました', err);
+          }
+          // 購読者がいないまま溜まった出力を破棄する（閉じたタブの分を残さない）。
+          forgetPty(leaf.ptyId);
+        }),
+      );
 
       const remaining = tabsRef.current.filter((t) => t.id !== id);
       setTabs(remaining);
@@ -211,12 +282,104 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     [spawn],
   );
 
+  /**
+   * アクティブなタブのアクティブなペインを、指定した方向へ分割する（Cmd+D / Cmd+Shift+D）。
+   *
+   * 分割で作るのは常にシェルペイン（design-review.md 提案 F'）。cwd は分割対象の
+   * ペイン（タブ生成時の cwd を持つ leaf）から引き継ぐ。**実 cwd の追跡ではない**
+   * ことに注意（非目標。known-issues 参照）。
+   */
+  const splitActivePane = useCallback(
+    async (dir: SplitDirection, metrics: PaneCellMetrics): Promise<SplitPaneOutcome> => {
+      const tabId = activeTabIdRef.current;
+      const tab = tabId ? tabsRef.current.find((t) => t.id === tabId) : undefined;
+      if (!tab) return { ok: false, reason: 'アクティブなタブがありません' };
+
+      if (!canSplitPane(metrics, dir)) {
+        return { ok: false, reason: describeSplitRejection(dir) };
+      }
+
+      const activeLeaf = tabLeaf(tab);
+      const newLeaf = await spawnLeaf('shell', 'zsh', activeLeaf.cwd);
+      if (!newLeaf) {
+        // spawnLeaf は失敗時に onError 経由で既に通知を出している。
+        return { ok: false, reason: '新しいペインの起動に失敗しました' };
+      }
+
+      const nextTree = splitPane(tab.layout, tab.activePaneId, dir, newLeaf, metrics);
+      if (!nextTree) {
+        // canSplitPane を事前に見ているのでここには通常来ないが、万一に備えて
+        // 起動してしまった PTY を後始末する（漏れを防ぐ）。
+        try {
+          await window.api.pty.kill(newLeaf.ptyId);
+        } catch (err) {
+          console.warn('[tabs] PTY の終了に失敗しました', err);
+        }
+        forgetPty(newLeaf.ptyId);
+        return { ok: false, reason: '分割に失敗しました' };
+      }
+
+      // 新しいペインへフォーカスを移す（分割したら、その場でそこに打てる状態にする）。
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tab.id ? { ...t, layout: nextTree, activePaneId: newLeaf.paneId } : t)),
+      );
+      return { ok: true };
+    },
+    [spawnLeaf],
+  );
+
+  /**
+   * アクティブなタブのアクティブなペインを閉じる（Cmd+W。意味変更）。
+   * ペインが1枚しか無い（`closePane` が畳む先を持たない）場合は、結果として
+   * タブそのものを閉じる（design-review.md「確定している仕様」）。
+   */
+  const closeActivePane = useCallback(async (): Promise<void> => {
+    const tabId = activeTabIdRef.current;
+    if (!tabId) return;
+    const tab = tabsRef.current.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    const result = closePane(tab.layout, tab.activePaneId);
+    if (result === null) {
+      await closeTab(tabId);
+      return;
+    }
+
+    const closedLeaf = getLeaf(tab.layout, tab.activePaneId);
+    if (closedLeaf) {
+      try {
+        await window.api.pty.kill(closedLeaf.ptyId);
+      } catch (err) {
+        console.warn('[tabs] PTY の終了に失敗しました', err);
+      }
+      forgetPty(closedLeaf.ptyId);
+    }
+
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId ? { ...t, layout: result.tree, activePaneId: result.activePaneId } : t,
+      ),
+    );
+  }, [closeTab]);
+
+  /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
+  const setActivePaneInTab = useCallback((tabId: string, paneId: string) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId && t.activePaneId !== paneId ? { ...t, activePaneId: paneId } : t)),
+    );
+  }, []);
+
   const markExited = useCallback((ptyId: string, exit: { exitCode: number; signal?: number }) => {
     setTabs((prev) => {
       const tab = findTabByPtyId(prev, ptyId);
       if (!tab) return prev;
-      const paneId = tabLeaf(tab).paneId;
-      return prev.map((t) => (t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, paneId, { exit }) } : t));
+      // exit した PTY を持つ leaf を探して更新する。`tabLeaf(tab)`（アクティブな
+      // leaf 1枚だけ）ではなく木の全 leaf を見る必要がある理由は
+      // findTabByPtyId のコメント（tabPane.ts）と同じ（分割後、非アクティブな
+      // ペインで exit しうる）。
+      const leaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === ptyId);
+      if (!leaf) return prev;
+      return prev.map((t) => (t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, leaf.paneId, { exit }) } : t));
     });
   }, []);
 
@@ -242,5 +405,8 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     closeTab,
     markExited,
     renameTab,
+    splitActivePane,
+    closeActivePane,
+    setActivePaneInTab,
   };
 }

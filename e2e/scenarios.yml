@@ -581,3 +581,19 @@ scenarios:
       status に出し分けている。S37（xterm の assertive live region が
       常に1個）・S48（.app-status の role="status" が常に1個）を
       壊していないことも合わせて固定する。
+
+  # --- ペイン分割（Issue #56 PR 4） -------------------------------------------
+  - id: S56
+    title: Cmd+D で分割でき、2つの xterm-screen が同時に見え、拒否と Cmd+W が働く
+    spec: S56-split-pane.spec.ts
+    readme: false
+    note: >-
+      design-review.md「3. 改訂した導入計画」PR 4 行の関門（2つの .xterm-screen
+      が同時に可視 + .terminal-pane.is-active で一意に引ける hook）を実測で
+      固定する。あわせて同じセットアップで、分割した2ペインが独立した PTY
+      であること、Issue #67（.terminal-search が細いペインからはみ出す。
+      この周で修正した）、canSplitPane による分割の拒否が実際に働くこと
+      （閾値のピクセル値は環境依存のため決め打ちしない。繰り返し分割して
+      必ず拒否が起きることだけを見る）、Cmd+W の意味変更（ペインが複数なら
+      閉じるのはペインだけ、最後の1枚ではタブが閉じて S08 と同じく新しい
+      シェルが自動で開く）を見る。

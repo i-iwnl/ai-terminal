@@ -13,7 +13,7 @@
 // だけ。PR 3 の時点では木は常に leaf 1枚（`splitPane` を呼ぶ経路がまだ無い）ので、
 // `tabLeaf()` が返す値は実質そのタブの「PTY のメタ」そのものになる。
 
-import { resolveActiveLeaf, type PaneLeaf, type PaneNode } from './paneTree';
+import { flattenPaneTree, resolveActiveLeaf, type PaneLeaf, type PaneNode } from './paneTree';
 
 export interface TabState {
   /** タブを一意に識別する ID。生成時点では leaf の paneId と同じ値（PTY の spawn 結果の ptyId）を使う。 */
@@ -37,15 +37,31 @@ export function tabLeaf(tab: TabState): PaneLeaf {
   return resolveActiveLeaf(tab.layout, tab.activePaneId);
 }
 
-/** ptyId からタブを探す（PTY の終了イベント・cwd 追従の突き合わせに使う）。 */
+/**
+ * ptyId からタブを探す（PTY の終了イベント・cwd 追従の突き合わせに使う）。
+ *
+ * **`tabLeaf(t)`（アクティブな leaf 1枚だけ）ではなく、木の全 leaf を見る。**
+ * PR 3 の時点では木が常に leaf 1枚だったため両者は等価だったが、PR 4 で分割が
+ * 有効になると非アクティブな leaf の PTY も終了しうる（例: 2枚に分割したタブで、
+ * フォーカスが無い側のシェルで `exit` と打つ）。アクティブな leaf だけを見ていると、
+ * その終了イベントの相手先タブが見つからず `markExited` が静かに no-op になる。
+ */
 export function findTabByPtyId(tabs: TabState[], ptyId: string): TabState | undefined {
-  return tabs.find((t) => tabLeaf(t).ptyId === ptyId);
+  return tabs.find((t) => flattenPaneTree(t.layout).some((leaf) => leaf.ptyId === ptyId));
 }
 
-/** agentSessionId からタブを探す（タスク一覧・通知クリックからのタブ前面化の突き合わせに使う）。 */
+/**
+ * agentSessionId からタブを探す（タスク一覧・通知クリックからのタブ前面化の突き合わせに使う）。
+ *
+ * 上の `findTabByPtyId` と同じ理由で、木の全 leaf を見る（アクティブでない
+ * ペインで claude / gemini が動いていても、そのタブ自体は前面化できる必要がある）。
+ * **ただし、そのタブの中のどのペインをアクティブにするかまでは踏み込まない**
+ * （design-review.md の U4 はタスク一覧・通知をペイン粒度にする話で、これは
+ * PR 8 の担当。ここで直すのはタブが見つからず前面化ごと失敗する分だけ）。
+ */
 export function findTabByAgentSessionId(
   tabs: TabState[],
   agentSessionId: string,
 ): TabState | undefined {
-  return tabs.find((t) => tabLeaf(t).agentSessionId === agentSessionId);
+  return tabs.find((t) => flattenPaneTree(t.layout).some((leaf) => leaf.agentSessionId === agentSessionId));
 }

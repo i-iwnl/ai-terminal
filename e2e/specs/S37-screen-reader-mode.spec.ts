@@ -80,4 +80,16 @@ test('S37 設定でターミナルをスクリーンリーダーから読める�
   await window.keyboard.press('Meta+2');
   await expect(tabs.nth(1)).toHaveClass(/is-active/);
   await expect(a11y).toHaveCount(1);
+
+  // --- 分割後も .xterm-accessibility はちょうど1個のまま（Issue #56 PR 4） ---
+  //
+  // 上のタブ切り替えとは別の経路。分割は「同一タブ内」の複数ペインを同時に
+  // visible にするので、タブの visibility: hidden による遮断がそもそも効かない
+  // 状況を作る。PaneTreeView（App.tsx から呼ぶ）がアクティブな1ペインにしか
+  // screenReaderMode を渡していなければ、ここでも1個のまま保たれるはず
+  // （このコメントの上、63〜64行目のコメントが予告していたとおりの実測）。
+  await window.keyboard.press('Meta+d');
+  const panes = window.locator('.terminal-pane');
+  await expect(panes).toHaveCount(2);
+  await expect(a11y).toHaveCount(1);
 });

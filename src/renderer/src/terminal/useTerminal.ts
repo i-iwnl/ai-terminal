@@ -18,6 +18,7 @@ import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import { matchShortcut } from '../lib/shortcuts';
+import type { PaneCellMetrics } from '../tabs/paneTree';
 import { subscribePty } from './ptyStream';
 import { shouldSendResize, type ResizeDims } from './resizeGate';
 
@@ -44,6 +45,21 @@ export interface TerminalHandle {
   setSearchTerm(term: string): void;
   findNext(): void;
   findPrevious(): void;
+  /**
+   * 分割の可否判定（`paneTree.ts` の `canSplitPane` / `splitPane`）に渡す実測値。
+   *
+   * xterm.js は実セル幅・実セル高さを公開 API として持たない（`allowProposedApi`
+   * でも出ていない）ため、コンテナの実ピクセルサイズを現在の `cols` / `rows` で
+   * 割って逆算する。fit 済みであれば `container.clientWidth / term.cols` は
+   * 実セル幅そのものと一致する（xterm 自身がその関係になるようフォントを
+   * レイアウトしているため）。
+   *
+   * コンテナや Terminal がまだ無い、または `cols` / `rows` が 0（マウント直後で
+   * 未フィット）の異常時は全フィールド 0 を返す。`canSplitPane` /
+   * `clampSplitRatio` はいずれも `widthPx`/`heightPx` <= 0 を「メトリクス取得不可」
+   * として比率だけのフォールバックに倒すため、ここで例外を投げる必要は無い。
+   */
+  getCellMetrics(): PaneCellMetrics;
 }
 
 export interface UseTerminalOptions {
@@ -280,6 +296,19 @@ export function useTerminal(
     },
     findNext: () => findInDirection('next'),
     findPrevious: () => findInDirection('previous'),
+    getCellMetrics: (): PaneCellMetrics => {
+      const container = containerRef.current;
+      const term = termRef.current;
+      if (!container || !term || term.cols <= 0 || term.rows <= 0) {
+        return { widthPx: 0, heightPx: 0, cellWidthPx: 0, cellHeightPx: 0 };
+      }
+      return {
+        widthPx: container.clientWidth,
+        heightPx: container.clientHeight,
+        cellWidthPx: container.clientWidth / term.cols,
+        cellHeightPx: container.clientHeight / term.rows,
+      };
+    },
   });
 
   return handleRef.current;

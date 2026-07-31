@@ -66,11 +66,22 @@ test('S36 アプリケーションメニューが定義され、再読み込み�
   const byLabel = new Map(items.map((i) => [i.label, i]));
 
   expect(byLabel.get('新しいシェルタブ')?.accelerator).toBe('Cmd+T');
+  // 分割（Issue #56 PR 4）。「新しいシェルタブ」の直下（design-review.md 提案 B'）。
+  expect(byLabel.get('右に分割')?.accelerator).toBe('Cmd+D');
+  expect(byLabel.get('下に分割')?.accelerator).toBe('Cmd+Shift+D');
   expect(byLabel.get('新しい Claude タブ')?.accelerator).toBe('Cmd+Shift+C');
   // gemini は Cmd+Shift+E（Issue #62）。Cmd+Shift+G は macOS 全域の「前を検索」の
   // 標準キーで、検索中に反射で押すと本物の gemini が1本余計に起動する事故があった。
   expect(byLabel.get('新しい Gemini タブ')?.accelerator).toBe('Cmd+Shift+E');
-  expect(byLabel.get('タブを閉じる')?.accelerator).toBe('Cmd+W');
+  // Cmd+W は「ペインを閉じる」に意味が変わった（意味変更。design-review.md
+  // 「確定している仕様」。1枚しか無ければ結果としてタブが閉じる）。
+  expect(byLabel.get('ペインを閉じる')?.accelerator).toBe('Cmd+W');
+  // 「タブを閉じる」はメニュー専用になり、キーは持たない（Cmd+Shift+W は
+  // macOS 全域で「ウィンドウを閉じる」と学習されているため新設しない。
+  // design-review.md「却下した提案」）。起動直後はタブが1枚だけなので
+  // ラベルに「（N ペイン）」は付かない（menu.ts の updateCloseTabLabel 参照）。
+  // Electron は accelerator 未指定の MenuItem を読むと null を返す（undefined ではない）。
+  expect(byLabel.get('タブを閉じる')?.accelerator).toBeNull();
   expect(byLabel.get('ターミナル内を検索')?.accelerator).toBe('Cmd+F');
   // 次を検索 / 前を検索も Issue #62 で追加。前を検索が Cmd+Shift+G を引き取っている。
   expect(byLabel.get('次を検索')?.accelerator).toBe('Cmd+G');

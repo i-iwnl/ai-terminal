@@ -10,7 +10,7 @@ import { registerMemoHandlers } from './memo/store';
 import { registerConfigHandlers } from './config';
 import { registerNotifyHandlers } from './notify';
 import { registerAppPathHandlers } from './app-paths';
-import { registerApplicationMenu } from './menu';
+import { registerApplicationMenu, registerMenuHandlers } from './menu';
 import { registerAccessibilityHandlers } from './accessibility';
 import { registerSettingsWindowHandlers } from './settings-window';
 import { ensureLoginShellPath } from './shell-path';
@@ -99,6 +99,7 @@ void app.whenReady().then(async () => {
   registerAppPathHandlers();
   registerAccessibilityHandlers(mainWindow);
   registerSettingsWindowHandlers(() => mainWindow);
+  registerMenuHandlers();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
