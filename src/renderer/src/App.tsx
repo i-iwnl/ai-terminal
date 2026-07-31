@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/defaults';
+import { terminalThemeFrom } from '@shared/theme';
 import Sidebar from './sidebar/Sidebar';
 import TabBar from './tabs/TabBar';
 import PaneTreeView from './tabs/PaneTreeView';
@@ -92,6 +93,31 @@ export default function App(): ReactElement {
   useEffect(() => {
     return window.api.config.onChange(setConfig);
   }, []);
+
+  // クロームの面（サイドバー・行のホバー・浮いた面）を theme.background から
+  // 機械的に導出し、CSS 変数へ流し込む（Issue #20 の G「テーマ（方向を逆にする）」）。
+  // xterm 側の ITheme は既存の別 effect（useTerminal.ts の options.theme -> term.options）
+  // がそのまま TerminalTheme を渡しており、ここでは触らない。CSS からターミナル色を
+  // 逆に読む経路は作らない（鉄則2。ここは常に「TS のパレット -> CSS 変数」の一方向）。
+  //
+  // 既定の theme.background（#1e1e1e）では、この導出結果は styles.css の
+  // --surface-0〜3 の既存値と1バイトも変わらない（test/unit/theme.test.ts が固定）。
+  //
+  // クロームの文字色は静的なままなので、導出した面が明るくなりすぎると
+  // 静的な文字色との contrast が壊れる（例: 明るい背景を設定すると surface-3
+  // が白に寄り、その上の文字がほぼ読めなくなる）。chromeSafeToApply が false の
+  // ときは setProperty を呼ばず、:root の静的な値をそのまま生かす
+  // （「壊れた配色を出すより、追従しないほうがまし」。既知の制限として記録済み。
+  // 文字色まで含めたパレット化は PR 18 の範囲）。
+  useEffect(() => {
+    const { chrome, chromeSafeToApply } = terminalThemeFrom(config.theme);
+    if (!chromeSafeToApply) return;
+    const root = document.documentElement.style;
+    root.setProperty('--surface-0', chrome.surface0);
+    root.setProperty('--surface-1', chrome.surface1);
+    root.setProperty('--surface-2', chrome.surface2);
+    root.setProperty('--surface-3', chrome.surface3);
+  }, [config.theme]);
 
   // 起動時に共有 cwd（アプリを起動したディレクトリ）を解決してから、最初のシェルタブを1枚開く。
   // resolveSharedCwd() は失敗しても home ないし undefined へ確定させて解決するので、
