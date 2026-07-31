@@ -130,7 +130,7 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
     yourTurnSince: yourTurnSince.get(task.sessionId),
   }));
 
-  return { tasks, error: result.error, fetchedAt: Date.now() };
+  return { tasks, error: result.error, errorKind: result.errorKind, fetchedAt: Date.now() };
 }
 
 /**

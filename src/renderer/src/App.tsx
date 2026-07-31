@@ -536,6 +536,13 @@ export default function App(): ReactElement {
     [focusPaneLocation],
   );
 
+  // タスク一覧の空状態にある「起動」ボタン（Issue #20 I-3）。Cmd+Shift+C /
+  // メニューの「新しい Claude タブ」と同じ操作を、初見ユーザーが説明書を読まずに
+  // 踏める唯一の画面上の導線にする。
+  const launchClaude = useCallback(() => {
+    void tabsApiRef.current.newAgentTab('claude');
+  }, []);
+
   const resumeHistory = useCallback((entry: SessionHistoryEntry) => {
     const title = sessionDisplayTitle(entry);
     if (entry.provider === 'claude') {
@@ -569,6 +576,7 @@ export default function App(): ReactElement {
         onFocusTaskTab={focusTaskTab}
         canFocusTaskTab={canFocusTaskTab}
         onResumeHistory={resumeHistory}
+        onLaunchClaude={launchClaude}
       />
       <main className="main">
         <TabBar
@@ -577,6 +585,8 @@ export default function App(): ReactElement {
           onSelect={tabsApi.setActiveTabId}
           onClose={requestCloseTab}
           onNewShell={() => void tabsApi.newShellTab()}
+          onNewClaude={() => void tabsApi.newAgentTab('claude')}
+          onNewGemini={() => void tabsApi.newAgentTab('gemini')}
           onRename={tabsApi.renameTab}
           onOpenSettings={() => window.api.settings.open()}
         />
@@ -630,7 +640,13 @@ export default function App(): ReactElement {
               }}
             />
           ))}
-          {tabsApi.tabs.length === 0 && <div className="terminal-stack__empty">タブがありません</div>}
+          {/* Issue #20 I-3: タブ0件はユーザーに見せるべき空状態ではない。
+              useTabs.ts の closeTab は最後の1枚を閉じた瞬間に自動でシェルタブを
+              再生成し（起動直後の初回スポーンも resolveSharedCwd 完了後に即座に走る）、
+              tabs.length === 0 は「その再生成が完了するまでの一瞬のローディング」
+              にしかならない。ここで「タブがありません」と出すと、実際には
+              一瞬で消える一時状態を恒久的な空状態であるかのように誤解させる
+              （S08 close-tab で自動再生成後にこの要素が残っていないことを検証済み）。 */}
         </div>
         {notices.length > 0 && (
           // 通知1件ごとに role="alert" を付けると、複数件が同時に現れたとき

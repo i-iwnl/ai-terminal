@@ -69,7 +69,7 @@ scenarios:
     spec: S10-launch-gemini.spec.ts
     readme: false
   - id: S11
-    title: CLI が見つからないときに日本語のエラーが表示され、アプリが落ちない
+    title: CLI が見つからないときに専用の空状態パネルが表示され、一度出したら黙り、アプリが落ちない
     spec: S11-cli-missing.spec.ts
     screenshot: S11-cli-missing.png
     readme: true
@@ -81,7 +81,7 @@ scenarios:
     screenshot: S12-task-list.png
     readme: true
   - id: S13
-    title: 実行中タスクが0件のとき空状態が表示される
+    title: 実行中タスクが0件のとき、次の行動つきの空状態が表示される
     spec: S13-task-empty.spec.ts
     readme: false
   - id: S14
@@ -719,3 +719,36 @@ scenarios:
       状態でもう一度同じ通知を送ると、画面は変わらないが通知バナー +
       role="status" で「既に表示されています」という手がかりが出ること
       （「何も起きない」で終わらせないという要件そのもの）。
+
+  # --- 空状態・エラー状態と「+」の分割ボタン化（Issue #20 PR 12） ------------
+  - id: S64
+    title: 「+ ▾」で新しいシェル / Claude / Gemini を選んで開ける
+    spec: S64-new-tab-menu.spec.ts
+    readme: false
+    note: >-
+      Issue #20 I-1。TabBar の「+」は newShellTab 固定で、Claude / Gemini を
+      画面上から起動する手段が無かった（メニューとショートカットのみ）。
+      「+ ▾」を押すとメニューが開き、シェル / Claude / Gemini を選べること、
+      Escape と外側クリックで閉じること、選択後はメニューが閉じてトリガーへ
+      フォーカスが戻ることを見る。
+  - id: S65
+    title: 履歴が0件のとき実パスと「すべてのフォルダを見る」が表示され、押すと他フォルダのセッションが見える
+    spec: S65-history-empty.spec.ts
+    readme: false
+    note: >-
+      Issue #20 I-3。cwd 配下に履歴が無いディレクトリへ cd してから履歴タブを
+      開き、実パス併記の空状態と「すべてのフォルダを見る」ボタンを見る。
+      押すと reader.ts の listAllClaudeHistory（~/.claude/projects 配下を
+      横断して集計）経由で、他フォルダ（workDir）のセッションが見えることまで
+      確認する。gemini はこの機能に対応していない（--list-sessions の実行 cwd
+      自体がスコープを決めており、横断すべきディレクトリを列挙する手段が無い
+      ため）ことも、ボタンが出ないことで確認する。
+  - id: S66
+    title: メモの空状態から履歴タブへ飛べ、循環参照が解消されている
+    spec: S66-memo-empty.spec.ts
+    readme: false
+    note: >-
+      Issue #20 I-3。「履歴一覧の『メモ』ボタンから」と案内するだけでは、
+      履歴タブを開いたことが無い利用者にはその行の存在自体が分からない
+      （循環参照）。メモタブの空状態に「履歴を見る」ボタンを足し、押すと
+      履歴タブへ切り替わることを見る。

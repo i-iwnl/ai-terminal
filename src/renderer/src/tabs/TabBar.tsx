@@ -1,6 +1,13 @@
-// タブバー。「+」で新しいシェルタブを開き、各タブの「x」で閉じる。
+// タブバー。「+ ▾」で新しいタブ（シェル / Claude / Gemini）を開き、各タブの「x」で閉じる。
 // タイトルをダブルクリックするとインライン編集できる。
 // ウィンドウのドラッグ領域も兼ねる（タブ・ボタン部分は no-drag）。
+//
+// Issue #20 PR 12（I-1）: 「+」は newShellTab 固定で、Claude / Gemini を起動できるのは
+// メニュー（menu.ts）とショートカット（Cmd+Shift+C / Cmd+Shift+E）だけだった。
+// 説明書を読まない初見ユーザーが画面上でこのアプリの存在理由（AI CLI を飼う）に
+// 到達する手段が無かったため、「+」を分割ボタン化する。
+// メニューボタンパターン（WAI-ARIA APG）に沿い、開いたら最初の項目にフォーカス・
+// 外側クリックと Escape で閉じる・矢印キーで項目間を移動できるようにする。
 //
 // Issue #20 PR 9: タブは `<div onClick>` のままではキーボード（Tab）で
 // 到達できなかった。`role="tablist"` / `role="tab"` を正しい親子関係で持たせ、
@@ -99,6 +106,11 @@ export interface TabBarProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNewShell: () => void;
+  /** Issue #20 I-1: 「+」を分割ボタン化する。Claude / Gemini はメニュー・
+   * ショートカット（Cmd+Shift+C / Cmd+Shift+E）専用の導線だったため、画面上に
+   * 導線を追加する */
+  onNewClaude: () => void;
+  onNewGemini: () => void;
   onRename: (id: string, title: string) => void;
   onOpenSettings: () => void;
 }
@@ -109,9 +121,16 @@ export default function TabBar({
   onSelect,
   onClose,
   onNewShell,
+  onNewClaude,
+  onNewGemini,
   onRename,
   onOpenSettings,
 }: TabBarProps) {
+  // 「+ ▾」分割ボタンのドロップダウンメニュー開閉状態（Issue #20 I-1）。
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const newMenuRef = useRef<HTMLDivElement | null>(null);
+  const newButtonRef = useRef<HTMLButtonElement | null>(null);
+  const firstMenuItemRef = useRef<HTMLButtonElement | null>(null);
   // 編集中のタブ ID と、編集中の下書き文字列。編集中でなければ editingTabId は null。
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -133,6 +152,54 @@ export default function TabBar({
   const setEditing = (id: string | null): void => {
     editingTabIdRef.current = id;
     setEditingTabId(id);
+  };
+
+  // 「+ ▾」メニューが開いている間だけ、外側クリックと Escape を監視して閉じる。
+  // WAI-ARIA APG のメニューボタンパターン（開いたら最初の項目にフォーカス、
+  // Escape で閉じてトリガーへフォーカスを戻す）に合わせる。
+  useEffect(() => {
+    if (!newMenuOpen) return;
+    firstMenuItemRef.current?.focus();
+
+    // document 側は React の合成イベントではなく DOM ネイティブのイベントなので、
+    // このファイルが `react` から import している KeyboardEvent / MouseEvent
+    // （JSX の onKeyDown 等に使う合成イベント型）とは別物。globalThis 経由で
+    // DOM 側の型を明示的に指定する。
+    const handlePointerDown = (e: globalThis.MouseEvent): void => {
+      const target = e.target as Node;
+      if (newMenuRef.current?.contains(target)) return;
+      if (newButtonRef.current?.contains(target)) return;
+      setNewMenuOpen(false);
+    };
+    const handleKeyDown = (e: globalThis.KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      setNewMenuOpen(false);
+      newButtonRef.current?.focus();
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [newMenuOpen]);
+
+  /** メニュー項目内の矢印キーによる移動（3項目の循環）。 */
+  const handleNewMenuItemKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = newMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+    if (!items || items.length === 0) return;
+    const delta = e.key === 'ArrowDown' ? 1 : -1;
+    const nextIndex = (index + delta + items.length) % items.length;
+    items[nextIndex]?.focus();
+  };
+
+  /** メニュー項目を選んだときの共通処理。メニューを閉じてトリガーへフォーカスを戻す。 */
+  const selectNewMenuItem = (action: () => void): void => {
+    setNewMenuOpen(false);
+    newButtonRef.current?.focus();
+    action();
   };
 
   // タブが閉じられるなどして編集中のタブが消えたら、編集状態を破棄する。
@@ -328,9 +395,60 @@ export default function TabBar({
             );
           })}
         </div>
-        <button className="tab-bar__new" onClick={onNewShell} aria-label="新しいシェルタブ" title="新しいシェルタブ">
-          +
-        </button>
+        <div className="tab-bar__new-wrapper">
+          <button
+            ref={newButtonRef}
+            type="button"
+            className="tab-bar__new"
+            aria-haspopup="menu"
+            aria-expanded={newMenuOpen}
+            aria-label="新しいタブを開く"
+            title="新しいタブを開く"
+            onClick={() => setNewMenuOpen((open) => !open)}
+          >
+            <span aria-hidden="true">+</span>
+            <span className="tab-bar__new-caret" aria-hidden="true">
+              ▾
+            </span>
+          </button>
+          {newMenuOpen && (
+            <div
+              className="tab-bar__new-menu"
+              role="menu"
+              aria-label="新しいタブの種類"
+              ref={newMenuRef}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="tab-bar__new-menu-item"
+                ref={firstMenuItemRef}
+                onClick={() => selectNewMenuItem(onNewShell)}
+                onKeyDown={(e) => handleNewMenuItemKeyDown(e, 0)}
+              >
+                新しいシェル
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tab-bar__new-menu-item"
+                onClick={() => selectNewMenuItem(onNewClaude)}
+                onKeyDown={(e) => handleNewMenuItemKeyDown(e, 1)}
+              >
+                Claude
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tab-bar__new-menu-item"
+                onClick={() => selectNewMenuItem(onNewGemini)}
+                onKeyDown={(e) => handleNewMenuItemKeyDown(e, 2)}
+              >
+                Gemini
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <div className="tab-bar__drag-region" />
       <button
