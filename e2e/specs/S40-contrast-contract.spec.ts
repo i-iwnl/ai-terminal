@@ -251,6 +251,20 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       selector: '.notice-banner--error .notice-banner__icon',
       property: 'color',
     },
+    // Issue #56 PR 5: アクティブペインのアクセント線（design-review.md 提案 C'）。
+    // box-shadow は getComputedStyle 上も "rgb(...) <offsets> inset" という
+    // 文字列で返るが、measureContrast の parse は文字列中の最初の rgba?(...) を
+    // 拾うだけなので、そのまま渡してよい（border-top-color 等と同じ扱い）。
+    // ペインヘッダは通常フローに入れてあり .terminal-pane__container の上には
+    // 重ならない（レビュー指摘で重ね描きをやめた）ため、分割の有無に関わらず
+    // この線は常に .terminal-pane__container 自身の padding 帯（対 --surface-1）
+    // に乗る。ここで測るのは分割していない1枚ペイン（直前に exit 7 させたシェル）。
+    {
+      name: 'アクティブペインの枠線（対 --surface-1）',
+      kind: 'non-text',
+      selector: '.terminal-pane.is-active .terminal-pane__container',
+      property: 'box-shadow',
+    },
   ];
 
   const main = await measureContrast(window, mainTargets);
@@ -352,6 +366,10 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     '通知バナー（エラー）の文字': { ratio: 7.31, wcag: 'pass' },
     '通知バナー（エラー）の枠（対 --surface-1）': { ratio: 5.36, wcag: 'pass' },
     '通知バナー（エラー）のアイコン文字': { ratio: 5.92, wcag: 'pass' },
+    // Issue #56 PR 5: アクティブペインのアクセント線（design-review.md 提案 C'）。
+    // 既定は --accent をそのまま使う（--pane-active-accent が var(--accent) を
+    // 参照しているだけなので、値は「選択中タブの色相アクセント」等と同じ #5b9cff）。
+    'アクティブペインの枠線（対 --surface-1）': { ratio: 6.07, wcag: 'pass' },
     // 設定ウィンドウ（最も明るい面）
     '設定の入力欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.30 から（PR 5-4）
     // 2.4.11。**アクセント色では 1.70 で満たせない**（PR 5-4 で枠を明るくしたため）

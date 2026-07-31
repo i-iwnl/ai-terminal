@@ -51,6 +51,19 @@ export interface PaneLeaf {
   agentSessionId?: string;
   cwd?: string;
   exit?: { exitCode: number; signal?: number };
+  /**
+   * 履歴からの再開（`--resume` / gemini の再開ターゲット）で起動したか。
+   * ペインヘッダ（design-review.md 提案 G。`tabs/paneHeader.ts`）が
+   * `claude` / `claude (再開)` を出し分けるために使う。
+   *
+   * **`title` から文字列で判定しない。** `resolveAgentTabTitle`（tabTitle.ts）は
+   * 履歴からの再開で明示タイトル（`opts.title`）が来ると `${kind} (再開)` を
+   * 使わずそのタイトルをそのまま採用するため、`title` の末尾が `(再開)` かどうかは
+   * 「再開したか」の判定として使えない（明示タイトルがあるケースで false 判定に
+   * 化ける）。`isResume` は spawn 時の `resumeOpts` から直接立てるので、
+   * タイトルの見た目（ユーザーが後から renameTab で変えた場合を含む）に依存しない。
+   */
+  isResume?: boolean;
 }
 
 /** 分割ノード。子は必ず2つ（二分木）。`ratio` は最初の子（children[0]）の取り分。 */

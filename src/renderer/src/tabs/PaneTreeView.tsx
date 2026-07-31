@@ -7,9 +7,9 @@
 // **role="tabpanel" は木のルートにだけ付く。** タブバーの role="tab" は
 // aria-controls で1つの tabpanel を指す契約（ARIA 仕様）なので、分割で複数の
 // leaf ができても id / role="tabpanel" / aria-labelledby は1箇所（isRoot な要素）
-// にしか置かない。入れ子になった leaf・分割ノードは装飾目的の div/TerminalPane に
-// とどめる（design-review.md の PR 4 スコープでは、ペイン個別の aria 名付けは
-// 非目標。PR 5「aria 名」が担当）。
+// にしか置かない。入れ子になった leaf は role="group" + aria-label（下記）で
+// 「このペインが何か」を説明する（PR 5「aria 名」。tabpanel を名乗らせない
+// ことで PR 4 の1タブ=1tabpanel契約と衝突しない）。
 //
 // **`ratio` の反映はインライン style（flex-grow）で行う。** 4px グリッドに乗る
 // 離散値ではなく実行時に決まる連続値なので、styles.css のトークンにはしない
@@ -19,6 +19,7 @@
 import type { ReactElement } from 'react';
 import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import type { PaneNode } from './paneTree';
+import { paneHeaderLabel } from './paneHeader';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
 import TerminalPane from '../terminal/TerminalPane';
 import type { TerminalHandle } from '../terminal/useTerminal';
@@ -45,6 +46,12 @@ export interface PaneTreeViewProps {
 function renderNode(node: PaneNode, isRoot: boolean, props: PaneTreeViewProps): ReactElement {
   if (node.kind === 'leaf') {
     const active = props.tabVisible && node.paneId === props.activePaneId;
+    // **`props.node`（このタブの木の根）が split かどうかで決める。** node.kind
+    // === 'split' なら、深さに関わらずタブ内の全 leaf にヘッダを出す
+    // （design-review.md 提案 G「分割中のみ」。1ペインのタブでは根が leaf 自身に
+    // なるため常に false）。
+    const showHeader = props.node.kind === 'split';
+    const label = paneHeaderLabel(node);
     return (
       <TerminalPane
         key={node.paneId}
@@ -54,6 +61,8 @@ function renderNode(node: PaneNode, isRoot: boolean, props: PaneTreeViewProps): 
         active={active}
         panelId={isRoot ? tabPanelId(props.tabId) : undefined}
         labelledBy={isRoot ? tabButtonId(props.tabId) : undefined}
+        label={label}
+        showHeader={showHeader}
         fontFamily={props.fontFamily}
         fontSize={props.fontSize}
         theme={props.theme}

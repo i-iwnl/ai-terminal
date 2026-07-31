@@ -52,6 +52,18 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
       selector: '.task-item',
       property: 'border-bottom-color',
     },
+    // Issue #56 PR 5: アクティブペインのアクセント線（design-review.md 提案 C'）。
+    // --pane-active-accent が --accent（#5b9cff）から --focus-ring（#ffffff）へ
+    // 切り替わることを見る。--border-control（#7a7a7a）との比が 1.56 しか無く
+    // 隣接して見分けが付かなくなるための切り替えなので、白のほうが対
+    // --surface-1 でも明らかに強くなる（S40 の「全員一致の対案をそのまま
+    // 実装しなかった箇所」参照）。
+    {
+      name: 'アクティブペインの枠線',
+      kind: 'non-text',
+      selector: '.terminal-pane.is-active .terminal-pane__container',
+      property: 'box-shadow',
+    },
   ];
 
   const normal = await measureContrast(window, targets);
