@@ -132,6 +132,14 @@
      **--border-control との明度差も要る**（色覚特性下では色相が消え、
      「エラーの枠」と「ただの入力欄の枠」が同じに見える）。#d07a7a 対 #7a7a7a で 1.38。 */
   --notice-error-border: #d07a7a;
+  /* Issue #20 PR 11: 通知の severity に「情報」を追加した際に足した組。
+     赤（エラー）と色相を変えるだけでは1型/2型色覚下で区別できなくなりうるため
+     （design-rules.md「色覚シミュレーションの結論」）、エラーと同じ明度構成
+     （暗い塗り・明るい文字・中間の枠）を保ったまま青系にし、輝度差の符号を保存した。
+     実測は e2e/specs/S40-contrast-contract.spec.ts に載せている。 */
+  --notice-info-bg: #1f3548;
+  --notice-info-fg: #cfe6f5;
+  --notice-info-border: #6fa8c9;
 
   /* -- 型 ---------------------------------------------------------------- */
   /* 9px は macOS の最小推奨（11pt）を大きく下回るうえ、10px との差に意味が無かったので
@@ -563,25 +571,80 @@ body {
 }
 
 /* ---------------------------------------------------------------------- */
-/* 通知バナー */
+/* 通知バナー（Issue #20 PR 11: 単一文字列 -> 配列 + severity） */
 /* ---------------------------------------------------------------------- */
 
-.notice-banner {
+/* 複数件を縦に積む入れ物。右上へ移した（従来は画面下部で、ターミナル出力と紛れていた）。
+   タブバー（36px）の直下に置き、設定ボタン等クロームの当たり判定と重ならせない。
+   role は App.tsx 側で「エラーが1件でもあれば alert、無ければ status」に出し分ける
+   （中身が何件・何 severity でも、露出する live region は常にこの1個だけ）。 */
+.notice-list {
   position: absolute;
-  bottom: var(--sp-3);
-  left: var(--sp-3);
+  top: calc(36px + var(--sp-2));
   right: var(--sp-3);
+  z-index: 20;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 360px;
+}
+
+.notice-banner {
+  display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  background: var(--notice-error-bg);
-  color: var(--notice-error-fg);
-  border: 1px solid var(--notice-error-border);
+  gap: var(--sp-2);
   border-radius: var(--radius-lg);
   padding: var(--sp-2) var(--sp-3);
   font-size: var(--fs-sm);
-  z-index: 20;
+  box-shadow: var(--shadow-float);
+}
+
+/* severity は色だけで表さない（design-rules.md 原則2）。
+   色（塗り・枠）に加えて、アイコンの字形（! / i）と語（エラー / 情報）の
+   3つが独立に同じ情報を運ぶ。色覚特性下でも字形と語だけで判別できる。 */
+.notice-banner--error {
+  background: var(--notice-error-bg);
+  color: var(--notice-error-fg);
+  border: 1px solid var(--notice-error-border);
+}
+
+.notice-banner--info {
+  background: var(--notice-info-bg);
+  color: var(--notice-info-fg);
+  border: 1px solid var(--notice-info-border);
+}
+
+.notice-banner__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: var(--fs-xs);
+  /* アイコンの地は severity の枠色を流用し、字は必ず暗色を乗せる
+     （design-rules.md 3「ステータス色の上の文字は必ず暗色」）。 */
+  color: var(--surface-0);
+}
+
+.notice-banner--error .notice-banner__icon {
+  background: var(--notice-error-border);
+}
+
+.notice-banner--info .notice-banner__icon {
+  background: var(--notice-info-border);
+}
+
+.notice-banner__label {
+  flex-shrink: 0;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.notice-banner__message {
+  flex: 1;
 }
 
 .notice-banner button {
@@ -590,6 +653,7 @@ body {
   color: inherit;
   cursor: pointer;
   font-size: var(--fs-sm);
+  flex-shrink: 0;
 }
 
 /* ---------------------------------------------------------------------- */

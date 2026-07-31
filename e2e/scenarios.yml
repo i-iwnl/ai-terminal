@@ -558,3 +558,26 @@ scenarios:
       出たままにならないかは見ていない。ここはコード読解では潰せないため、
       実際に12枚開いて End と ArrowLeft で10〜12枚目へ到達し、
       toBeInViewport() と Enter による切り替えまで確認する。
+
+  # --- 通知バナー（Issue #20 PR 11） -----------------------------------------
+  - id: S55
+    title: 通知が複数同時に出ても、それぞれ独立に閉じられ、severityが色以外の手がかりでも区別できる
+    spec: S55-notice-severity.spec.ts
+    readme: false
+    note: >-
+      通知バナーが `useState<string | null>` の単一文字列で、後から来た通知が
+      前の通知を黙って消し、severity（情報/エラー）の区別も無かった。配列 +
+      severity（lib/notices.ts の pushNotice / dismissNotice / severityForExit）
+      に置き換え、右上へ移した。
+      この harness で通知バナーを実際のユーザー操作から再現できる経路は
+      PTY の終了だけ（S11 のとおり spawn 失敗は非同期にしか失敗せず
+      showError 経路を同期的には再現できない）なので、正常終了（コード0、
+      情報）と異常終了（0以外、エラー）を実際に起こし分けて両方を検証する。
+      severity は色だけで表さず、アイコンの字形（i / !）と語（情報/エラー）
+      が独立に同じ情報を運ぶことも見る。
+      通知1件ごとに role="alert" を付けると複数件が同時に現れたとき
+      assertive な live region 同士が読み上げを潰し合うため、入れ物1個
+      だけを live region にし、エラーが1件でもあれば alert、無ければ
+      status に出し分けている。S37（xterm の assertive live region が
+      常に1個）・S48（.app-status の role="status" が常に1個）を
+      壊していないことも合わせて固定する。

@@ -166,19 +166,34 @@ test('S44 小さいボタンの当たり判定が 24x24 CSS px 以上ある', as
   // 6) 通知バナーの閉じるボタン。
   //    実際のアプリでは node-pty の spawn が、macOS ではコマンド不在・cwd 不正の
   //    どちらでも同期的に例外を投げず PTY 起動後に非同期で exit するだけなので
-  //    （S11 のコメント参照）、既存のハーネスには notice-banner を実際の
-  //    ユーザー操作から再現する手段が無い。実マークアップと同じ構造を一時的に
-  //    body へ差し込み、同じスタイルシートの下で当たり判定だけを測る
+  //    （S11 のコメント参照）、既存のハーネスには spawn 失敗由来の notice-banner を
+  //    実際のユーザー操作から再現する手段が無い（PTY の正常終了/異常終了からは
+  //    再現できるが、それは e2e/specs/S55-notice-severity.spec.ts の担当）。
+  //    ここでは実マークアップと同じ構造を一時的に body へ差し込み、
+  //    同じスタイルシートの下で当たり判定だけを測る
   //    （e2e/fixtures/contrast.ts の againstColor 用プローブ要素と同じ手法。
   //    トリガー経路そのものの検証ではなく、CSS ルールの検証であることに注意）。
+  //    Issue #20 PR 11 で位置決めの absolute が `.notice-banner` 自身から
+  //    親の `.notice-list` に移った。`.notice-list` を持たず `.notice-banner` だけを
+  //    body 直下に置くと、position: static のまま `.app`（100vh）の下に
+  //    流れて画面外に出てしまい、measureHitArea の elementFromPoint が
+  //    そこでは何にも当たらず false を返す。実マークアップと同じ入れ子
+  //    （.notice-list > .notice-banner）で差し込み、位置決めを再現する。
   await window.evaluate(() => {
+    const list = document.createElement('div');
+    list.className = 'notice-list';
     const banner = document.createElement('div');
-    banner.className = 'notice-banner';
-    banner.innerHTML = '<span>E2E-PROBE</span><button aria-label="閉じる" title="閉じる">x</button>';
-    document.body.appendChild(banner);
+    banner.className = 'notice-banner notice-banner--info';
+    banner.innerHTML =
+      '<span class="notice-banner__icon" aria-hidden="true">i</span>' +
+      '<span class="notice-banner__label">情報</span>' +
+      '<span class="notice-banner__message">E2E-PROBE</span>' +
+      '<button aria-label="閉じる" title="閉じる">x</button>';
+    list.appendChild(banner);
+    document.body.appendChild(list);
   });
   const noticeCloseButton = window.locator('.notice-banner button');
   await expect(noticeCloseButton).toBeVisible();
   expectAtLeast24(await measureHitArea(noticeCloseButton), '通知バナーの閉じる');
-  await window.evaluate(() => document.querySelector('.notice-banner')?.remove());
+  await window.evaluate(() => document.querySelector('.notice-list')?.remove());
 });
