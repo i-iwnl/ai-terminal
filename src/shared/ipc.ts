@@ -135,6 +135,13 @@ export interface AgentTasksEvent {
   tasks: AgentTask[];
   /** 取得に失敗した場合の理由。成功時は undefined */
   error?: string;
+  /**
+   * error の機械判定用。'not-found' は claude が PATH に無い（ENOENT）ことを表す。
+   * Issue #20 I-3: この種別だけ Renderer（TaskList.tsx）が専用の空状態パネル
+   * （見出し + 手順 + 再確認ボタン）に出し分ける。他の理由（timeout / failed）は
+   * 従来どおり赤字の一行エラーのまま（打つ手がある／一時的な失敗であるため）。
+   */
+  errorKind?: 'not-found' | 'timeout' | 'failed';
   /** 取得時刻（epoch ミリ秒） */
   fetchedAt: number;
 }
@@ -185,6 +192,15 @@ export interface ListHistoryRequest {
   cwd: string;
   /** 取得件数の上限 */
   limit?: number;
+  /**
+   * true なら cwd の絞り込みを外し、~/.claude/projects 配下の全フォルダを横断して
+   * 集計する（Issue #20 I-3「すべてのフォルダを見る」）。
+   *
+   * claude のみ対応。gemini は `--list-sessions` の実行 cwd 自体がスコープを決めており、
+   * どのディレクトリを横断すればよいか列挙する手段が無いため、この指定は無視される
+   * （listGeminiHistory は cwd を無視しない）。
+   */
+  allFolders?: boolean;
 }
 
 export interface ListHistoryResult {

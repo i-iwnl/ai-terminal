@@ -12,6 +12,13 @@
 // 「メモ」「編集」は資料上ずっと押せるボタンなので、TaskList のような
 // 「押せない行は非対話のまま」という分岐は無い（全行が resume 可能）。
 //
+// Issue #20 PR 12（I-3）: 0件のときの文言に実パスと次の行動を足す。「すべての
+// フォルダを見る」は claude のみ対応（reader.ts の listAllClaudeHistory）。gemini は
+// `--list-sessions` の実行 cwd 自体がスコープを決めており、横断すべきディレクトリを
+// 列挙する手段が無いため、provider が gemini のときはボタン自体を出さない
+// （動かないボタンを画面に置かない）。解析エラーは赤字2行から灰色1行へ、
+// 詳細はツールチップへ移した（打つ手が無い情報を「要対応」の色で出さない）。
+//
 // ただしこの行には resume 用の <button> の他に「メモ」「編集」という
 // **別の**インタラクティブ要素がある。<button> の中に <button> は入れ子にできない
 // （HTML の内容モデル上、<button> はインタラクティブコンテンツの子孫を許さない）ため、
@@ -44,12 +51,19 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [cwdReady, setCwdReady] = useState(isSharedCwdResolved());
+  // Issue #20 I-3「すべてのフォルダを見る」。既定は現在のフォルダに絞り込む false。
+  // gemini は cwd 単位の横断に対応していない（reader.ts 参照）ため、gemini では常に false 扱いにする。
+  const [allFolders, setAllFolders] = useState(false);
 
   const load = useCallback(() => {
     if (!isSharedCwdResolved()) return;
     setLoading(true);
     window.api.history
-      .list({ provider, cwd: getSharedCwd() ?? '' })
+      .list({
+        provider,
+        cwd: getSharedCwd() ?? '',
+        allFolders: provider === 'claude' && allFolders,
+      })
       .then((res) => {
         setEntries(res.entries);
         setError(res.error);
@@ -59,7 +73,7 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
         setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => setLoading(false));
-  }, [provider]);
+  }, [provider, allFolders]);
 
   // 購読コールバックから常に最新の load を呼べるようにする ref。
   // load は provider に依存する useCallback なので、購読の張り直し無しに
@@ -131,7 +145,14 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
       });
   };
 
-  /** メタ情報（更新時刻・git ブランチ・解析エラー）。編集中・非編集中どちらでも同じものを出す。 */
+  /**
+   * メタ情報（更新時刻・git ブランチ・解析エラー）。編集中・非編集中どちらでも同じものを出す。
+   *
+   * Issue #20 I-3: 解析エラーは「打つ手が無い情報」（JSONL の内部フォーマットが
+   * バージョン間で変わりうることは公式に明記されており、利用者側に対処法が無い）
+   * なので、赤字2行の「要対応」色ではなく灰色1行に落とす。resume 自体はできることを
+   * 明示し、生のエラー文言（parseError）は詳細としてツールチップ（title）に残す。
+   */
   const renderMeta = (entry: SessionHistoryEntry) => (
     <>
       <div className="history-item__meta">
@@ -139,7 +160,9 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
         {entry.gitBranch && <span>{entry.gitBranch}</span>}
       </div>
       {entry.parseError && (
-        <div className="history-item__error">解析エラー: {entry.parseError}</div>
+        <div className="history-item__error" title={`解析エラーの詳細: ${entry.parseError}`}>
+          内容を読めませんでした（再開はできます）
+        </div>
       )}
     </>
   );
@@ -183,12 +206,14 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
 
     // 読み上げの文には「再開する」という操作の意味を明示する（見た目のタイトル文字列
     // だけでは、押すと何が起きるかが伝わらないため）。視覚順（タイトル -> 相対時刻 ->
-    // ブランチ -> 解析エラー）をそのまま読み上げ順にする。
+    // ブランチ -> 解析エラー）をそのまま読み上げ順にする。解析エラーは可視テキストと
+    // 同じ要約を読み上げる（詳細な生エラー文言はツールチップのみで、ホバーできない
+    // 利用者にとっては「打つ手が無い情報」を長く読み上げられても負担なだけのため）。
     const ariaLabel = [
       displayTitle,
       formatRelativeTime(entry.updatedAt),
       entry.gitBranch,
-      entry.parseError !== undefined ? `解析エラー: ${entry.parseError}` : undefined,
+      entry.parseError !== undefined ? '内容を読めませんでした、再開はできます' : undefined,
       '再開する',
     ]
       .filter((part): part is string => part !== undefined && part !== '')
@@ -243,13 +268,19 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
         <div className="history-list__providers">
           <button
             className={provider === 'claude' ? 'is-active' : ''}
-            onClick={() => setProvider('claude')}
+            onClick={() => {
+              setProvider('claude');
+              setAllFolders(false);
+            }}
           >
             Claude
           </button>
           <button
             className={provider === 'gemini' ? 'is-active' : ''}
-            onClick={() => setProvider('gemini')}
+            onClick={() => {
+              setProvider('gemini');
+              setAllFolders(false);
+            }}
           >
             Gemini
           </button>
@@ -264,12 +295,44 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
         </button>
       </div>
 
+      {/* すべてのフォルダを見ている間は常に分かるようにする（原則2: 状態を色だけに頼らない）。
+          スコープ行の常設は I-2 の担当（別 PR）だが、ここは自分で切り替えた結果を
+          戻す手段が無いと迷子になるため、この PR の範囲として最小限に用意する。 */}
+      {provider === 'claude' && allFolders && (
+        <div className="history-list__scope-note">
+          <span>すべてのフォルダを表示中</span>
+          <button type="button" onClick={() => setAllFolders(false)}>
+            現在のフォルダのみに戻す
+          </button>
+        </div>
+      )}
+
       {!cwdReady && <div className="panel-message">作業ディレクトリを取得中...</div>}
       {cwdReady && error && (
         <div className="panel-message panel-message--error">履歴の取得に失敗しました: {error}</div>
       )}
       {cwdReady && !error && !loading && entries.length === 0 && (
-        <div className="panel-message">履歴はありません</div>
+        <div className="panel-message panel-empty">
+          {allFolders ? (
+            <p className="panel-empty__body">セッションがまだありません</p>
+          ) : (
+            <>
+              <p className="panel-empty__body">このフォルダには過去のセッションがありません</p>
+              <p className="panel-empty__path" title={getSharedCwd() ?? ''}>
+                {getSharedCwd() ?? ''}
+              </p>
+              {provider === 'claude' && (
+                <button
+                  type="button"
+                  className="panel-empty__action"
+                  onClick={() => setAllFolders(true)}
+                >
+                  すべてのフォルダを見る
+                </button>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       <ul>

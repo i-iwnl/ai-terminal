@@ -68,9 +68,13 @@ test('S51 タブに Tab キーで到達でき、矢印キーで roving tabindex 
   }
 
   // tablist の直接の子は role="tab" の親 div（.tab-bar__tab）だけであること
-  // （「+」新規タブボタンは tablist の外）。
+  // （「+」新規タブボタンは tablist の外）。Issue #20 I-1（PR 12）で「+」は
+  // 分割ボタン化され、.tab-bar__new-wrapper の中に入ったため、
+  // .tab-bar__tabs から見ると直接の子ではなく孫になった。
   await expect(window.locator('.tab-bar__tablist > .tab-bar__new')).toHaveCount(0);
-  await expect(window.locator('.tab-bar__tabs > .tab-bar__new')).toHaveCount(1);
+  await expect(window.locator('.tab-bar__tabs > .tab-bar__new-wrapper > .tab-bar__new')).toHaveCount(
+    1,
+  );
 
   // 3枚目（最後に開いたほう）が選択中のはず。
   await expect(tabButtons.nth(2)).toHaveAttribute('aria-selected', 'true');

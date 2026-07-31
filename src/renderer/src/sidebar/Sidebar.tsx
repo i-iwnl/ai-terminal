@@ -22,9 +22,16 @@ export interface SidebarProps {
   onFocusTaskTab: (agentSessionId: string) => void;
   canFocusTaskTab: (agentSessionId: string) => boolean;
   onResumeHistory: (entry: SessionHistoryEntry) => void;
+  /** タスク一覧の空状態にある「起動」ボタン用（Issue #20 I-3） */
+  onLaunchClaude: () => void;
 }
 
-export default function Sidebar({ onFocusTaskTab, canFocusTaskTab, onResumeHistory }: SidebarProps) {
+export default function Sidebar({
+  onFocusTaskTab,
+  canFocusTaskTab,
+  onResumeHistory,
+  onLaunchClaude,
+}: SidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('tasks');
   const [memoTarget, setMemoTarget] = useState<MemoTarget | null>(null);
 
@@ -32,6 +39,11 @@ export default function Sidebar({ onFocusTaskTab, canFocusTaskTab, onResumeHisto
     setMemoTarget(target);
     setTab('memo');
   };
+
+  // メモの空状態（対象未選択）から履歴タブへ飛ばすボタン用（Issue #20 I-3の循環参照対策）。
+  // 履歴一覧の行の「メモ」ボタンを押すのが本来の導線だが、履歴タブを一度も開いていない
+  // 利用者はその行の存在自体を知らないため、メモタブ側にも往路を用意する。
+  const goToHistory = (): void => setTab('history');
 
   return (
     <nav className="sidebar" aria-label="サイドバー">
@@ -48,9 +60,17 @@ export default function Sidebar({ onFocusTaskTab, canFocusTaskTab, onResumeHisto
         </button>
       </div>
       <div className="sidebar__content">
-        {tab === 'tasks' && <TaskList onFocusTab={onFocusTaskTab} canFocus={canFocusTaskTab} />}
+        {tab === 'tasks' && (
+          <TaskList
+            onFocusTab={onFocusTaskTab}
+            canFocus={canFocusTaskTab}
+            onLaunchClaude={onLaunchClaude}
+          />
+        )}
         {tab === 'history' && <HistoryList onResume={onResumeHistory} onOpenMemo={openMemo} />}
-        {tab === 'memo' && <MemoPanel target={memoTarget} onSelectTarget={setMemoTarget} />}
+        {tab === 'memo' && (
+          <MemoPanel target={memoTarget} onSelectTarget={setMemoTarget} onGoToHistory={goToHistory} />
+        )}
       </div>
     </nav>
   );

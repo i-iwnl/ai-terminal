@@ -13,6 +13,7 @@
 import { ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
 import { open, readdir, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -107,21 +108,9 @@ interface StatedJsonlFile {
   mtimeMs: number;
 }
 
-async function listClaudeHistory(req: ListHistoryRequest): Promise<ListHistoryResult> {
-  const dir = projectHistoryDir(req.cwd);
-  const limit = normalizeLimit(req.limit);
-
-  let dirents;
-  try {
-    dirents = await readdir(dir, { withFileTypes: true });
-  } catch (err) {
-    if (isEnoent(err)) {
-      // まだこの cwd で claude セッションを作っていないだけ。エラー扱いにしない。
-      return { entries: [] };
-    }
-    return { entries: [], error: describeReaddirError(err) };
-  }
-
+/** 1ディレクトリぶんの *.jsonl を stat する。読めないディレクトリは空扱い（ENOENT は呼び出し側で判定）。 */
+async function statJsonlDir(dir: string): Promise<StatedJsonlFile[]> {
+  const dirents = await readdir(dir, { withFileTypes: true });
   const jsonlNames = dirents
     .filter((d) => d.isFile() && d.name.endsWith(JSONL_EXT))
     .map((d) => d.name);
@@ -141,12 +130,60 @@ async function listClaudeHistory(req: ListHistoryRequest): Promise<ListHistoryRe
     },
   );
 
-  const sorted = stated
-    .filter((f): f is StatedJsonlFile => f !== undefined)
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, limit);
+  return stated.filter((f): f is StatedJsonlFile => f !== undefined);
+}
+
+async function listClaudeHistory(req: ListHistoryRequest): Promise<ListHistoryResult> {
+  const dir = projectHistoryDir(req.cwd);
+  const limit = normalizeLimit(req.limit);
+
+  let stated: StatedJsonlFile[];
+  try {
+    stated = await statJsonlDir(dir);
+  } catch (err) {
+    if (isEnoent(err)) {
+      // まだこの cwd で claude セッションを作っていないだけ。エラー扱いにしない。
+      return { entries: [] };
+    }
+    return { entries: [], error: describeReaddirError(err) };
+  }
+
+  const sorted = stated.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, limit);
 
   const entries = await mapWithConcurrency(sorted, CLAUDE_MAX_CONCURRENCY, (file) =>
+    buildClaudeEntry(file),
+  );
+
+  return { entries };
+}
+
+/**
+ * Issue #20 I-3「すべてのフォルダを見る」。cwd の絞り込みを外し、
+ * ~/.claude/projects 配下の全フォルダを横断して集計する。
+ *
+ * 1フォルダぶんの処理（statJsonlDir + buildClaudeEntry）は listClaudeHistory と共通化してある。
+ * 違うのはスキャン対象がフォルダ1つではなく全フォルダである点だけ。
+ */
+async function listAllClaudeHistory(limit: number): Promise<ListHistoryResult> {
+  const root = join(homedir(), '.claude', 'projects');
+
+  let projectDirs;
+  try {
+    projectDirs = (await readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory());
+  } catch (err) {
+    if (isEnoent(err)) return { entries: [] };
+    return { entries: [], error: describeReaddirError(err) };
+  }
+
+  // フォルダ単位で件数を絞ると「新しいフォルダの古いセッション」が「古いフォルダの
+  // 新しいセッション」を押しのけて一覧から漏れる。必ず全フォルダぶんを集めてから
+  // まとめて mtime 降順に並べ替え、最後に1回だけ limit で切る。
+  const perDir = await Promise.all(
+    projectDirs.map((d) => statJsonlDir(join(root, d.name)).catch(() => [] as StatedJsonlFile[])),
+  );
+  const merged = perDir.flat().sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, limit);
+
+  const entries = await mapWithConcurrency(merged, CLAUDE_MAX_CONCURRENCY, (file) =>
     buildClaudeEntry(file),
   );
 
@@ -446,7 +483,11 @@ export function registerHistoryHandlers(): void {
 
       try {
         const result =
-          req.provider === 'claude' ? await listClaudeHistory(req) : await listGeminiHistory(req);
+          req.provider === 'claude'
+            ? req.allFolders
+              ? await listAllClaudeHistory(normalizeLimit(req.limit))
+              : await listClaudeHistory(req)
+            : await listGeminiHistory(req);
         return { ...result, entries: result.entries.map((entry) => applyTitleOverride(entry)) };
       } catch (err) {
         // listClaudeHistory / listGeminiHistory は例外を投げない設計だが、念のための最終防衛ライン。

@@ -487,9 +487,19 @@ test('screenshots S06 タブを増やす', async () => {
   await window.keyboard.press('Meta+t');
   await expect(tabs).toHaveCount(2);
 
-  await window.locator('button[aria-label="新しいシェルタブ"]').click();
+  // Issue #20 I-1（PR 12）: 「+」は分割ボタン（+ ▾）になった。
+  // 押すと「新しいシェル / Claude / Gemini」のメニューが開く。
+  await window.locator('button[aria-label="新しいタブを開く"]').click();
+  const menu = window.locator('.tab-bar__new-menu');
+  await expect(menu).toBeVisible();
+  await menu.locator('[role="menuitem"]', { hasText: '新しいシェル' }).click();
   await expect(tabs).toHaveCount(3);
   await expect(tabs.last()).toHaveClass(/is-active/);
+
+  // メニューは選択すると閉じるため、スクリーンショット用にもう一度開く
+  // （+ ▾ からメニューが出ている状態そのものを画像に残す）。
+  await window.locator('button[aria-label="新しいタブを開く"]').click();
+  await expect(menu).toBeVisible();
 
   await annotateAndShoot(window, 'S06-new-tab.png', [
     {
@@ -499,10 +509,16 @@ test('screenshots S06 タブを増やす', async () => {
       side: 'right',
     },
     {
-      selector: 'button[aria-label="新しいシェルタブ"]',
+      selector: 'button[aria-label="新しいタブを開く"]',
       number: 2,
-      caption: '+ ボタンでも開ける',
+      caption: '+ ▾ を押すとメニューが開く',
       side: 'right',
+    },
+    {
+      selector: '.tab-bar__new-menu',
+      number: 3,
+      caption: 'シェル / Claude / Gemini から選べる',
+      side: 'below',
     },
   ]);
 });
@@ -542,21 +558,29 @@ test('screenshots S09 claude を起動する', async () => {
 });
 
 test('screenshots S11 CLI が見つからないとき', async () => {
-  launched = await launchApp({ withoutCli: true });
+  launched = await launchApp({ withoutCli: true, config: { pollIntervalMs: 3000 } });
   const { window } = launched;
+
+  // Issue #20 I-3（PR 12）: 赤字の生エラー文一行ではなく、見出し + 手順 +
+  // 「再確認」ボタンの専用パネルにした。撮影したいのは初回検知の「目立つ」瞬間
+  // （panel-empty--loud）なので、シェルのプロンプト待ちより先にパネルを確認する
+  // （待ってからだと、目立つ期間（3秒）を過ぎて静かな見た目になってしまう。
+  // e2e/specs/S11-cli-missing.spec.ts と同じ理由）。
+  const notFoundPanel = window.locator('.task-list .panel-empty');
+  await expect(notFoundPanel).toBeVisible({ timeout: 15_000 });
+  await expect(notFoundPanel.locator('.panel-empty__heading')).toContainText(
+    'Claude CLI が見つかりません',
+  );
+  await expect(notFoundPanel).toHaveClass(/panel-empty--loud/);
 
   const screen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000, useInnerText: true });
 
-  const taskError = window.locator('.task-list .panel-message--error');
-  await expect(taskError).toBeVisible({ timeout: 15_000 });
-  await expect(taskError).toContainText('claude コマンドが見つかりません');
-
   await annotateAndShoot(window, 'S11-cli-missing.png', [
     {
-      selector: '.task-list .panel-message--error',
+      selector: '.task-list .panel-empty',
       number: 1,
-      caption: 'claude が無いと日本語でエラー表示',
+      caption: '見出し + 手順 + 再確認ボタン（日本語）',
       side: 'below',
     },
     {
@@ -638,7 +662,7 @@ test('screenshots S18 壊れた履歴の縮退表示', async () => {
     {
       selector: '.history-item__error',
       number: 2,
-      caption: '解析エラーの表示',
+      caption: '打つ手が無い情報なので灰色1行（再開はできる）',
       side: 'right',
     },
   ]);

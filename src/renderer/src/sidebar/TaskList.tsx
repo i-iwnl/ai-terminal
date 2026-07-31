@@ -10,7 +10,7 @@
 // - 「待たせている時間」はセッション起動からの通算（formatElapsed）ではなく、
 //   あなたの番になった時刻（yourTurnSince）からの経過にする。
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentTask, AgentTasksEvent } from '@shared/ipc';
 // 状態の意味・グループ分け・見出し文言の単一の正。表示・通知・Dock バッジが同じ判定を使う。
 import {
@@ -22,17 +22,93 @@ import {
 import { basename, formatElapsed, formatWaitingSince } from '../lib/format';
 import { getSharedCwd, subscribeSharedCwd } from '../lib/cwd';
 
+/**
+ * 「claude が PATH に無い」を検知してから見出しを赤字で目立たせる長さ（Issue #20 I-3）。
+ * 本番のポーリング既定（pollIntervalMs 3000ms）と同じ値にしてある
+ * （＝「次の1周期ぶんは目立ち、そのあとは黙る」という直感と一致させるため）。
+ */
+const LOUD_DURATION_MS = 3_000;
+
 export interface TaskListProps {
   /** ownedByApp なタスクをクリックしたときに、対応するタブへフォーカスする */
   onFocusTab: (agentSessionId: string) => void;
   /** そのタスクに対応するタブが存在するか（無ければクリック不可にする） */
   canFocus: (agentSessionId: string) => boolean;
+  /** 空状態の「起動」ボタン用（Issue #20 I-3）。Cmd+Shift+C と同じ操作 */
+  onLaunchClaude: () => void;
 }
 
-export default function TaskList({ onFocusTab, canFocus }: TaskListProps) {
+export default function TaskList({ onFocusTab, canFocus, onLaunchClaude }: TaskListProps) {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [errorKind, setErrorKind] = useState<AgentTasksEvent['errorKind']>(undefined);
   const [now, setNow] = useState(() => Date.now());
+
+  // Issue #20 I-3「claude が PATH に無い」: ポーリングは pollIntervalMs（既定3秒）ごとに
+  // 同じ ENOENT を検知し続けるが、ユーザーへ伝える価値があるのは最初だけ。
+  // 「一度出したら黙る」= 検知したら LOUD_DURATION_MS のあいだだけ見出しを
+  // 赤字にし、そのあとは静かな表示に落とす。
+  //
+  // **意図的にポーリング周期（pollIntervalMs）そのものには連動させていない。**
+  // 「次のポーリング結果が来るまで目立たせる」という素朴な実装だと、初回検知の
+  // 直後に（cwd 解決前後の初回フェッチと購読中の push が競合するなどで）
+  // ほぼ同時に2件目の結果が届いた場合、React のバッチングにより「目立つ」
+  // 状態が1度も画面に描画されないまま静かな状態へ上書きされてしまう
+  // （実測でこの事故を作り込んだ）。固定時間のタイマーにすることで、
+  // 何回どんな順序で結果が届いても「検知してから最低 LOUD_DURATION_MS は
+  // 必ず目立つ」ことを保証する。
+  const notFoundActiveRef = useRef(false);
+  const quietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [notFoundLoud, setNotFoundLoud] = useState(false);
+
+  const clearQuietTimer = useCallback((): void => {
+    if (quietTimerRef.current !== null) {
+      clearTimeout(quietTimerRef.current);
+      quietTimerRef.current = null;
+    }
+  }, []);
+
+  const applyEvent = useCallback(
+    (e: AgentTasksEvent, opts?: { manualRecheck?: boolean }): void => {
+      setTasks(e.tasks);
+      setError(e.error);
+      setErrorKind(e.errorKind);
+
+      if (e.errorKind !== 'not-found') {
+        // 解消した（または別種のエラーになった）ので、次に not-found が来たら
+        // また「初回」として扱えるようにリセットする。
+        clearQuietTimer();
+        notFoundActiveRef.current = false;
+        setNotFoundLoud(false);
+        return;
+      }
+
+      // 「再確認」ボタン経由は、ユーザーの問いへの直接の応答なので必ず
+      // 目立たせ直す（タイマーもやり直す）。それ以外（自動ポーリングでの
+      // 再検知）は、既にタイマーが動いている間は何もしない。
+      if (!opts?.manualRecheck && notFoundActiveRef.current) return;
+
+      clearQuietTimer();
+      notFoundActiveRef.current = true;
+      setNotFoundLoud(true);
+      quietTimerRef.current = setTimeout(() => {
+        quietTimerRef.current = null;
+        setNotFoundLoud(false);
+      }, LOUD_DURATION_MS);
+    },
+    [clearQuietTimer],
+  );
+
+  // 「再確認」ボタンから呼ぶ手動チェック。自動ポーリングと同じ agents.list を叩くが、
+  // 結果は必ず目立たせる（applyEvent の manualRecheck 経路）。
+  const recheck = useCallback((): void => {
+    window.api.agents
+      .list({ cwd: getSharedCwd() })
+      .then((e: AgentTasksEvent) => applyEvent(e, { manualRecheck: true }))
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  }, [applyEvent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,8 +120,7 @@ export default function TaskList({ onFocusTab, canFocus }: TaskListProps) {
         .list({ cwd: getSharedCwd() })
         .then((e: AgentTasksEvent) => {
           if (cancelled) return;
-          setTasks(e.tasks);
-          setError(e.error);
+          applyEvent(e);
         })
         .catch((err: unknown) => {
           if (cancelled) return;
@@ -63,16 +138,17 @@ export default function TaskList({ onFocusTab, canFocus }: TaskListProps) {
 
     const unsubscribe = window.api.agents.onTasks((e: AgentTasksEvent) => {
       if (cancelled) return;
-      setTasks(e.tasks);
-      setError(e.error);
+      applyEvent(e);
     });
 
     return () => {
       cancelled = true;
       unsubscribeCwd();
       unsubscribe();
+      // アンマウント後に setTimeout のコールバックが setState を呼ばないようにする。
+      clearQuietTimer();
     };
-  }, []);
+  }, [applyEvent, clearQuietTimer]);
 
   // 経過時間の表示を更新するためだけの軽い再描画トリガー（10秒間隔で十分）。
   useEffect(() => {
@@ -173,13 +249,35 @@ export default function TaskList({ onFocusTab, canFocus }: TaskListProps) {
 
   return (
     <div className="task-list">
-      {error && (
+      {errorKind === 'not-found' ? (
+        // Issue #20 I-3: 「claude が PATH に無い」専用の空状態パネル。
+        // 赤字の生エラー文一行ではなく、見出し + 手順 + 再確認ボタンにする。
+        // notFoundLoud が false のとき（自動ポーリングでの2回目以降の再検知）は
+        // panel-empty--loud を外し、静かな見た目のまま情報だけ残す。
+        <div className={`panel-message panel-empty${notFoundLoud ? ' panel-empty--loud' : ''}`}>
+          <h2 className="panel-empty__heading">Claude CLI が見つかりません</h2>
+          <p className="panel-empty__body">
+            <code>claude</code> コマンドが PATH 上に見つかりません。ターミナルで{' '}
+            <code>which claude</code> を実行し、インストール済みか・PATH が通っているかを確認してください。
+          </p>
+          <button type="button" className="panel-empty__action" onClick={recheck}>
+            再確認
+          </button>
+        </div>
+      ) : error ? (
         <div className="panel-message panel-message--error">
           タスク一覧の取得に失敗しました: {error}
         </div>
-      )}
-      {!error && tasks.length === 0 && (
-        <div className="panel-message">実行中のタスクはありません</div>
+      ) : (
+        tasks.length === 0 && (
+          <div className="panel-message panel-empty">
+            <p className="panel-empty__body">動いている AI はまだありません</p>
+            <p className="panel-empty__hint">Cmd+Shift+C で Claude を起動できます</p>
+            <button type="button" className="panel-empty__action" onClick={onLaunchClaude}>
+              Claude を起動
+            </button>
+          </div>
+        )
       )}
       {groups.map((group) => (
         <div className="task-group" key={group.state}>

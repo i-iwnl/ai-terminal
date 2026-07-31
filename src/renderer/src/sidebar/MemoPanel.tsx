@@ -25,6 +25,14 @@ export interface MemoPanelProps {
   /** 履歴から開かれたセッション。未指定なら一覧から選ぶ */
   target: MemoTarget | null;
   onSelectTarget: (target: MemoTarget | null) => void;
+  /**
+   * 空状態から履歴タブへ飛ぶボタン用（Issue #20 I-3）。
+   *
+   * 「メモは履歴一覧の『メモ』ボタンから開く」という案内だけでは、履歴タブを
+   * 一度も開いていない利用者にとって「その行がどこにあるか」が分からない循環参照になる。
+   * ここにも履歴タブへの往路を用意する。
+   */
+  onGoToHistory: () => void;
 }
 
 /** 入力が止まってから保存するまでの待ち時間（ミリ秒）。 */
@@ -41,7 +49,7 @@ function previewOf(body: string): string {
   return firstLine.trim().slice(0, 60);
 }
 
-export default function MemoPanel({ target, onSelectTarget }: MemoPanelProps) {
+export default function MemoPanel({ target, onSelectTarget, onGoToHistory }: MemoPanelProps) {
   const [memos, setMemos] = useState<ListMemosResult>(EMPTY);
   const [globalDraft, setGlobalDraft] = useState('');
   const [sessionDraft, setSessionDraft] = useState('');
@@ -237,9 +245,14 @@ export default function MemoPanel({ target, onSelectTarget }: MemoPanelProps) {
             />
           </div>
         ) : (
-          <p className="memo-panel__hint">
-            履歴一覧の「メモ」ボタンから、セッションごとのメモを開けます。
-          </p>
+          <div className="memo-panel__empty">
+            <p className="memo-panel__hint">
+              過去のセッションを開いて「メモ」を押すと、ここに残ります。
+            </p>
+            <button type="button" className="memo-panel__goto-history" onClick={onGoToHistory}>
+              履歴を見る
+            </button>
+          </div>
         )}
 
         {memos.sessions.length === 0 ? (
