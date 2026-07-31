@@ -567,8 +567,15 @@ body {
    「位置が同じで色だけ違う」に落ちるため）。
    ペインヘッダ（下記）は通常フローに入れてあり `.terminal-pane__container`
    の上には重ならないので、この線は常にここ1箇所で見える（レビュー指摘で
-   ヘッダの重ね描きをやめた際に、二重描画の必要も一緒に無くなった）。 */
-.terminal-pane.is-active .terminal-pane__container {
+   ヘッダの重ね描きをやめた際に、二重描画の必要も一緒に無くなった）。
+   **`.terminal-pane--split`（分割中のみ付く。ペインヘッダと同じ判定）を
+   条件に含める。** この線の役割は「どのペインがアクティブか」を示すことで、
+   ペインが1枚しかないタブでは伝えることが無い。同じ3層の3層目（ペインヘッダ）は
+   提案 G の「1ペインのときは出さない」を最初から満たしていたのに対し、この
+   規則はその条件を欠いており、単一ペインのタブでも常時この線が出ていた
+   （PR 5 の実装漏れ。design-rules.md 原則3「状態が変わったときだけ前に出る」に
+   反する、常時出て何も伝えないクロームだった）。 */
+.terminal-pane.is-active.terminal-pane--split .terminal-pane__container {
   box-shadow: inset 0 1px 0 var(--pane-active-accent);
 }
 
@@ -588,8 +595,11 @@ body {
 /* アクティブなペインがそのままドロップ先にもなる場合、4辺の枠に加えて
    アクティブ線（--pane-active-accent。prefers-contrast: more では --focus-ring に
    切り替わる）も残す。box-shadow は上書きされる（同一プロパティのため）ので、
-   両立させるにはこの詳細度で2本のシャドウを明示的に重ねる必要がある。 */
-.terminal-pane.is-active.terminal-pane--drop-target .terminal-pane__container {
+   両立させるにはこの詳細度で2本のシャドウを明示的に重ねる必要がある。
+   **こちらも `.terminal-pane--split` を条件に含める**（上のアクティブ線の規則と
+   同じ理由。分割していない単一ペインへのドロップは `.terminal-pane--drop-target`
+   規則の4辺の枠だけで十分で、存在しないアクティブ線を混ぜない）。 */
+.terminal-pane.is-active.terminal-pane--split.terminal-pane--drop-target .terminal-pane__container {
   box-shadow:
     inset 0 0 0 2px var(--accent),
     inset 0 1px 0 var(--pane-active-accent);
