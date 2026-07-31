@@ -107,6 +107,8 @@ skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` 
 
 **commit / push / PR 作成は、ユーザーが明示的に指示したときのみ行う。** エージェントが自発的にコミットしてはいけない。
 
+**スタック PR を作らない。** base 側を `gh pr merge --delete-branch` でマージすると、そこに積んだ子 PR は**自動クローズされ、しかも再オープンできない**（base ブランチが存在しない PR は `reopenPullRequest` が失敗する）。実際に1本失って立て直した。**すべて `main` から生やし、順にマージする。**
+
 ## コーディング規約
 
 - TypeScript の `any` を使わない。外部 JSON のパースは `unknown` で受けて絞り込む。
