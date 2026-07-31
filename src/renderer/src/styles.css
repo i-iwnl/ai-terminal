@@ -17,9 +17,9 @@
  *
  * **置換は PR 4 で完了した。本体に色のリテラルは1つも残っていない**
  * （`test/unit/css-tokens.test.ts` が未参照ゼロを機械で押さえている）。
- * 残っているリテラルは、寸法（幅・高さ・線幅）と、4px グリッドに乗らない余白
- * （2 / 3 / 6 / 10 / 14 / 18 / 20px）と `border-radius: 4px`。
- * **グリッドへ畳むのは見た目が動く変更なので、置換の PR には混ぜていない。**
+ * 残っているリテラルは寸法（幅・高さ・線幅）のみ。**4px グリッドに乗らない余白
+ * （2 / 3 / 6 / 10 / 14 / 18 / 20px）と `border-radius: 4px`（#92）は PR 19（密度・
+ * タイポグラフィの周）で 4px グリッド（--sp-*）と --radius-md へ畳んだ。**
  *
  * 値の目標と根拠（コントラスト実測表）は Issue #20 の A-3 が唯一の正。
  * **コントラストは最も明るい面（設定ウィンドウ）の上でも検証すること。**
@@ -164,24 +164,34 @@
      **色と大きさの両方を同じ周で潰すと2行が完全に同化する**（5ペルソナレビューの指摘）。
      どちらかは残す必要があり、大きさを残した。 */
   --fs-10: 10px; /* メモ一覧の日時のみ。上のコメントの理由で畳まない */
-  --fs-xs: 11px; /* メタ情報 */
+  --fs-xs: 11px; /* メタ情報・セクション見出し（11pt semibold + トラッキング。Issue #20 H） */
   --fs-sm: 12px; /* 一覧・ラベル */
-  --fs-md: 13px; /* 本文既定 */
+  --fs-md: 13px; /* 本文既定。Issue #20 H: 一覧行の主タイトル（サイドバー行は 13pt）もここへ統一した
+                    （旧 --fs-sm 12px から）。macOS のソースリスト行は 13pt が既定 */
   --fs-lg: 16px; /* 新規タブの「+」 */
 
-  /* --lh-tight は現行に使用箇所が無い（行間を詰めている箇所が1つも無い）。
-     PR 5 の密度・タイポグラフィ調整（Issue #20 の H）で使う。
-     そこでも使わなければ削除する。 */
+  /* -- ウェイト（Issue #20 H） --------------------------------------------- */
+  /* macOS の階層はサイズよりウェイトで作る（headline = 13pt semibold / body = 13pt regular）。
+     セクション見出しの「15px を使う」は AppKit の作法ではなく、正しくは
+     11pt semibold + 大文字トラッキング（--fs-xs と組み合わせて使う）。 */
+  --fw-regular: 400;
+  --fw-semibold: 600;
+  /* セクション見出しの大文字トラッキング。4箇所（タスク/履歴/メモ/設定の見出し）で
+     同じ値を使うのでトークン化した（寸法・色と同じく、値がずれると気づきにくい）。 */
+  --tracking-wide: 0.04em;
+
+  /* PR 19（Issue #20 H）で初めて使用箇所ができた。行が2行に折り返す場面
+     （サイドバーのメタ情報）だけに当て、単一行では見た目に影響しない
+     （line-height は折り返しが起きて初めて効くため）。 */
   --lh-tight: 1.3;
   --lh-normal: 1.5;
 
   /* -- 余白（4px グリッド） ---------------------------------------------- */
-  /* --sp-6 も現行に使用箇所が無い（--lh-tight と同じ扱い）。
-     段が飛んだ尺にしないために宣言だけ残してある。 */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
+  /* PR 19（Issue #20 H・#92）で初めて使用箇所ができた（設定ウィンドウ最下部の余白）。 */
   --sp-6: 24px;
 
   /* -- ターゲットサイズ ---------------------------------------------------- */
@@ -241,9 +251,11 @@ body,
 body {
   background: var(--surface-1);
   color: var(--text-terminal);
+  /* Issue #20 H: system-ui を先頭にする。BlinkMacSystemFont は現行 Chromium では
+     実質無意味（system-ui が既に San Francisco に解決する）なので削除した。 */
   font-family:
+    system-ui,
     -apple-system,
-    BlinkMacSystemFont,
     'Hiragino Sans',
     'Hiragino Kaku Gothic ProN',
     sans-serif;
@@ -262,6 +274,24 @@ body {
 /* サイドバー */
 /* ---------------------------------------------------------------------- */
 
+/* Issue #20 K-7: サイドバーに vibrancy（`vibrancy: 'sidebar'`。src/main/index.ts）。
+   **`.sidebar` 自身はここでは塗らない。** 塗りは `.sidebar__tabs`（トラック）と
+   `.sidebar__content` の2つの子へ移してある（下記）。理由:
+
+   - vibrancy は BrowserWindow 単位（ウィンドウの背後に敷く NSVisualEffectView）
+     で、Renderer 側で「見える」ようにするには、その領域だけ DOM の背景を
+     不透明にしないことが必要（不透明な祖先が1つでもあれば、そこから下は
+     ネイティブの素材ではなく単にその祖先の塗りが見える）
+   - `.sidebar__drag-region`（下記。信号機ボタンの余白）は**元から背景を
+     持っていない**（透明）。`.sidebar` を不透明にしないだけで、この40pxの
+     帯だけが vibrancy を見せる唯一の場所になる
+   - `.sidebar__tabs` と `.sidebar__content` は明示的に不透明な背景を持つ
+     ので、**この2つの内側にはテキストが1つもある領域には vibrancy がかからない**。
+     `e2e/specs/S40-contrast-contract.spec.ts` が実測しているサイドバーの
+     文字コントラストは、透明なウィンドウの向こう側（デスクトップの壁紙や
+     背後のウィンドウ）に依存せず、これまでと同じ値のまま固定できる
+   - `prefers-reduced-transparency` では `.sidebar` 自体を不透明に戻し、
+     ドラッグ領域も含めて完全に静止した塗りへフォールバックする（下記） */
 .sidebar {
   width: 260px;
   min-width: 220px;
@@ -269,41 +299,61 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface-0);
   border-right: 1px solid var(--border-subtle);
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar {
+    background: var(--surface-0);
+  }
+}
+
 /* macOS の信号機ボタン（hiddenInset, trafficLightPosition: 16,16）と重ならないための余白。
-   ここをドラッグ領域にして、ウィンドウをこの帯からドラッグ移動できるようにする。 */
+   ここをドラッグ領域にして、ウィンドウをこの帯からドラッグ移動できるようにする。
+   背景は持たない（= vibrancy が見える唯一の領域。上の `.sidebar` のコメント参照）。 */
 .sidebar__drag-region {
   height: 40px;
   flex-shrink: 0;
   -webkit-app-region: drag;
 }
 
+/* Issue #20 K-6: 下線タブ（Material Design の語彙）から macOS のセグメンテッド
+   コントロールへ（Xcode のナビゲータ切り替えが参考実装）。トラック（この要素）
+   が不透明な面を持ち、選択中セグメントはその中の塗りつぶしピルで示す
+   （下線は使わない）。`margin` で周囲から離すのは、セグメンテッドコントロールが
+   帯いっぱいに張り付くのではなく「浮いた1つの操作」に見えるようにするため。 */
 .sidebar__tabs {
   display: flex;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--sp-1);
+  margin: var(--sp-2);
+  padding: var(--sp-1);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
   -webkit-app-region: no-drag;
 }
 
 .sidebar__tabs button {
   flex: 1;
-  padding: var(--sp-2) 0;
+  padding: var(--sp-2);
   background: transparent;
   border: none;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: var(--fs-sm);
 }
 
 .sidebar__tabs button.is-active {
+  background: var(--surface-3);
   color: var(--text-bright);
-  border-bottom: 2px solid var(--accent);
 }
 
+/* 実際に不透明な面はここに持たせる（`.sidebar` 自身は vibrancy のため塗らない。
+   上のコメント参照）。値は従来 `.sidebar` が持っていた --surface-0 のまま
+   なので、サイドバー本文の文字コントラストは何も変わっていない。 */
 .sidebar__content {
+  background: var(--surface-0);
   flex: 1;
   overflow-y: auto;
   -webkit-app-region: no-drag;
@@ -351,13 +401,17 @@ body {
   -webkit-app-region: drag;
 }
 
+/* PR 19 差し戻し（S47 の追跡結果）: 密度調整（gap 6px -> 8px, padding 0 10px -> 0 12px）で
+   タブ中央の当たり判定が死角に落ちた経緯は `.tab-bar__close` のコメント参照。
+   `position: relative` はその絶対配置の基準にするため（下記）。 */
 .tab-bar__tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
   min-width: 90px;
   max-width: 180px;
+  position: relative;
   color: var(--text-secondary);
   border-right: 1px solid var(--border-subtle);
   white-space: nowrap;
@@ -415,18 +469,41 @@ body {
 /* タブの選択操作。role="tab" はこの <button> に付け、閉じるボタンとは
    兄弟にする（<button> の中に <button> を入れ子にできないため）。
    見た目は元の <div onClick> と揃える必要があるので、ボタンの既定スタイルを
-   ここで打ち消す（task-item__row / history-item__row と同じ考え方）。 */
+   ここで打ち消す（task-item__row / history-item__row と同じ考え方）。
+
+   PR 19 差し戻し（S47 が検出したタブ中央の死角。この PR の密度調整が引き金）:
+   `.tab-bar__close` は普段（非ホバー・非アクティブ）は見た目も無く、
+   `pointer-events: none` で押せもしない。**それでも従来は同じ行の flex アイテムとして
+   幅 14px + 前後 gap 8px ずつを予約していた** ため、この行は
+   「state-slot」「閉じる（死んでいる）」「gap の隙間」「タイトル」の4つに
+   分断され、タブの中央（ちょうど閉じるボタンと gap のあたり）を押しても
+   何も無い `.tab-bar__tab`（コンテナ）に当たっていた。
+
+   直したのは「閉じるボタンをそもそも flex の行から外す」こと。`.tab-bar__close` を
+   `position: absolute` にして常時見た目の同じ位置（左寄せ）へ置き、この
+   ボタン（tab-bar__tab-button）を state-slot の直後からタブ右端まで
+   `flex: 1` で本当に埋める。閉じるボタンが透けて見えない・押せない間は
+   `pointer-events: none` によりクリックがこのボタンまで素通しされる
+   （閉じるボタンが見えている＝押せる間は、そちらの `::before` が上に乗るので
+   食い込まない。下の `.tab-bar__close` のコメント参照）。
+   `padding-left` は、閉じるボタンの見た目の幅ぶんだけタイトルの開始位置を
+   ずらし、視覚的な文字の位置は変えない（測ってあることは下のコメント参照）。 */
 .tab-bar__tab-button {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   flex: 1;
   min-width: 0;
   align-self: stretch;
+  padding: 0;
+  /* 閉じるボタンの実測幅（14px。"x" + padding 0 var(--sp-1)）+ 1 gap 分。
+     閉じるボタン自体が絶対配置でこの行から外れたので、視覚上の開始位置を
+     維持するためだけの余白（クリック領域はこの余白の下も含めて全部有効）。
+     `padding` の後に置いて左だけを上書きする（他の辺は 0 のまま）。 */
+  padding-left: calc(14px + var(--sp-2));
   background: none;
   border: none;
   margin: 0;
-  padding: 0;
   color: inherit;
   font: inherit;
   text-align: left;
@@ -450,7 +527,7 @@ body {
   background: var(--surface-3);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
-  padding: 0 2px;
+  padding: 0 var(--sp-1);
   margin: 0;
   outline: none;
 }
@@ -463,13 +540,28 @@ body {
 /* リーディング側（左）に置く。Terminal.app / Safari と同じ配置
    （却下: 常時表示のトレーリング側は Windows 流。design-rules.md 参照）。
    ホバー時とアクティブ時にだけ実際に押せるようにする。JSX 側で DOM の並びも
-   タイトルより前に変えてあるので、位置の変更は CSS の表示条件だけで足りる。 */
+   タイトルより前に変えてあるので、位置の変更は CSS の表示条件だけで足りる。
+
+   PR 19 差し戻し: 元は `.tab-bar__tab` の flex の行に普通に並ぶ1アイテムだった。
+   非表示（pointer-events: none）のあいだも flex アイテムとして幅14px +
+   前後 gap 8px ずつを予約し続け、その帯（タブ中央付近）が丸ごと死角になっていた
+   （`.tab-bar__tab-button` のコメント参照）。**flex の行から外し、見た目の位置
+   （state-slot の直後・左寄せ）はそのまま `position: absolute` で固定する。**
+   `.tab-bar__tab-button` 側は，state-slot の直後からタブ右端まで flex: 1 で
+   埋まるようになったので、ここが非表示（pointer-events: none）の間は
+   クリックがそのボタンまで素通しする。表示中（pointer-events: auto）は
+   下の ::before（24x24 の当たり判定）が絶対配置で上に乗るので、
+   タブ選択のクリックに食い込まれない。 */
 .tab-bar__close {
+  position: absolute;
+  left: calc(var(--sp-3) + 6px + var(--sp-2));
+  top: 50%;
+  transform: translateY(-50%);
   background: transparent;
   border: none;
   color: inherit;
   cursor: pointer;
-  padding: 0 2px;
+  padding: 0 var(--sp-1);
   font-size: var(--fs-sm);
   opacity: 0;
   /* opacity だけで隠すと、非表示のあいだも 24x24 の当たり判定（下の
@@ -869,8 +961,10 @@ body {
   display: flex;
   gap: var(--sp-1);
   background: var(--surface-3);
-  padding: var(--sp-1) 6px;
-  border-radius: 4px;
+  padding: var(--sp-1) var(--sp-2);
+  /* #92: 4px は 2/3/6px の尺（--radius-sm/md/lg）に乗らないリテラルだった。
+     3px（--radius-md）へ畳んだ（入力欄・ボタン側は元から --radius-md）。 */
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-float);
   /* Issue #67: 入力欄 + ボタン3個で実測 260px 前後あり、細いペインからはみ出していた。
      `.terminal-pane`（position: relative になった、分割時の入れ子含む）を基準に
@@ -883,7 +977,7 @@ body {
   background: var(--surface-1);
   border: 1px solid var(--border-control);
   color: var(--text-terminal);
-  padding: 2px 6px;
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--radius-md);
   font-size: var(--fs-sm);
   /* flex item の既定 min-width: auto だと、親の max-width を無視して
@@ -898,7 +992,7 @@ body {
   color: var(--text-terminal);
   border-radius: var(--radius-md);
   cursor: pointer;
-  padding: 2px 6px;
+  padding: var(--sp-1) var(--sp-2);
   font-size: var(--fs-xs);
 }
 
@@ -1016,7 +1110,7 @@ body {
 .confirm-dialog__title {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-md);
-  font-weight: bold;
+  font-weight: var(--fw-semibold);
   color: var(--text-bright);
 }
 
@@ -1214,17 +1308,26 @@ button.task-item__row:hover {
   color: var(--text-tertiary);
 }
 
+/* Issue #20 H: 経過時間は10秒ごとに再描画される（TaskList.tsx の setNow）ため、
+   桁の幅が変わるフォントだと、更新のたびに行が横に揺れる。等幅数字に固定する。 */
+.task-item__elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
 .task-item__body {
   flex: 1;
   min-width: 0;
 }
 
+/* Issue #20 H: 一覧行の主タイトル（headline）は 13pt + semibold。
+   サイズだけでなくウェイトで階層を作る（macOS の作法。旧 12px/normal から）。 */
 .task-item__name {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   color: var(--text-primary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1232,6 +1335,9 @@ button.task-item__row:hover {
 
 .task-item__badge {
   font-size: var(--fs-xs);
+  /* 親 .task-item__name が headline（semibold）になったため、バッジは
+     明示的に regular に戻す（バッジは補助情報であって見出しではない）。 */
+  font-weight: var(--fw-regular);
   color: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
@@ -1242,10 +1348,14 @@ button.task-item__row:hover {
 .task-item__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px var(--sp-2);
+  gap: var(--sp-1) var(--sp-2);
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
-  margin-top: 2px;
+  margin-top: var(--sp-1);
+  /* 項目数が多い行は折り返す（上のコメント）。折り返したときの行間だけを
+     詰める（Issue #20 H・#92）。単一行では効果が無い（line-height は
+     行間にしか影響しないため、見た目は変わらない）。 */
+  line-height: var(--lh-tight);
 }
 
 /* 幅 260px のサイドバーに4項目が並ぶので、折り返しは避けられない。
@@ -1272,7 +1382,9 @@ button.task-item__row:hover {
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
-  font-weight: normal;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
 }
 
 .history-list__toolbar {
@@ -1293,7 +1405,7 @@ button.task-item__row:hover {
   border: 1px solid var(--border-control);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
-  padding: 2px var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
   cursor: pointer;
   border-radius: var(--radius-md);
 }
@@ -1308,7 +1420,7 @@ button.task-item__row:hover {
   border: 1px solid var(--border-control);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
-  padding: 2px var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
   cursor: pointer;
   border-radius: var(--radius-md);
 }
@@ -1318,7 +1430,9 @@ button.task-item__row:hover {
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
-  font-weight: normal;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
 }
 
 /* Issue #20 I-3: 「すべてのフォルダを見る」で絞り込みを外したあいだ、
@@ -1366,7 +1480,7 @@ button.task-item__row:hover {
 .history-item__content {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 /* resume を実行する本体（Issue #20 PR 9: <li onClick> の解体）。
@@ -1388,8 +1502,12 @@ button.task-item__row:hover {
   cursor: pointer;
 }
 
+/* Issue #20 H: 一覧行の主タイトル（headline）は 13pt + semibold（旧 12px/normal。
+   `.history-item` 自体の既定 --fs-sm を上書きする）。 */
 .history-item__title {
   color: var(--text-primary);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1398,7 +1516,7 @@ button.task-item__row:hover {
 /* resume 用ボタンの兄弟。<button> に入れ子にできないためここに独立して置く。 */
 .history-item__actions {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
   flex-shrink: 0;
 }
 
@@ -1411,7 +1529,7 @@ button.task-item__row:hover {
   color: var(--text-secondary);
   font-size: var(--fs-xs);
   line-height: 1;
-  padding: 2px 6px;
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--radius-md);
   cursor: pointer;
   opacity: 0;
@@ -1427,12 +1545,14 @@ button.task-item__row:hover {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
-  font-size: var(--fs-sm);
+  /* 表示中の .history-item__title と同じ大きさに揃える（編集開始/終了で
+     文字が縮んで見える違和感を避ける。Issue #20 H）。 */
+  font-size: var(--fs-md);
   color: inherit;
   background: var(--surface-3);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
-  padding: 0 2px;
+  padding: 0 var(--sp-1);
   margin: 0;
   outline: none;
 }
@@ -1442,7 +1562,7 @@ button.task-item__row:hover {
   gap: var(--sp-2);
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
-  margin-top: 2px;
+  margin-top: var(--sp-1);
 }
 
 /* Issue #20 I-3: 解析エラーは打つ手が無い情報なので、赤字（--status-error）ではなく
@@ -1450,7 +1570,7 @@ button.task-item__row:hover {
 .history-item__error {
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
-  margin-top: 2px;
+  margin-top: var(--sp-1);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1469,10 +1589,12 @@ button.task-item__row:hover {
 
 /* 設定の見出しと同じ理由で一段上げる（すぐ下にヒントが続く） */
 .memo-panel__heading {
-  margin: 0 0 6px;
+  margin: 0 0 var(--sp-2);
   color: var(--text-primary);
   font-size: var(--fs-xs);
-  font-weight: normal;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
 }
 
 .memo-panel__textarea {
@@ -1488,7 +1610,7 @@ button.task-item__row:hover {
   background: var(--surface-1);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
-  padding: 6px;
+  padding: var(--sp-2);
   outline: none;
 }
 
@@ -1537,8 +1659,13 @@ button:focus-visible {
  *
  * 対象は Issue #20 調査時点の7種類のうち6種類。設定の閉じるボタンは
  * #25（PR #35）で設定が独立ウィンドウ化された際に画面上のボタンごと無くなり
- * （Escape / Cmd+W / OS のクローズボタンのみになった）、対象が消滅している。 */
-.tab-bar__close,
+ * （Escape / Cmd+W / OS のクローズボタンのみになった）、対象が消滅している。
+ *
+ * **`.tab-bar__close` はこのリストから除いた**（PR 19 差し戻し）。
+ * タブ中央の死角を直すため `position: absolute` に変えてあり（上のコメント参照）、
+ * ここで `position: relative` を当てると絶対配置が上書きされて元に戻ってしまう。
+ * `::before` の基準（containing block）には absolute でも relative と同じく
+ * なれるので、下の `::before` 側の規則は変更不要。 */
 .notice-banner button,
 .memo-panel__close,
 .history-item__action,
@@ -1565,13 +1692,13 @@ button:focus-visible {
 }
 
 .memo-panel__target {
-  margin-bottom: 10px;
+  margin-bottom: var(--sp-3);
 }
 
 .memo-panel__target-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   margin-bottom: var(--sp-1);
 }
 
@@ -1592,7 +1719,7 @@ button:focus-visible {
   color: var(--text-secondary);
   cursor: pointer;
   font-size: var(--fs-sm);
-  padding: 0 2px;
+  padding: 0 var(--sp-1);
 }
 
 .memo-panel__hint {
@@ -1652,7 +1779,7 @@ button:focus-visible {
 .memo-item__row {
   display: block;
   width: 100%;
-  padding: 6px var(--sp-2);
+  padding: var(--sp-2);
   margin: 0;
   background: none;
   border: none;
@@ -1666,9 +1793,11 @@ button:focus-visible {
   background: var(--surface-2);
 }
 
+/* Issue #20 H: 一覧行の主タイトル（headline）は 13pt + semibold（旧 12px/normal）。 */
 .memo-item__title {
   color: var(--text-primary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1677,7 +1806,7 @@ button:focus-visible {
 .memo-item__preview {
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
-  margin-top: 2px;
+  margin-top: var(--sp-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1688,7 +1817,7 @@ button:focus-visible {
   gap: var(--sp-2);
   color: var(--text-tertiary);
   font-size: var(--fs-10);
-  margin-top: 2px;
+  margin-top: var(--sp-1);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1717,22 +1846,30 @@ button:focus-visible {
 .settings__body {
   flex: 1;
   min-height: 0;
-  padding: var(--sp-4) var(--sp-4) 20px;
+  /* #92: 20px は 4px グリッドに乗らないリテラルだった。--sp-6（24px）に
+     初めて使用箇所ができた（16px との差が2px しかない --sp-4 より、
+     スクロール領域の最下部としては --sp-6 の余裕のほうが自然）。 */
+  padding: var(--sp-4) var(--sp-4) var(--sp-6);
   overflow-y: auto;
 }
 
 .settings__section + .settings__section {
-  margin-top: 18px;
-  padding-top: 14px;
+  /* #92: 18px/14px は4px グリッドに乗らないリテラルだった。区切り線の前後で
+     外側（見出し前）を内側（見出し後）より広くする関係は保ったまま
+     --sp-4（16px）/ --sp-3（12px）へ畳んだ。 */
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
   border-top: 1px solid var(--border-section);
 }
 
 /* すぐ下に同じ大きさ・同じ太さの注記が続くので、見出しは一段上げる。
-   色以外に見出しであることを示す手がかりが無い（ウェイトの階層は次周）。 */
+   Issue #20 H: ウェイトの階層を追加した（11pt semibold + 大文字トラッキング）。 */
 .settings__heading {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-xs);
-  font-weight: normal;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
   color: var(--text-primary);
 }
 
@@ -1743,8 +1880,21 @@ button:focus-visible {
   color: var(--text-tertiary);
 }
 
+/* Issue #20 H: ラベル幅の固定 120px をやめ、グリッドの1列目を
+   max-content にした（ラベルの無いチェックボックス行では、チェックボックス
+   自身が1列目になり、2列目のテキストは他行の入力欄と同じ位置から始まる）。
+
+   **トレードオフ:** 1列目の幅は行ごとに独立して決まる（この要素自身が
+   グリッドコンテナで、セクション全体で共有していない）。「表示」セクションの
+   「フォント」「サイズ」のようにラベルの文字数が違う行が並ぶと、2列目
+   （入力欄）の開始位置が行ごとに数 px ずれる。セクションをまたいで列を
+   共有するには親（.settings__section）をグリッド化し各行を `display: contents`
+   にする必要があり、行の形（ラベル+入力／チェックボックス+文言／ボタン+状態）が
+   混在する現状の DOM 構造では見送った。固定 120px という不透明な数値を
+   なくす効果のほうが、2〜3行だけに出るこの程度のずれより勝ると判断した。 */
 .settings__row {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content 1fr;
   align-items: center;
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
@@ -1753,8 +1903,6 @@ button:focus-visible {
 }
 
 .settings__label {
-  flex-shrink: 0;
-  width: 120px;
   color: var(--text-secondary);
 }
 
@@ -1767,7 +1915,7 @@ button:focus-visible {
   background: var(--surface-1);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
-  padding: 3px 6px;
+  padding: var(--sp-1) var(--sp-2);
   outline: none;
 }
 
@@ -1792,14 +1940,13 @@ button:focus-visible {
 }
 
 .settings__button {
-  flex-shrink: 0;
   background: transparent;
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   cursor: pointer;
   font-size: var(--fs-xs);
-  padding: 3px 10px;
+  padding: var(--sp-1) var(--sp-3);
 }
 
 .settings__button:hover:not(:disabled) {

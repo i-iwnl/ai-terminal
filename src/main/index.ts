@@ -43,6 +43,22 @@ function createWindow(): BrowserWindow {
     // ライブリサイズ中に macOS が塗る色。CSS の --surface-1 とずれると、
     // ウィンドウを掴んで動かしている間だけ違う色の帯が見える。
     backgroundColor: SURFACE.base,
+    // Issue #20 K-7: 「Electron 製だが Mac アプリに見えるか」の単独最大レバー。
+    // **ターミナル領域には絶対にかけない**（design-rules.md・Issue 本文）。
+    //
+    // vibrancy はウィンドウ単位の設定で、DOM 側で不透明に塗っている領域は
+    // すべてその塗りがそのまま見える（ネイティブの素材は透けない）。
+    // styles.css 側は `.sidebar` 自体の背景を外し、その内側の `.sidebar__tabs`
+    // （セグメンテッドコントロール）と `.sidebar__content` にだけ不透明な
+    // 背景を持たせてある。結果として vibrancy が実際に見えるのは
+    // `.sidebar__drag-region`（信号機ボタン下の40px。何のテキストも持たない）
+    // だけに限定される。
+    //
+    // これにより e2e/specs/S40-contrast-contract.spec.ts が固定しているサイドバーの
+    // 文字コントラストは、デスクトップの壁紙や背後のウィンドウには一切依存しない
+    // （測っている要素はどれも `.sidebar__content` / `.sidebar__tabs` の不透明な
+    // 面の上にあり、この2つの背景色は vibrancy 導入の前後で変わっていない）。
+    vibrancy: 'sidebar',
     webPreferences: {
       // package.json が "type": "module" のため、electron-vite は preload を
       // ESM（.mjs）として出力する。拡張子を .js にすると読み込みに失敗する。
