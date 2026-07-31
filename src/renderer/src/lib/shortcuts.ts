@@ -163,6 +163,20 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
     if (key === 'g') return { type: 'find-previous' };
     // 下に分割（Issue #56 PR 4。design-review.md 提案 B'）。
     if (key === 'd') return { type: 'split-pane', dir: 'column' };
+    // 次の「あなたの番」のタブへ逆順でジャンプ（Cmd+Shift+J。Issue #20 J）。
+    if (key === 'j') return { type: 'jump-your-turn-tab', direction: 'backward' };
+    // 次/前のタブ（Cmd+Shift+] / Cmd+Shift+[。Issue #20 J、iTerm2・Ghostty・
+    // Chrome 共通の筋肉記憶）。
+    //
+    // **`.key` ではなく `.code` で判定する。** Shift を押すと US 配列では
+    // `[` は `{`、`]` は `}` という別の文字として `.key` に入るため、
+    // 他のキー（`c` / `e` / `g` / `d` 等）と同じように `key.toLowerCase()` を
+    // 比較する書き方ではこの2キーだけ拾えない。`.code` は Shift の有無や
+    // レイアウトに関わらず物理キーの位置を表すため、`Cmd+]` / `Cmd+[`
+    // （`next-pane` / `previous-pane`）と同じ物理キーに Shift を足しただけ、
+    // という意図をそのままコードに落とせる。
+    if (e.code === 'BracketRight') return { type: 'next-tab' };
+    if (e.code === 'BracketLeft') return { type: 'previous-tab' };
     return null;
   }
 
@@ -186,6 +200,12 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   // 判断も要らないため、こちらを主に使う想定（40〜80回/日で最も効く）。
   if (key === ']') return { type: 'next-pane' };
   if (key === '[') return { type: 'previous-pane' };
+  // 次の「あなたの番」のタブへジャンプ（Cmd+J。Issue #20 J）。想定 100〜200回/日、
+  // 1日 200〜600手の削減。逆順（Shift 付き）は上の e.shiftKey 分岐にある。
+  if (key === 'j') return { type: 'jump-your-turn-tab', direction: 'forward' };
+  // 直前のタブへ戻る（Cmd+E。Issue #20 J）。Cmd+Shift+E は上で gemini の起動に
+  // 割り当て済みだが、Shift の有無で別の組み合わせなので衝突しない。
+  if (key === 'e') return { type: 'last-active-tab' };
 
   return null;
 }

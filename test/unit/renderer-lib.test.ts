@@ -20,6 +20,12 @@ import {
 /** KeyboardEvent の必要な部分だけを組み立てる（DOM を用意せずに判定を試す）。 */
 function keyEvent(init: {
   key: string;
+  /**
+   * 物理キーの位置（Shift の有無やキーボードレイアウトに依存しない）。
+   * Cmd+Shift+[ / Cmd+Shift+] の判定にだけ使う（shortcuts.ts のコメント参照）。
+   * 省略時は使わないテストがほとんどなので任意にしてある。
+   */
+  code?: string;
   metaKey?: boolean;
   ctrlKey?: boolean;
   altKey?: boolean;
@@ -27,6 +33,7 @@ function keyEvent(init: {
 }): KeyboardEvent {
   return {
     key: init.key,
+    code: init.code ?? '',
     metaKey: init.metaKey ?? false,
     ctrlKey: init.ctrlKey ?? false,
     altKey: init.altKey ?? false,
@@ -299,6 +306,50 @@ describe('matchShortcut', () => {
   it('Cmd+] / Cmd+[ で次/前のペインへ移動する', () => {
     expect(matchShortcut(keyEvent({ key: ']', metaKey: true }))).toEqual({ type: 'next-pane' });
     expect(matchShortcut(keyEvent({ key: '[', metaKey: true }))).toEqual({ type: 'previous-pane' });
+  });
+
+  // Issue #20 J（PR 14）: 次の「あなたの番」のタブへジャンプ。Shift で逆順。
+  it('Cmd+J / Cmd+Shift+J で「あなたの番」のタブへジャンプする（Shift で逆順）', () => {
+    expect(matchShortcut(keyEvent({ key: 'j', metaKey: true }))).toEqual({
+      type: 'jump-your-turn-tab',
+      direction: 'forward',
+    });
+    expect(matchShortcut(keyEvent({ key: 'j', metaKey: true, shiftKey: true }))).toEqual({
+      type: 'jump-your-turn-tab',
+      direction: 'backward',
+    });
+  });
+
+  // Issue #20 J: 直前のタブへ戻る。Cmd+Shift+E は既に gemini の起動に割り当て済み
+  // （このファイルの「AI CLI の起動は Cmd+Shift 系に置く」テスト）なので、
+  // Shift 無しの Cmd+E だけがこの操作になることも併せて固定する。
+  it('Cmd+E で直前のタブへ戻る（Cmd+Shift+E は gemini の起動のまま衝突しない）', () => {
+    expect(matchShortcut(keyEvent({ key: 'e', metaKey: true }))).toEqual({
+      type: 'last-active-tab',
+    });
+    expect(matchShortcut(keyEvent({ key: 'e', metaKey: true, shiftKey: true }))).toEqual({
+      type: 'new-gemini-tab',
+    });
+  });
+
+  // Issue #20 J: 次/前のタブ（iTerm2・Ghostty・Chrome 共通の筋肉記憶）。
+  // Cmd+] / Cmd+[（次/前のペイン）とは Shift の有無で衝突しないことも固定する。
+  // Shift+[ / Shift+] は US 配列では .key が '{' / '}' になるため、判定には
+  // レイアウト非依存の .code（BracketLeft / BracketRight）を使う（shortcuts.ts 参照）。
+  it('Cmd+Shift+] / Cmd+Shift+[ で次/前のタブへ移動する（ペイン移動とは衝突しない）', () => {
+    expect(
+      matchShortcut(keyEvent({ key: '}', code: 'BracketRight', metaKey: true, shiftKey: true })),
+    ).toEqual({ type: 'next-tab' });
+    expect(
+      matchShortcut(keyEvent({ key: '{', code: 'BracketLeft', metaKey: true, shiftKey: true })),
+    ).toEqual({ type: 'previous-tab' });
+    // Shift 無し（Cmd+] / Cmd+[）は今までどおりペイン移動のまま。
+    expect(matchShortcut(keyEvent({ key: ']', code: 'BracketRight', metaKey: true }))).toEqual({
+      type: 'next-pane',
+    });
+    expect(matchShortcut(keyEvent({ key: '[', code: 'BracketLeft', metaKey: true }))).toEqual({
+      type: 'previous-pane',
+    });
   });
 });
 

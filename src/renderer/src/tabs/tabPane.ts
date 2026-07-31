@@ -101,3 +101,21 @@ export function findPaneByAgentSessionId(
   }
   return undefined;
 }
+
+/**
+ * タブの並び順（tabs 配列の順）で次のタブの id を返す（`Cmd+Shift+]`。Issue #20 J）。
+ * 末尾の次は先頭へ折り返す。`paneTree.ts` の `nextPane` と同じ考え方をタブに適用したもの。
+ * activeTabId が見つからない・タブが1枚も無い場合はそのまま返す（no-op）。
+ */
+export function nextTabId(tabs: readonly Pick<TabState, 'id'>[], activeTabId: string): string {
+  const index = tabs.findIndex((t) => t.id === activeTabId);
+  if (index === -1 || tabs.length === 0) return activeTabId;
+  return tabs[(index + 1) % tabs.length].id;
+}
+
+/** タブの並び順で前のタブの id を返す（`Cmd+Shift+[`）。先頭の前は末尾へ折り返す。 */
+export function previousTabId(tabs: readonly Pick<TabState, 'id'>[], activeTabId: string): string {
+  const index = tabs.findIndex((t) => t.id === activeTabId);
+  if (index === -1 || tabs.length === 0) return activeTabId;
+  return tabs[(index - 1 + tabs.length) % tabs.length].id;
+}

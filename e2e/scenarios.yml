@@ -752,3 +752,29 @@ scenarios:
       履歴タブを開いたことが無い利用者にはその行の存在自体が分からない
       （循環参照）。メモタブの空状態に「履歴を見る」ボタンを足し、押すと
       履歴タブへ切り替わることを見る。
+
+  # --- キーボード（Issue #20 PR 14） -----------------------------------------
+  - id: S67
+    title: Cmd+Shift+] / Cmd+Shift+[ で次/前のタブへ、Cmd+E で直前のタブへ戻る
+    spec: S67-tab-navigation-shortcuts.spec.ts
+    readme: false
+    note: >-
+      Issue #20 J。次/前のタブ（`Cmd+Shift+]` / `Cmd+Shift+[`）と直前のタブへ
+      戻る（`Cmd+E`）は実タブの並びだけで検証できる。`Cmd+]` / `Cmd+[`
+      （Shift 無し、ペイン移動。Issue #56 PR 8）とは Shift の有無で衝突しない
+      ことも併せて見る。
+  - id: S68
+    title: 「あなたの番」のタブが無いときに Cmd+J を押しても、通知で分かる
+    spec: S68-your-turn-jump-empty.spec.ts
+    readme: false
+    note: >-
+      Issue #20 J。次の「あなたの番」のタブへジャンプする `Cmd+J` /
+      `Cmd+Shift+J` の「該当タブが1つも無い」側（Issue #56 U4 と同じ
+      「何も起きないで終わらせない」の教訓）を見る。**実際にジャンプが
+      成功するケースはこのハーネスでは検証できない**（偽 CLI の agents.json
+      のフィクスチャ sessionId が、アプリが実際に起動するセッションの
+      agentSessionId と独立しているため。S15 / S63 が既に記録済みの同じ制限。
+      Issue #83 でハーネスの動的フィクスチャ化が解く予定）。探索そのもの
+      （`findNextYourTurnTab`）は test/unit/tab-your-turn.test.ts が固定している。
+
+  # --- PR 19 差し戻し: タブの当たり判定 -------------------------------------

@@ -20,7 +20,9 @@ import {
   TASK_STATE_LABEL,
 } from '@shared/agent-status';
 import { basename, formatElapsed, formatWaitingSince } from '../lib/format';
-import { getSharedCwd, subscribeSharedCwd } from '../lib/cwd';
+// タスク一覧の購読はここで直接 window.api.agents を呼ばず、共有ハブに委ねる
+// （App.tsx の Cmd+J も同じスナップショットを見る必要があるため。lib/agentTasksStore.ts 参照）。
+import { subscribeAgentTasks, recheckAgentTasks } from '../lib/agentTasksStore';
 
 /**
  * 「claude が PATH に無い」を検知してから見出しを赤字で目立たせる長さ（Issue #20 I-3）。
@@ -99,51 +101,24 @@ export default function TaskList({ onFocusTab, canFocus, onLaunchClaude }: TaskL
     [clearQuietTimer],
   );
 
-  // 「再確認」ボタンから呼ぶ手動チェック。自動ポーリングと同じ agents.list を叩くが、
-  // 結果は必ず目立たせる（applyEvent の manualRecheck 経路）。
+  // 「再確認」ボタンから呼ぶ手動チェック。共有ハブ（agentTasksStore）に取り直しを
+  // 依頼するだけで、window.api.agents は直接叩かない。結果は必ず目立たせたいので、
+  // 「次に届く1件は手動再確認由来である」ことを ref に立てておき、購読側の
+  // コールバックで読む（結果は onTasks の push と同じ経路で届くため、ここでは
+  // Promise を直接 await しない）。
+  const manualRecheckPendingRef = useRef(false);
   const recheck = useCallback((): void => {
-    window.api.agents
-      .list({ cwd: getSharedCwd() })
-      .then((e: AgentTasksEvent) => applyEvent(e, { manualRecheck: true }))
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
-  }, [applyEvent]);
+    manualRecheckPendingRef.current = true;
+    recheckAgentTasks();
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    // cwd を必ず添えて呼ぶ。**Main 側の絞り込み対象はこの引数からしか更新されない**ため、
-    // 空で呼ぶと config.scopeAgentsToCwd を true にしても一切効かない（実際にそうなっていた）。
-    const request = (): void => {
-      window.api.agents
-        .list({ cwd: getSharedCwd() })
-        .then((e: AgentTasksEvent) => {
-          if (cancelled) return;
-          applyEvent(e);
-        })
-        .catch((err: unknown) => {
-          if (cancelled) return;
-          setError(err instanceof Error ? err.message : String(err));
-        });
-    };
-
-    request();
-
-    // cwd は起動直後に非同期で解決されるので、この時点ではまだ未解決のことがある。
-    // 解決されたら伝え直す（解決済みなら購読は発火せず、上の request() が既に渡している）。
-    const unsubscribeCwd = subscribeSharedCwd(() => {
-      if (!cancelled) request();
-    });
-
-    const unsubscribe = window.api.agents.onTasks((e: AgentTasksEvent) => {
-      if (cancelled) return;
-      applyEvent(e);
+    const unsubscribe = subscribeAgentTasks((e: AgentTasksEvent) => {
+      applyEvent(e, { manualRecheck: manualRecheckPendingRef.current });
+      manualRecheckPendingRef.current = false;
     });
 
     return () => {
-      cancelled = true;
-      unsubscribeCwd();
       unsubscribe();
       // アンマウント後に setTimeout のコールバックが setState を呼ばないようにする。
       clearQuietTimer();
@@ -215,7 +190,7 @@ export default function TaskList({ onFocusTab, canFocus, onLaunchClaude }: TaskL
             {task.status !== undefined && (
               <span className="task-item__raw-status">{task.status}</span>
             )}
-            {elapsed !== undefined && <span>{elapsed}</span>}
+            {elapsed !== undefined && <span className="task-item__elapsed">{elapsed}</span>}
           </div>
         </div>
       </>

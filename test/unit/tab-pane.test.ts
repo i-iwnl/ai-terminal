@@ -14,6 +14,8 @@ import {
   findPaneByAgentSessionId,
   findTabByAgentSessionId,
   findTabByPtyId,
+  nextTabId,
+  previousTabId,
   tabLeaf,
   type TabState,
 } from '../../src/renderer/src/tabs/tabPane';
@@ -152,5 +154,39 @@ describe('findPaneByAgentSessionId（U4: タスク一覧・通知クリックを
   it('一致する leaf が無ければ undefined', () => {
     const a = tab({ layout: leaf({ paneId: 'a', ptyId: 'pty-a', agentSessionId: 'session-a' }) });
     expect(findPaneByAgentSessionId([a], 'missing')).toBeUndefined();
+  });
+});
+
+// Issue #20 J（PR 14）: Cmd+Shift+] / Cmd+Shift+[ で次/前のタブへ移動する。
+// paneTree.ts の nextPane / previousPane と同じ「環状・見つからなければ素通し」という
+// 考え方をタブの並びに適用したもの。
+describe('nextTabId / previousTabId', () => {
+  const ids = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('次のタブへ進む', () => {
+    expect(nextTabId(ids, 'a')).toBe('b');
+    expect(nextTabId(ids, 'b')).toBe('c');
+  });
+
+  it('末尾の次は先頭へ折り返す', () => {
+    expect(nextTabId(ids, 'c')).toBe('a');
+  });
+
+  it('前のタブへ戻る', () => {
+    expect(previousTabId(ids, 'c')).toBe('b');
+  });
+
+  it('先頭の前は末尾へ折り返す', () => {
+    expect(previousTabId(ids, 'a')).toBe('c');
+  });
+
+  it('activeTabId が一覧に無ければそのまま返す（no-op）', () => {
+    expect(nextTabId(ids, 'missing')).toBe('missing');
+    expect(previousTabId(ids, 'missing')).toBe('missing');
+  });
+
+  it('タブが1枚も無ければそのまま返す', () => {
+    expect(nextTabId([], 'a')).toBe('a');
+    expect(previousTabId([], 'a')).toBe('a');
   });
 });

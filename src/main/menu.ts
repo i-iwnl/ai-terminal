@@ -212,6 +212,26 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
         { role: 'zoom', label: '拡大／縮小' },
         { type: 'separator' },
         { role: 'front', label: 'すべてを手前に移動' },
+        { type: 'separator' },
+        // タブの移動（Issue #20 J）。iTerm2・Ghostty・Chrome 共通の筋肉記憶。
+        // `Cmd+]` / `Cmd+[`（表示 > 次/前のペインへ）は Issue #56 でペイン移動に
+        // 割り当て済みのため、タブ側は Shift 付きにして衝突を避けてある
+        // （shortcuts.ts 参照）。
+        actionItem(win, '次のタブへ', 'Cmd+Shift+]', { type: 'next-tab' }),
+        actionItem(win, '前のタブへ', 'Cmd+Shift+[', { type: 'previous-tab' }),
+        actionItem(win, '直前のタブへ戻る', 'Cmd+E', { type: 'last-active-tab' }),
+        { type: 'separator' },
+        // 次の「あなたの番」のタブへジャンプ（Issue #20 J）。想定 100〜200回/日、
+        // 1日 200〜600手の削減。状態の意味（あなたの番 = busy 以外）は
+        // src/shared/agent-status.ts の toTaskState が唯一の正。
+        actionItem(win, '次の「あなたの番」のタブへ', 'Cmd+J', {
+          type: 'jump-your-turn-tab',
+          direction: 'forward',
+        }),
+        actionItem(win, '前の「あなたの番」のタブへ', 'Cmd+Shift+J', {
+          type: 'jump-your-turn-tab',
+          direction: 'backward',
+        }),
       ],
     },
     {
