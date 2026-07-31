@@ -72,9 +72,9 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import type { TabState } from './useTabs';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
+import { tabLeaf, type TabState } from './tabPane';
 import { providerLabel } from './tabProvider';
 
 export interface TabBarProps {
@@ -150,7 +150,7 @@ export default function TabBar({
 
   const startEditing = (tab: TabState): void => {
     setEditing(tab.id);
-    setDraft(tab.title);
+    setDraft(tabLeaf(tab).title);
   };
 
   const commitEditing = (): void => {
@@ -194,18 +194,22 @@ export default function TabBar({
           {tabs.map((tab, index) => {
             const isEditing = tab.id === editingTabId;
             const isActive = tab.id === activeTabId;
-            const provider = providerLabel(tab.kind);
+            // PTY のメタ（title / kind / exit）は leaf に持たせてある
+            // （design-review Q4）ので、タブ自体からではなく tabLeaf() で
+            // leaf を引いてから読む。木は常に leaf 1枚（PR 3）。
+            const leaf = tabLeaf(tab);
+            const provider = providerLabel(leaf.ptyKind);
             // 可視テキスト（タブタイトル）を先頭に含める（WCAG 2.5.3 Label in
             // Name）。aria-label を使うとボタンの子要素のテキストは無視される
             // ため、タイトル・プロバイダ・終了状態のすべてをここで組み立て直す。
-            const tabAccessibleLabel = [tab.title, provider, tab.exit ? '終了' : undefined]
+            const tabAccessibleLabel = [leaf.title, provider, leaf.exit ? '終了' : undefined]
               .filter((part): part is string => part !== undefined && part !== '')
               .join('、');
             return (
               <div
                 key={tab.id}
-                className={`tab-bar__tab tab-bar__tab--${tab.kind}${isActive ? ' is-active' : ''}${
-                  tab.exit ? ' is-exited' : ''
+                className={`tab-bar__tab tab-bar__tab--${leaf.ptyKind}${isActive ? ' is-active' : ''}${
+                  leaf.exit ? ' is-exited' : ''
                 }`}
               >
                 {/* 先頭の固定幅スロット。状態専用（Issue #20 C）。プロバイダの区別は
@@ -216,7 +220,7 @@ export default function TabBar({
                     装飾要素なので aria-hidden にする（「終了」は下の末尾バッジが
                     テキストとして既に伝えている）。 */}
                 <span
-                  className={`tab-bar__state-slot${tab.exit ? ' tab-bar__state-slot--exited' : ''}`}
+                  className={`tab-bar__state-slot${leaf.exit ? ' tab-bar__state-slot--exited' : ''}`}
                   aria-hidden="true"
                 />
                 <button
@@ -295,9 +299,9 @@ export default function TabBar({
                         startEditing(tab);
                       }}
                     >
-                      {tab.title}
+                      {leaf.title}
                     </span>
-                    {tab.exit && <span className="tab-bar__exit-badge">終了</span>}
+                    {leaf.exit && <span className="tab-bar__exit-badge">終了</span>}
                   </button>
                 )}
               </div>
