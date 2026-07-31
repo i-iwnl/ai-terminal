@@ -96,6 +96,16 @@
      白なら 4.29（実測は S40）。上限の色なので、面が何であってもコントラストのコストがゼロ。 */
   --focus-ring: #ffffff;
 
+  /* -- ペイン（Issue #56 PR 5） -------------------------------------------- */
+  /* アクティブペインのアクセント線（design-review.md 提案 C'）。既定は --accent。
+     prefers-contrast: more では --border-control (#7a7a7a) との比が 1.56 になり
+     隣接して見分けが付かなくなるため --focus-ring に切り替える
+     （#1e1e1e に対して 3:1 かつ #5b9cff に対して 3:1 を同時に満たすグレーは
+     256段のなかに1つも存在しない。design-review.md「全員一致の対案をそのまま
+     実装しなかった箇所」参照）。**--accent 自体は上書きしない**（選択状態等の
+     既存の用途まで巻き込まないよう、この線専用のトークンに切り出した）。 */
+  --pane-active-accent: var(--accent);
+
   /* -- 状態 -------------------------------------------------------------- */
   /* 意味の対応は src/shared/agent-status.ts が唯一の正。
      **強調するのは「あなたの番」の側**（Issue #21）。 */
@@ -210,6 +220,7 @@
     --border-row: var(--border-control);
     --border-section: var(--border-control);
     --surface-tab-active: #525252;
+    --pane-active-accent: var(--focus-ring);
   }
 }
 
@@ -543,6 +554,67 @@ body {
   flex: 1;
   min-height: 0;
   padding: var(--sp-1);
+}
+
+/* アクティブペインのアクセント線（Issue #56 PR 5 提案 C'。3層のうち2層目）。
+   **border ではなく box-shadow: inset**（実寸が変わらないので、フォーカス移動の
+   たびに ResizeObserver 経由の SIGWINCH が飛ばない。Q2）。
+   `.terminal-pane__container` の padding 帯（--surface-1 の上）に置く
+   -- canvas の上に置くと白系テーマで 1.4.11 を割る。`inset` にするのは、
+   非 inset だと `.terminal-stack { overflow: hidden }` や `.pane-split__cell
+   { overflow: hidden }` で外周ペインの端が切られるため。
+   非アクティブ側には薄い線を描かない（design-rules.md の却下済み案
+   「位置が同じで色だけ違う」に落ちるため）。
+   ペインヘッダ（下記）は通常フローに入れてあり `.terminal-pane__container`
+   の上には重ならないので、この線は常にここ1箇所で見える（レビュー指摘で
+   ヘッダの重ね描きをやめた際に、二重描画の必要も一緒に無くなった）。 */
+.terminal-pane.is-active .terminal-pane__container {
+  box-shadow: inset 0 1px 0 var(--pane-active-accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* ペインヘッダ（Issue #56 PR 5 提案 G） */
+/* ---------------------------------------------------------------------- */
+
+/* 分割中のみ表示する、ペインの種別（zsh/claude/claude (再開) 等）+ cwd の
+   basename を示す帯。**通常の flex フローに入れる**（`position: absolute` の
+   重ね描きにしない）。
+   重ね描きにすると不透明なヘッダが xterm の最初の行の上に乗り、分割中は
+   全ペインの最初の行が実質読めなくなっていた（レビュー指摘。実測で
+   15px の行のうち 14px が隠れていた）。「幾何を分岐させない」という
+   design-review の要求（1ペイン時と N ペイン時で `.terminal-pane__container`
+   の内寸が変わると、その差分が SIGWINCH として実行中の子プロセスに届く）は、
+   **分割そのものが必ず幅か高さのどちらかを変える**ため、フローに入れても
+   追加コストにならないことを実測で確認した上で満たしている:
+   `ipcMain.on('pty:resize', ...)` を差し込んで発火回数を数えると、左右分割
+   （Cmd+D）1回あたりの `pty:resize` は、ヘッダを重ね描きにしていた版でも
+   フローに入れた版でも**どちらも2回**（新しいペインの初期 fit 1回 + 既存
+   ペインの幅変化 1回）で変わらない。分割は必ず対象ペインの幅（row）または
+   高さ（column）を変えるので、ヘッダの出現が ResizeObserver をもう一度
+   追加で起こすことはなく、既に発火するはずだった1回の resize が運ぶ rows
+   の値を1つ変えるだけ（design-review.md 提案 G が警戒した「余分な
+   SIGWINCH」には当たらない）。 */
+.pane-header {
+  flex: 0 0 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 検索バーは既定でペイン右上（`.terminal-pane` の左上を起点にした絶対配置）に
+   浮くが、ヘッダがフローに入って `.terminal-pane__container` を押し下げても
+   検索バー自身の起点はそのままなので、ヘッダがあるときはその下へ逃がす
+   （調整するのは検索バーの見た目の位置だけで、xterm 側のレイアウトには
+   影響しない。`.pane-header` は検索バーより DOM 順で先に来るので `~` で拾える）。 */
+.pane-header ~ .terminal-search {
+  top: calc(var(--sp-2) + 18px);
 }
 
 /* ---------------------------------------------------------------------- */

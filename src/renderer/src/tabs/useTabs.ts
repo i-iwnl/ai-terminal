@@ -185,6 +185,10 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           title,
           agentSessionId: result.agentSessionId,
           cwd,
+          // ペインヘッダ（paneHeader.ts）が「claude (再開)」を出し分けるための
+          // フラグ。resumeOpts から直接立てる（title の文字列判定はしない。
+          // paneTree.ts の isResume コメント参照）。
+          isResume: Boolean(resumeOpts?.resumeSessionId ?? resumeOpts?.geminiResumeTarget),
         };
       } catch (err) {
         onError(describeSpawnError(err, kind));

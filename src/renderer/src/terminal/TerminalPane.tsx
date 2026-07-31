@@ -39,6 +39,24 @@ export interface TerminalPaneProps {
   panelId?: string;
   /** このペインを説明する `role="tab"` の要素の id（`aria-labelledby` に使う）。panelId と同様、ルートだけが渡す。 */
   labelledBy?: string;
+  /**
+   * このペインの種別 + cwd を説明する文字列（`tabs/paneHeader.ts`）。
+   * ペインヘッダの表示テキストと、`role="group"`（木のルートでない leaf）の
+   * aria-label の両方に使う（design-review.md 提案 G / PR 5「aria 名」）。
+   * ルートの leaf は role="tabpanel" + aria-labelledby が既に名前を持っている
+   * （aria-labelledby が aria-label より優先されるため、両方渡しても壊れない）。
+   */
+  label: string;
+  /**
+   * ペインヘッダ（高さ18px）を出すか。**分割中のタブだけ true**
+   * （呼び出し側 `PaneTreeView` が木の根が split かどうかで決める）。
+   * 通常の flex フローに入れて描画する（`position: absolute` の重ね描きに
+   * しない。styles.css の `.pane-header` コメント参照。重ね描きだと不透明な
+   * ヘッダが xterm の最初の行を隠してしまうため、フローに入れて
+   * `.terminal-pane__container` を実際に押し下げる。分割は必ず幅か高さの
+   * どちらかを変えるため、`pty:resize` の発火回数は実測でも変わらない）。
+   */
+  showHeader: boolean;
   fontFamily: string;
   fontSize: number;
   theme: TerminalTheme;
@@ -76,6 +94,8 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     active,
     panelId,
     labelledBy,
+    label,
+    showHeader,
     fontFamily,
     fontSize,
     theme,
@@ -138,9 +158,14 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       // アクセシビリティツリーから除かれるため、露出する tabpanel は常に1個。
       // panelId は木のルートを描画する側だけが渡す（分割で入れ子になった leaf は
       // 渡さない。TerminalPaneProps の panelId コメント参照）。
+      // 木のルートでない leaf は tabpanel を名乗れないので role="group" にし、
+      // このペインが何かを aria-label で説明する（PR 5「aria 名」）。
+      // aria-labelledby がある（ルートの）場合はそちらが名前として優先されるため、
+      // aria-label を両方に渡しても壊れない。
       id={panelId}
-      role={panelId ? 'tabpanel' : undefined}
+      role={panelId ? 'tabpanel' : 'group'}
       aria-labelledby={labelledBy}
+      aria-label={label}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       // クリックでこのペインへフォーカスが入ったら、アプリ側の「アクティブなペイン」も
@@ -149,6 +174,19 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       // capture フェーズで拾えば十分（子孫からのバブルも拾える）。
       onFocusCapture={onActivate}
     >
+      {showHeader && (
+        // 通常の flex フローに入れて .terminal-pane__container を実際に押し下げる
+        // （styles.css の .pane-header コメント参照。重ね描きにすると xterm の
+        // 最初の行がヘッダの下に隠れてしまうため、レビューで position: absolute
+        // をやめた。「幾何を分岐させない」という design-review 提案 G の要求は、
+        // 分割そのものが常に幅か高さのどちらかを変えるため、フローに入れても
+        // pty:resize の発火回数が増えないことを実測で確認した上で満たしている）。
+        // 見た目の説明は aria-label（上の role="group"/"tabpanel"）と同じ
+        // 文字列なので、読み上げの二重化を避けて aria-hidden にする。
+        <div className="pane-header" aria-hidden="true">
+          {label}
+        </div>
+      )}
       {searchOpen && (
         <div className="terminal-search">
           <input
