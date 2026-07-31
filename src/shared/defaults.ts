@@ -51,7 +51,10 @@ export const DEFAULT_WEBHOOK: WebhookConfig = {
 export const DEFAULT_CONFIG: AppConfig = {
   // shell は未指定なら $SHELL、それも無ければ /bin/zsh を使う（解決は pty 側の責務）
   shell: undefined,
-  fontFamily: 'Menlo, "SF Mono", monospace',
+  // Issue #20 H: ui-monospace を先頭にする（macOS 上で SF Mono に解決される
+  // CSS 汎用ファミリ）。Menlo は環境が古く ui-monospace を解決できない場合の
+  // フォールバックとして残す。
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   fontSize: 13,
   pollIntervalMs: 3000,
   useTmux: true,

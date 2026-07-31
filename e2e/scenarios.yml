@@ -778,3 +778,15 @@ scenarios:
       （`findNextYourTurnTab`）は test/unit/tab-your-turn.test.ts が固定している。
 
   # --- PR 19 差し戻し: タブの当たり判定 -------------------------------------
+  - id: S69
+    title: タブの中央をクリックすると、そのタブが選択される
+    spec: S69-tab-select-center.spec.ts
+    readme: false
+    note: >-
+      PR 19（Issue #20 H）の密度調整で、選択用ボタン（.tab-bar__tab-button）が
+      閉じるボタン（.tab-bar__close）とその前後の gap ぶんの死角を挟んだまま
+      タブの行に残っていたため、タブの中央（ちょうど死角の位置）をクリックしても
+      何も起きなくなっていた。S44（小さいボタン自身の当たり判定）とは別の
+      観点で、「行全体の押せるはずの領域が本当に押せるか」を
+      document.elementFromPoint で直接検証する。座標は boundingBox() から
+      計算し、決め打ちしない。
