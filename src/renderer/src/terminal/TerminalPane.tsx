@@ -71,6 +71,11 @@ export interface TerminalPaneProps {
   onActivate?: () => void;
 }
 
+/** ファイルドラッグ（Finder の files、または他アプリの text/uri-list）かどうか。 */
+function isFileDrag(dataTransfer: DataTransfer): boolean {
+  return dataTransfer.types.includes('Files') || dataTransfer.types.includes('text/uri-list');
+}
+
 /**
  * ドロップされた DataTransfer から絶対パスを取り出す。
  *
@@ -108,6 +113,16 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  // ドロップ可能領域のハイライト（design-review.md 提案 H）。
+  // xterm の canvas 等、このペイン内の子要素へ入るたびに dragenter/dragleave が
+  // 発火する（ブラウザの仕様。React の onDragEnter/onDragLeave はバブリングで
+  // 拾うのでこの div 1個に付けているが、子孫との出入りのたびに呼ばれることは
+  // 変わらない）。素朴に「dragleave で消す」と実装すると、ペイン内でカーソルを
+  // 動かしただけで枠が消える。enter で+1・leave で-1のカウンタを ref で持ち、
+  // 0に戻ったときだけ枠を消す。drop 側でもカウンタが残る経路を必ず潰すため
+  // 無条件に0へ戻す。
+  const dragCounterRef = useRef(0);
+  const [isDropTarget, setIsDropTarget] = useState(false);
 
   const handle = useTerminal(containerRef, {
     ptyId,
@@ -131,17 +146,35 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
   // ドラッグ中にブラウザ既定の「そのファイルを開く」挙動へ渡さないことが第一。
   // dropEffect を copy にすると、カーソルが `+` 付きになって落とせることが伝わる。
   const handleDragOver = (e: ReactDragEvent<HTMLDivElement>): void => {
-    if (!e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes('text/uri-list')) {
-      return;
-    }
+    if (!isFileDrag(e.dataTransfer)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
+  };
+
+  // カーソルがこのペインへ入った（または子要素へ入り直した）たびに呼ばれる。
+  // カウンタを進め、1件目（0 -> 1）でだけ枠を表示する。
+  const handleDragEnter = (e: ReactDragEvent<HTMLDivElement>): void => {
+    if (!isFileDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDropTarget(true);
+  };
+
+  // 子要素から出るたびにも呼ばれるため、カウンタが0に戻ったときだけ枠を消す。
+  const handleDragLeave = (e: ReactDragEvent<HTMLDivElement>): void => {
+    if (!isFileDrag(e.dataTransfer)) return;
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDropTarget(false);
   };
 
   // ドロップされたパスは、**アクティブなペインではなくドロップされたこのペイン**の PTY へ送る。
   // 他のターミナルと同じ挙動で、分割表示でも自明に動く。
   const handleDrop = (e: ReactDragEvent<HTMLDivElement>): void => {
     e.preventDefault();
+    // dragleave が来ずにカウンタが残ったままになる経路（drop で確定する経路）を
+    // 必ず潰す。drop が起きた以上、ドラッグは終わっているので無条件に0へ戻す。
+    dragCounterRef.current = 0;
+    setIsDropTarget(false);
     const data = buildDropInsertion(extractDroppedPaths(e.dataTransfer));
     if (data === '') return;
     window.api.pty.input({ ptyId, data });
@@ -151,7 +184,7 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
 
   return (
     <div
-      className={`terminal-pane${visible ? '' : ' terminal-pane--hidden'}${active ? ' is-active' : ''}`}
+      className={`terminal-pane${visible ? '' : ' terminal-pane--hidden'}${active ? ' is-active' : ''}${isDropTarget ? ' terminal-pane--drop-target' : ''}`}
       // タブバーの role="tab" と対になる tabpanel。ARIA 仕様は tab に aria-controls で
       // 対応する tabpanel を要求するので、片方だけ足すと role が嘘になる。
       // 非表示のタブは terminal-pane--hidden（visibility: hidden）で
@@ -166,7 +199,9 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       role={panelId ? 'tabpanel' : 'group'}
       aria-labelledby={labelledBy}
       aria-label={label}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       // クリックでこのペインへフォーカスが入ったら、アプリ側の「アクティブなペイン」も
       // 追従させる（Cmd+F / Cmd+W 等のグローバル操作が正しいペインへ向かうため）。

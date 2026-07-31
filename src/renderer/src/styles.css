@@ -572,6 +572,29 @@ body {
   box-shadow: inset 0 1px 0 var(--pane-active-accent);
 }
 
+/* ドロップ可能領域のハイライト（Issue #56 PR 6・design-review.md 提案 H）。
+   分割で複数ペインが並ぶと「どこに落ちるか」が画面から分からなかった（T1）。
+   カーソル下のペインに**4辺**の枠を出す。アクティブ線（上辺1本、上の規則）とは
+   **辺の数（形）で区別する**。同じ --accent で辺の本数だけ違う設計にしているのは、
+   design-rules.md で却下済みの「位置が同じで色だけ違う」表現と同型にしないため
+   （色相・色味を手がかりに数えない。原則2）。
+   border ではなく box-shadow（実寸が変わらず SIGWINCH を誘発しない）。
+   TerminalPane.tsx 側の dragenter/dragleave カウンタが 0 のときだけこのクラスを
+   外すので、xterm の canvas 等の子要素をまたいでも枠が消えない。 */
+.terminal-pane--drop-target .terminal-pane__container {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* アクティブなペインがそのままドロップ先にもなる場合、4辺の枠に加えて
+   アクティブ線（--pane-active-accent。prefers-contrast: more では --focus-ring に
+   切り替わる）も残す。box-shadow は上書きされる（同一プロパティのため）ので、
+   両立させるにはこの詳細度で2本のシャドウを明示的に重ねる必要がある。 */
+.terminal-pane.is-active.terminal-pane--drop-target .terminal-pane__container {
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    inset 0 1px 0 var(--pane-active-accent);
+}
+
 /* ---------------------------------------------------------------------- */
 /* ペインヘッダ（Issue #56 PR 5 提案 G） */
 /* ---------------------------------------------------------------------- */

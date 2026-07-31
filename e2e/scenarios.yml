@@ -613,3 +613,22 @@ scenarios:
       SIGWINCH には当たらないことを確認済み）、木のルートでない leaf が
       role="tabpanel" を名乗らず role="group" + aria-label になること
       （PR 4 の1タブ=1tabpanel契約と矛盾しないこと）を見る。
+
+  # --- ドロップ枠のハイライト（Issue #56 PR 6） -------------------------------
+  - id: S58
+    title: 分割時、カーソル下のペインにだけ4辺のドロップ枠が出て、子要素をまたいでも消えない
+    spec: S58-drop-target-highlight.spec.ts
+    readme: false
+    note: >-
+      design-review.md「提案 H（新規・T1の回収）」の関門（合成 dragover の E2E）を
+      実測で固定する。ドラッグ中カーソル下のペインにだけ
+      `.terminal-pane--drop-target` が付き、もう一方のペインには付かないこと、
+      xterm の canvas 等の子要素へ dragenter し直してからその子要素だけで
+      dragleave しても枠が消えないこと（カウンタで管理しているため。素朴に
+      「dragleave で消す」と実装するとここで壊れる）、最後の dragleave で
+      カウンタが0に戻ると消えること、drop はカウンタの値に関わらず必ず枠を
+      消すこと（dragleave を経ずに drop しても残らない）を見る。あわせて
+      アクティブ線（`.terminal-pane.is-active` の box-shadow: inset 0 1px 0、
+      上辺1本）とドロップ枠（box-shadow: inset 0 0 0 2px、4辺）の
+      computed box-shadow を比較し、色ではなく**形**（スプレッド半径の
+      有無）で区別されていることも実測する。
