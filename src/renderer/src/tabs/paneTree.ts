@@ -1,9 +1,10 @@
 // タブ内ペイン分割（Issue #56）の木構造と、それに対する純粋関数の操作。
 //
-// **この時点ではどこからも import されない。** 木を実際に導入するのは PR 3、
-// 分割を有効化するのは PR 4（`.claude/workspace/issue-56/design-review.md`
-// 「3. 改訂した導入計画」）。この周は「UI を1行も変えない」ことが関門なので、
-// ここに書くのは純粋なデータ構造とその操作だけにする。
+// PR 3（`tabs/useTabs.ts`）で木を導入した。木は常に leaf 1枚で、`splitPane` を
+// 呼ぶ経路はまだどこにも無い。分割を有効化するのは PR 4
+// （`.claude/workspace/issue-56/design-review.md`「3. 改訂した導入計画」）。
+// PR 3 は「UI を1行も変えない」ことが関門だったため、ここに書くのは
+// 純粋なデータ構造とその操作だけのまま維持する。
 //
 // 設計の唯一の正は `.claude/workspace/issue-56/design-review.md`。特に次の3点：
 //
@@ -219,6 +220,28 @@ export function findPanePath(tree: PaneNode, paneId: string): PanePath | undefin
 export function flattenPaneTree(tree: PaneNode): PaneLeaf[] {
   if (tree.kind === 'leaf') return [tree];
   return [...flattenPaneTree(tree.children[0]), ...flattenPaneTree(tree.children[1])];
+}
+
+/** 指定した paneId を持つ leaf をそのまま返す。見つからない、または分割ノードだった場合は undefined。 */
+export function getLeaf(tree: PaneNode, paneId: string): PaneLeaf | undefined {
+  const path = findPanePath(tree, paneId);
+  if (path === undefined) return undefined;
+  const node = getNodeAtPath(tree, path);
+  return node?.kind === 'leaf' ? node : undefined;
+}
+
+/**
+ * `activePaneId` に対応する leaf を返す。見つからない場合は木の先頭（左上）の
+ * leaf にフォールバックする（呼び出し側は必ず1枚の leaf を表示できる前提で書ける）。
+ *
+ * PR 3 の時点では木は常に leaf 1枚で、その `paneId` が `activePaneId` と
+ * 一致するためフォールバックには実際には到達しない。分割が有効になる PR 4 以降、
+ * `activePaneId` の同期が一瞬ずれても呼び出し側を壊さないための防御
+ * （鉄則5「外部フォーマットのパース失敗でアプリを落とさない」と同じ考え方を
+ * 木の内部整合性にも適用したもの）。
+ */
+export function resolveActiveLeaf(tree: PaneNode, activePaneId: string): PaneLeaf {
+  return getLeaf(tree, activePaneId) ?? flattenPaneTree(tree)[0];
 }
 
 /** 経路上のノードを新しいノードで置き換えた木を返す（不変）。経路が不整合なら元の木をそのまま返す。 */
@@ -446,4 +469,27 @@ export function updateSplitRatio(
   if (clamped === target.ratio) return tree;
 
   return replaceAtPath(tree, path, { ...target, ratio: clamped });
+}
+
+/**
+ * 指定した paneId を持つ leaf を、`patch` でマージした内容に置き換えた木を
+ * 返す（不変）。対象の paneId が見つからない場合は元の木をそのまま返す。
+ *
+ * PTY のメタ（ptyId / kind / title / agentSessionId / cwd / exit）を leaf に
+ * 持たせたことで生まれた更新経路（design-review.md Q4）。cwd の追従・exit の
+ * 記録・タイトルの手動編集はすべてこの関数を通す。`kind` / `paneId` は
+ * `patch` の型から除外してあり、構造を壊す更新（leaf を split に化けさせる、
+ * 別の paneId を名乗らせる）を型で防ぐ。
+ */
+export function updateLeaf(
+  tree: PaneNode,
+  paneId: string,
+  patch: Partial<Omit<PaneLeaf, 'kind' | 'paneId'>>,
+): PaneNode {
+  const path = findPanePath(tree, paneId);
+  if (path === undefined) return tree;
+  const node = getNodeAtPath(tree, path);
+  if (node === undefined || node.kind !== 'leaf') return tree;
+
+  return replaceAtPath(tree, path, { ...node, ...patch });
 }

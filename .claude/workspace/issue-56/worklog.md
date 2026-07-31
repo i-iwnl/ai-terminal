@@ -361,3 +361,54 @@ assertive が N 個同時に露出する。**2ペインで claude と gemini を
 2. `paneTree.ts` はまだ**どこからも import されていない**。PR 3 で初めて繋ぐ
 3. `MIN_PANE_COLUMNS` / `MIN_PANE_ROWS` はどちらも 20。呼び出し側が
    `PaneCellMetrics`（実ピクセルと実セル寸法）を測って渡す契約
+
+## 2026-07-31 - PR 3: 木を導入するが、常に leaf 1枚
+
+導入計画の6本目（12本中6本目）。PR #97。**振る舞いを1つも変えない周。**
+
+### 実施内容
+
+- `TabState` を `tabs/tabPane.ts` へ移し、`{ id, layout: PaneNode, activePaneId, createdAt }` に変えた
+- **PTY のメタ（`ptyId` / `kind` / `title` / `agentSessionId` / `cwd` / `exit`）を leaf へ移した**
+- `paneTree.ts` に `getLeaf` / `resolveActiveLeaf` / `updateLeaf` を追加
+- `useTabs.ts` / `App.tsx` / `TabBar.tsx` の参照を `tabLeaf(tab)` 経由に置き換えた
+- 単体テストを 256 -> 271 件に
+
+### 関門の結果
+
+| 対象 | 結果 |
+|---|---|
+| `src/renderer/src/styles.css` の diff | **0行** |
+| `e2e/` の diff（spec / scenarios.yml とも） | **0行** |
+| `docs/images/` の diff | **0行** |
+| `make e2e` | **53 passed / flaky 0** |
+| `make css-substitution-check` | **PASS**（CSS を触っていないので通るのが正しい） |
+
+**E2E を1行も直さずに全部通った。** モデル移行が振る舞いを変えていないことの証拠になる。
+
+### 設計判断
+
+- **`leaf.paneId` は `tab.id` と同じ文字列（= `ptyId`）を使い回した。** PR 3 は
+  「1タブ = 1 leaf」を保証するので別の採番体系を作る必要が無い。純粋に内部の識別子なので
+  PR 4 が自由に変えてよい
+- **`TabState` を `useTabs.ts` から `tabs/tabPane.ts` へ出した。** `tabTitle.ts` と同じ理由で、
+  `useTabs.ts` は `window.api` に依存するため `test/unit/` から import できない。
+  window に触れないモジュールへ純粋なヘルパを置く
+- `updateLeaf` のパッチ型から `kind` / `paneId` を除外した（`Partial<Omit<...>>`）。
+  構造的に不正なパッチを型で弾く
+
+### 教訓
+
+- **「何も変わらないこと」を関門にすると、変わってしまったことが必ず表に出る。**
+  この周は E2E の diff 0行が唯一のレビュー根拠で、実際に1行も直さずに 53 spec が通った。
+  もし通らなければ「モデル移行が振る舞いを変えた」ことが即座に分かる設計だった
+- `splitPane` は**どこからも呼ばれていない**（grep で確認）。分割の経路は PR 4 で初めて生える
+
+### 次に再開するとき最初に読むべきこと
+
+1. **次は PR 4**（分割を有効化）。`Cmd+D` / `Cmd+Shift+D` + **`AppAction` に `close-pane` を新設**
+   （`close-tab` の意味は変えない）+ **`menu.ts` を同じ PR で** + `S36:71` 更新 + 新規 E2E。
+   関門は「2つの `.xterm-screen` が同時に可視」「`.terminal-pane.is-active` で一意に引ける」
+2. **PR 4 から実際に見た目が変わる。** ここまでの3周（PR 2 / 3 と前提工事）は1ピクセルも動いていない
+3. `known-issues.md` の 1-8（#67 検索バーのはみ出し）は、**PR 4 で幅が細くなった時点で踏む**。
+   踏んだら該当 PR に含めること

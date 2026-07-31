@@ -6,26 +6,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PtyKind, SpawnPtyRequest } from '@shared/ipc';
 import { getSharedCwd, setSharedCwd } from '../lib/cwd';
 import { forgetPty } from '../terminal/ptyStream';
+import { createPaneTree, updateLeaf, type PaneLeaf } from './paneTree';
+import { findTabByPtyId, tabLeaf, type TabState } from './tabPane';
 import { resolveAgentTabTitle } from './tabTitle';
+
+export type { TabState };
 
 // シェルの cd への追従ポーリング間隔。
 // エージェントタブ（claude / gemini）は自分から cd しないので対象外。
 // tmux でラップして起動している場合、lsof が返すのは tmux クライアント側の cwd で
 // シェルの実際の作業ディレクトリとは無関係になるため、これも対象外にする理由の一つ。
 const CWD_POLL_INTERVAL_MS = 2_000;
-
-export interface TabState {
-  /** タブ / PTY を一意に識別する ID（ptyId をそのまま使う） */
-  id: string;
-  ptyId: string;
-  kind: PtyKind;
-  title: string;
-  /** claude を起動した場合の --session-id。タスク一覧との突き合わせに使う */
-  agentSessionId?: string;
-  cwd?: string;
-  createdAt: number;
-  exit?: { exitCode: number; signal?: number };
-}
 
 export interface SpawnOpts {
   resumeSessionId?: string;
@@ -81,9 +72,12 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       .then((result) => {
         if (!result.cwd) return;
         setTabs((prev) => {
-          const tab = prev.find((t) => t.ptyId === ptyId);
-          if (!tab || tab.cwd === result.cwd) return prev;
-          return prev.map((t) => (t.ptyId === ptyId ? { ...t, cwd: result.cwd } : t));
+          const tab = findTabByPtyId(prev, ptyId);
+          if (!tab || tabLeaf(tab).cwd === result.cwd) return prev;
+          const paneId = tabLeaf(tab).paneId;
+          return prev.map((t) =>
+            t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, paneId, { cwd: result.cwd }) } : t,
+          );
         });
         // このタブがまだアクティブなら、サイドバーへもそのまま反映する。
         if (activeTabIdRef.current === ptyId) {
@@ -99,12 +93,17 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   // （サイドバーは常に「いま見ているタブの文脈」を映すのが狙い）。
   // シェルタブなら、記録済みの値だけでなく実プロセスへ問い合わせ直して最新化し、
   // 以降は cd への追従のためポーリングする。対象はアクティブなタブ1枚だけ。
+  //
+  // PTY のメタ（cwd / kind / ptyId）は木の leaf に持たせてある（design-review Q4）ので、
+  // まず tabLeaf() でそのタブの唯一の leaf を引いてから読む（PR 3 の時点では木は
+  // 常に leaf 1枚なので、実質「そのタブの PTY のメタ」を引くのと同じ）。
   useEffect(() => {
     const tab = tabsRef.current.find((t) => t.id === activeTabId);
     if (!tab) return;
-    setSharedCwd(tab.cwd);
-    if (tab.kind !== 'shell') return;
-    const ptyId = tab.ptyId;
+    const leaf = tabLeaf(tab);
+    setSharedCwd(leaf.cwd);
+    if (leaf.ptyKind !== 'shell') return;
+    const ptyId = leaf.ptyId;
     refreshTabCwd(ptyId);
     const timer = window.setInterval(() => {
       refreshTabCwd(ptyId);
@@ -125,13 +124,22 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       };
       try {
         const result = await window.api.pty.spawn(req);
-        const tab: TabState = {
-          id: result.ptyId,
+        // PTY のメタは全て leaf に持たせる（design-review Q4）。木は常に leaf 1枚
+        // （splitPane はこの PR のどこからも呼ばない）ので、paneId は tab.id と
+        // 同じ値（spawn 結果の ptyId）を採番時に使う。
+        const newLeaf: PaneLeaf = {
+          kind: 'leaf',
+          paneId: result.ptyId,
           ptyId: result.ptyId,
-          kind,
+          ptyKind: kind,
           title,
           agentSessionId: result.agentSessionId,
           cwd,
+        };
+        const tab: TabState = {
+          id: result.ptyId,
+          layout: createPaneTree(newLeaf),
+          activePaneId: newLeaf.paneId,
           createdAt: Date.now(),
         };
         setTabs((prev) => [...prev, tab]);
@@ -151,15 +159,16 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       let cwd = opts?.cwd;
       if (cwd === undefined) {
         const activeTab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+        const activeLeaf = activeTab ? tabLeaf(activeTab) : undefined;
         // 記録済みの値ではなく、実プロセスへ問い合わせ直してから spawn する。
         // 「cd した直後に Cmd+Shift+C で claude を開く」という主用途で、記録済みの値のまま
         // spawn すると cd 前の1回分古いディレクトリを引き継いでしまうため。
         // 問い合わせに失敗した場合・cwd が取れなかった場合は、従来どおり記録済みの値、
         // それも無ければ共有 cwd の順にフォールバックする。
-        const fallback = activeTab?.cwd ?? getSharedCwd();
-        cwd = activeTab
+        const fallback = activeLeaf?.cwd ?? getSharedCwd();
+        cwd = activeLeaf
           ? await window.api.pty
-              .cwd(activeTab.ptyId)
+              .cwd(activeLeaf.ptyId)
               .then((result) => result.cwd)
               .catch(() => undefined)
           : undefined;
@@ -176,14 +185,15 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     async (id: string): Promise<void> => {
       const tab = tabsRef.current.find((t) => t.id === id);
       if (!tab) return;
+      const leaf = tabLeaf(tab);
       try {
-        await window.api.pty.kill(tab.ptyId);
+        await window.api.pty.kill(leaf.ptyId);
       } catch (err) {
         // 既に終了している場合などは失敗しうる。タブは閉じてよいので無視する。
         console.warn('[tabs] PTY の終了に失敗しました', err);
       }
       // 購読者がいないまま溜まった出力を破棄する（閉じたタブの分を残さない）。
-      forgetPty(tab.ptyId);
+      forgetPty(leaf.ptyId);
 
       const remaining = tabsRef.current.filter((t) => t.id !== id);
       setTabs(remaining);
@@ -202,14 +212,25 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   );
 
   const markExited = useCallback((ptyId: string, exit: { exitCode: number; signal?: number }) => {
-    setTabs((prev) => prev.map((t) => (t.ptyId === ptyId ? { ...t, exit } : t)));
+    setTabs((prev) => {
+      const tab = findTabByPtyId(prev, ptyId);
+      if (!tab) return prev;
+      const paneId = tabLeaf(tab).paneId;
+      return prev.map((t) => (t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, paneId, { exit }) } : t));
+    });
   }, []);
 
   // タイトルの手動編集。空文字（trim 後）は既存タイトルを維持する。
   const renameTab = useCallback((id: string, title: string) => {
     const trimmed = title.trim();
     if (trimmed === '') return;
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title: trimmed } : t)));
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const paneId = tabLeaf(t).paneId;
+        return { ...t, layout: updateLeaf(t.layout, paneId, { title: trimmed }) };
+      }),
+    );
   }, []);
 
   return {

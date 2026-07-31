@@ -20,13 +20,16 @@ import {
   createPaneTree,
   findPanePath,
   flattenPaneTree,
+  getLeaf,
   getNodeAtPath,
   MIN_PANE_COLUMNS,
   MIN_PANE_ROWS,
   movePaneInDirection,
   nextPane,
   previousPane,
+  resolveActiveLeaf,
   splitPane,
+  updateLeaf,
   updateSplitRatio,
   type PaneCellMetrics,
   type PaneLeaf,
@@ -473,5 +476,76 @@ describe('findPanePath / getNodeAtPath', () => {
   it('存在しない paneId は undefined', () => {
     const a = leaf('a');
     expect(findPanePath(a, 'missing')).toBeUndefined();
+  });
+});
+
+describe('getLeaf（PR 3: TabState から leaf を引く経路）', () => {
+  it('paneId に対応する leaf をそのまま返す', () => {
+    const a = leaf('a');
+    const b = leaf('b');
+    const tree = splitRow(0.5, [a, b]);
+    expect(getLeaf(tree, 'b')).toBe(b);
+  });
+
+  it('leaf 単体の木でも自分自身の paneId で引ける', () => {
+    const a = leaf('a');
+    expect(getLeaf(a, 'a')).toBe(a);
+  });
+
+  it('存在しない paneId は undefined', () => {
+    const a = leaf('a');
+    const b = leaf('b');
+    const tree = splitRow(0.5, [a, b]);
+    expect(getLeaf(tree, 'missing')).toBeUndefined();
+  });
+});
+
+describe('resolveActiveLeaf（activePaneId から表示すべき leaf を決める）', () => {
+  it('activePaneId に対応する leaf を返す', () => {
+    const a = leaf('a');
+    const b = leaf('b');
+    const tree = splitRow(0.5, [a, b]);
+    expect(resolveActiveLeaf(tree, 'b')).toBe(b);
+  });
+
+  it('leaf 1枚の木では、その leaf の paneId を渡せば同じ leaf が返る（PR 3 の唯一の使われ方）', () => {
+    const a = leaf('a');
+    expect(resolveActiveLeaf(a, 'a')).toBe(a);
+  });
+
+  it('activePaneId が木の中に見つからない場合は先頭（左上）の leaf にフォールバックする', () => {
+    const a = leaf('a');
+    const b = leaf('b');
+    const tree = splitRow(0.5, [a, b]);
+    expect(resolveActiveLeaf(tree, 'stale-id')).toBe(a);
+  });
+});
+
+describe('updateLeaf（cwd 追従・exit 記録・タイトル編集の更新経路）', () => {
+  it('指定した paneId の leaf を patch でマージする（不変・他の枝は変わらない）', () => {
+    const a = leaf('a');
+    const b = leaf('b');
+    const tree = splitRow(0.5, [a, b]);
+
+    const result = updateLeaf(tree, 'b', { cwd: '/repo' }) as PaneSplit;
+
+    expect((result.children[1] as PaneLeaf).cwd).toBe('/repo');
+    // b 自体は新しいオブジェクトに置き換わるが、a 側は同一参照のまま。
+    expect(result.children[0]).toBe(a);
+    expect(result.children[1]).not.toBe(b);
+  });
+
+  it('leaf 1枚の木でも paneId 一致で更新できる（PR 3 で常に通る経路）', () => {
+    const a = leaf('a');
+    const result = updateLeaf(a, 'a', { title: '新しいタイトル', exit: { exitCode: 1 } });
+    expect(result).toEqual({ ...a, title: '新しいタイトル', exit: { exitCode: 1 } });
+  });
+
+  it('存在しない paneId は元の木をそのまま返す', () => {
+    const a = leaf('a');
+    const b = leaf('b');
+    const tree = splitRow(0.5, [a, b]);
+    const result = updateLeaf(tree, 'missing', { cwd: '/repo' });
+    expect(result).toBe(tree);
   });
 });

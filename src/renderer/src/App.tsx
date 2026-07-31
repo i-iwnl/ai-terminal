@@ -6,6 +6,7 @@ import TabBar from './tabs/TabBar';
 import TerminalPane from './terminal/TerminalPane';
 import type { TerminalHandle } from './terminal/useTerminal';
 import { startPtyStream } from './terminal/ptyStream';
+import { findTabByAgentSessionId, findTabByPtyId, tabLeaf } from './tabs/tabPane';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
@@ -189,7 +190,7 @@ export default function App(): ReactElement {
   // 対応するタブが無い場合は何もしない（ウィンドウの前面化は Main 側で済んでいる）。
   useEffect(() => {
     return window.api.session.onFocus((agentSessionId) => {
-      const tab = tabsApiRef.current.tabs.find((t) => t.agentSessionId === agentSessionId);
+      const tab = findTabByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
       if (tab) tabsApiRef.current.setActiveTabId(tab.id);
     });
   }, []);
@@ -215,9 +216,12 @@ export default function App(): ReactElement {
         signal: event.signal,
       });
       // markExited 呼び出し前の tabs から探す（タイトルは終了で変わらないのでどちらでも同じ）。
-      const tab = tabsApiRef.current.tabs.find((t) => t.ptyId === event.ptyId);
+      // PTY のメタ（title 含む）は leaf に持たせてある（design-review Q4）ので、
+      // タブそのものではなく tabLeaf() で leaf を引いてから読む。
+      const tab = findTabByPtyId(tabsApiRef.current.tabs, event.ptyId);
       if (tab) {
-        setExitAnnouncement(`${tab.title} が終了しました（コード ${event.exitCode}）`);
+        const title = tabLeaf(tab).title;
+        setExitAnnouncement(`${title} が終了しました（コード ${event.exitCode}）`);
         // 通知バナー側は severity で見た目を分ける。正常終了（コード 0・シグナル無し）は
         // 「情報」、異常終了（0 以外のコード・シグナルによる終了）は「エラー」。
         // exitAnnouncement（role="status"、常に1個・a11y 専用）とは別系統で、
@@ -225,8 +229,8 @@ export default function App(): ReactElement {
         const severity = severityForExit({ exitCode: event.exitCode, signal: event.signal });
         const message =
           severity === 'error'
-            ? `${tab.title} が終了しました（コード ${event.exitCode}）`
-            : `${tab.title} が終了しました`;
+            ? `${title} が終了しました（コード ${event.exitCode}）`
+            : `${title} が終了しました`;
         setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity }));
       }
     },
@@ -234,12 +238,12 @@ export default function App(): ReactElement {
   );
 
   const canFocusTaskTab = useCallback(
-    (agentSessionId: string) => tabsApi.tabs.some((t) => t.agentSessionId === agentSessionId),
+    (agentSessionId: string) => findTabByAgentSessionId(tabsApi.tabs, agentSessionId) !== undefined,
     [tabsApi.tabs],
   );
 
   const focusTaskTab = useCallback((agentSessionId: string) => {
-    const tab = tabsApiRef.current.tabs.find((t) => t.agentSessionId === agentSessionId);
+    const tab = findTabByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
     if (tab) tabsApiRef.current.setActiveTabId(tab.id);
   }, []);
 
@@ -285,7 +289,7 @@ export default function App(): ReactElement {
                 if (handle) handlesRef.current.set(tab.id, handle);
                 else handlesRef.current.delete(tab.id);
               }}
-              ptyId={tab.ptyId}
+              ptyId={tabLeaf(tab).ptyId}
               active={tab.id === tabsApi.activeTabId}
               // タブバーの role="tab" と対にする（id の生成規則は tabs/tabAriaIds.ts が正）。
               panelId={tabPanelId(tab.id)}
