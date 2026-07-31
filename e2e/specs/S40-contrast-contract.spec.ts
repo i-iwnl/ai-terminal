@@ -90,6 +90,26 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
   await window.keyboard.press('Meta+f');
   await expect(window.locator('.terminal-search input')).toBeVisible();
 
+  // Issue #20 PR 11: 通知バナーの severity 化（配列化 + 情報/エラー）。
+  // 2枚目のタブを `exit`（終了コード 0）させた時点で、実は severityForExit が
+  // 「情報」と判定した通知バナーが既に右上に1件出ている（上の「終了マーク」の
+  // 準備で使ったのと同じ操作。正常終了なので info 側に分類される）。
+  // ここではさらに1枚シェルタブを足し、0 以外のコードで終了させて
+  // error severity の通知も出す。info と error を同時に乗せた状態で両方の色を測る
+  // （役割が違う通知が同時に出ても互いを潰さないことは、この spec ではなく
+  // e2e/specs/S55-notice-severity.spec.ts の担当）。
+  await window.keyboard.press('Meta+t');
+  await expect(window.locator('.tab-bar__tab')).toHaveCount(5, { timeout: 15_000 });
+  const errorShellScreen = window
+    .locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-screen')
+    .first();
+  await expect(errorShellScreen).toContainText(promptPattern, { timeout: 20_000 });
+  await window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-helper-textarea').focus();
+  await window.keyboard.type('exit 7');
+  await window.keyboard.press('Enter');
+  await expect(window.locator('.notice-banner--error')).toBeVisible({ timeout: 15_000 });
+  await expect(window.locator('.notice-banner--info')).toBeVisible();
+
   const mainTargets: ContrastTarget[] = [
     {
       name: 'メタ情報の文字（サイドバー上）',
@@ -190,6 +210,47 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       property: 'background-color',
       against: '.tab-bar',
     },
+    // --- Issue #20 PR 11: 通知バナーの severity（情報 / エラー） ---
+    //
+    // 通知の入れ物（.notice-list）自体は背景を持たない透明な絶対配置なので、
+    // border 系の実効背景は祖先を遡って body（--surface-1）に行き着く
+    // （contrast.ts の既定挙動どおりで、明示的な against は要らない）。
+    {
+      name: '通知バナー（情報）の文字',
+      kind: 'text',
+      selector: '.notice-banner--info .notice-banner__message',
+      property: 'color',
+    },
+    {
+      name: '通知バナー（情報）の枠（対 --surface-1）',
+      kind: 'non-text',
+      selector: '.notice-banner--info',
+      property: 'border-top-color',
+    },
+    {
+      name: '通知バナー（情報）のアイコン文字',
+      kind: 'text',
+      selector: '.notice-banner--info .notice-banner__icon',
+      property: 'color',
+    },
+    {
+      name: '通知バナー（エラー）の文字',
+      kind: 'text',
+      selector: '.notice-banner--error .notice-banner__message',
+      property: 'color',
+    },
+    {
+      name: '通知バナー（エラー）の枠（対 --surface-1）',
+      kind: 'non-text',
+      selector: '.notice-banner--error',
+      property: 'border-top-color',
+    },
+    {
+      name: '通知バナー（エラー）のアイコン文字',
+      kind: 'text',
+      selector: '.notice-banner--error .notice-banner__icon',
+      property: 'color',
+    },
   ];
 
   const main = await measureContrast(window, mainTargets);
@@ -281,6 +342,16 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     'claude タブの色相の枠（対タブバー）': { ratio: 4.27, wcag: 'pass' },
     'gemini タブの色相の枠（対タブバー）': { ratio: 4.82, wcag: 'pass' },
     '終了マークの塗り（先頭スロット・対タブバー）': { ratio: 5.49, wcag: 'pass' },
+    // Issue #20 PR 11: 通知バナーの severity（情報 / エラー）。
+    // 色相はエラー（赤系）と変えつつ、明度構成（暗い塗り・明るい文字・中間の枠）は
+    // 揃えてある（design-rules.md の色覚シミュレーションの結論どおり、
+    // 色相の変更だけでは1型/2型色覚下の区別に寄与しないため）。
+    '通知バナー（情報）の文字': { ratio: 9.81, wcag: 'pass' },
+    '通知バナー（情報）の枠（対 --surface-1）': { ratio: 6.45, wcag: 'pass' },
+    '通知バナー（情報）のアイコン文字': { ratio: 7.12, wcag: 'pass' },
+    '通知バナー（エラー）の文字': { ratio: 7.31, wcag: 'pass' },
+    '通知バナー（エラー）の枠（対 --surface-1）': { ratio: 5.36, wcag: 'pass' },
+    '通知バナー（エラー）のアイコン文字': { ratio: 5.92, wcag: 'pass' },
     // 設定ウィンドウ（最も明るい面）
     '設定の入力欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.30 から（PR 5-4）
     // 2.4.11。**アクセント色では 1.70 で満たせない**（PR 5-4 で枠を明るくしたため）

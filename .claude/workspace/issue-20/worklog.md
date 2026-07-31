@@ -699,3 +699,52 @@ Phase 2 の4本目（26本中15本目）。PR #88。
    7（screenshots.spec.ts の掃き出し漏れ・再発防止は未対処）を追加した
 4. 次に着手できるのは PR 11（通知バナーの severity 化）/ PR 12（空状態）/
    PR 13（スコープ行）/ PR 14 以降
+
+## 2026-07-31 - PR 11: 通知バナーの severity 化・配列化・右上へ
+
+Phase 2 の5本目（25本中16本目）。PR #96。
+
+### 実施内容
+
+- `lib/notices.ts`（新規）に純粋関数を切り出し（`severityForExit` / `pushNotice` / `dismissNotice`）
+- `App.tsx` の `notice: string | null` を `notices: Notice[]` に
+- `styles.css` に `--notice-info-*` の3トークンを追加。`.notice-list`（位置）と
+  `.notice-banner`（見た目）を分離し、右上へ
+- 新規 E2E S55、S40 に6件の測定を追加
+- `test/unit/notices.test.ts` に12件
+
+### 設計判断
+
+- **severity は2段（`error` / `info`）だけにした。** 実在するトリガが2つしか無く、
+  細かくしても推測になる
+- **色は単独の手がかりにしない。** アイコンの字形（`i` / `!`）・語（`情報` / `エラー`）・
+  色の3つが独立に同じ情報を運ぶ
+- **`role="alert"` は個々のバナーに付けない。** 包む `.notice-list` を唯一の live region にし、
+  その role を「error が1件でもあれば `alert`、無ければ `status`」と計算する。
+  **これで積み上がっても assertive は常に高々1個**。従来（単一バナー）の不変条件を保つ
+- `--notice-info-*` はエラーと**同じ明度構成**（暗い塗り・明るい文字・中間の枠）を保った。
+  色相を変えるだけだと1型/2型色覚下で区別できなくなるため、輝度差の符号を保存した
+- **`showError` を実際に出す経路がハーネスに無い**（node-pty の spawn 失敗は常に非同期で、
+  同期的に投げない）。偽のトリガを作らず、**PTY の終了という実在の経路**に相乗りさせた
+
+### 教訓
+
+- **E2E を書いたワーカーがそれを実行できない構成では、spec は必ず落ちる前提でレビューする。**
+  今回 S55 は2箇所で落ちた。どちらも実装ではなく spec の問題だった
+  - **初期タブの生成を待たずに `Meta+t` を押していた。** グローバルショートカットの
+    keydown リスナは `App.tsx` の `useEffect` で張られるので、**マウント前のキーは失われる**。
+    S06 など既存の spec が最初に `toHaveCount(1)` を待っているのはこの理由
+  - **`viewportSize()` は Electron では `null` を返す**（Playwright がビューポートを
+    設定していない）。実寸は `window.evaluate(() => window.innerWidth)` で Renderer に聞く。
+    `screenshots.spec.ts` が同じ理由で `window.innerWidth` を使っている
+- **ワーカーが「実行できていないので検証できていない」と明記したのは正しい。**
+  静的な推論を根拠に「通るはず」と書かず、実測できていないことをそのまま報告してきた
+
+### 次に再開するとき最初に読むべきこと
+
+1. **進捗の唯一の正は Issue #20 本文の表。** PR 11 の行を「完了 PR #96」に更新済み
+2. `S44` は `.notice-banner` を `document.body` 直下に注入して当たり判定を測っている。
+   **今回 `position: absolute` を `.notice-list` 側へ移した**ため、注入先も
+   `.notice-list` で包む形に直した。**CSS の位置指定を動かすときは、
+   合成 DOM を注入している spec を探すこと**
+3. 次に着手できるのは PR 12（空状態・エラー状態の文言と次の行動 + `+ ▾` 分割ボタン）

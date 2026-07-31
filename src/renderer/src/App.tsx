@@ -11,6 +11,7 @@ import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
 import { tabButtonId, tabPanelId } from './tabs/tabAriaIds';
+import { dismissNotice, pushNotice, severityForExit, type Notice } from './lib/notices';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
 // styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
@@ -31,7 +32,17 @@ const STATUS_REGION_STYLE: CSSProperties = {
 
 export default function App(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Issue #20 PR 11: 単一文字列だった通知を配列 + severity にした。
+  // 追加・削除・上限件数の扱いは lib/notices.ts の純粋関数に切り出してある
+  // （ここは「いつ何を追加するか」だけを扱う）。
+  const [notices, setNotices] = useState<Notice[]>([]);
+  // 通知の id は画面内で一意であればよいので、単調増加のカウンタで足りる
+  // （crypto.randomUUID 等は不要）。レンダー間で保持するため ref に置く。
+  const noticeIdRef = useRef(0);
+  const nextNoticeId = useCallback((): string => {
+    noticeIdRef.current += 1;
+    return `notice-${noticeIdRef.current}`;
+  }, []);
   // .app 直下に置く role="status" 用の告知文。PTY の終了は現状 TabBar の
   // 終了バッジ（視覚のみ）でしか分からないため、ここで非視覚的にも拾えるようにする。
   // 空文字のときは何も読み上げられない（初期状態でここが鳴ることはない）。
@@ -41,8 +52,15 @@ export default function App(): ReactElement {
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
   const [accessibilitySupport, setAccessibilitySupport] = useState(false);
 
-  const showError = useCallback((message: string) => {
-    setNotice(message);
+  const showError = useCallback(
+    (message: string) => {
+      setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity: 'error' }));
+    },
+    [nextNoticeId],
+  );
+
+  const dismissNoticeById = useCallback((id: string) => {
+    setNotices((prev) => dismissNotice(prev, id));
   }, []);
 
   const tabsApi = useTabs(showError);
@@ -190,16 +208,30 @@ export default function App(): ReactElement {
     });
   }, []);
 
-  const handleExit = useCallback((event: PtyExitEvent) => {
-    tabsApiRef.current.markExited(event.ptyId, { exitCode: event.exitCode, signal: event.signal });
-    // markExited 呼び出し前の tabs から探す（タイトルは終了で変わらないのでどちらでも同じ）。
-    const tab = tabsApiRef.current.tabs.find((t) => t.ptyId === event.ptyId);
-    if (tab) {
-      setExitAnnouncement(
-        `${tab.title} が終了しました（コード ${event.exitCode}）`,
-      );
-    }
-  }, []);
+  const handleExit = useCallback(
+    (event: PtyExitEvent) => {
+      tabsApiRef.current.markExited(event.ptyId, {
+        exitCode: event.exitCode,
+        signal: event.signal,
+      });
+      // markExited 呼び出し前の tabs から探す（タイトルは終了で変わらないのでどちらでも同じ）。
+      const tab = tabsApiRef.current.tabs.find((t) => t.ptyId === event.ptyId);
+      if (tab) {
+        setExitAnnouncement(`${tab.title} が終了しました（コード ${event.exitCode}）`);
+        // 通知バナー側は severity で見た目を分ける。正常終了（コード 0・シグナル無し）は
+        // 「情報」、異常終了（0 以外のコード・シグナルによる終了）は「エラー」。
+        // exitAnnouncement（role="status"、常に1個・a11y 専用）とは別系統で、
+        // こちらは晴眼のユーザー向けに可視のバナーとして右上に積む。
+        const severity = severityForExit({ exitCode: event.exitCode, signal: event.signal });
+        const message =
+          severity === 'error'
+            ? `${tab.title} が終了しました（コード ${event.exitCode}）`
+            : `${tab.title} が終了しました`;
+        setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity }));
+      }
+    },
+    [nextNoticeId],
+  );
 
   const canFocusTaskTab = useCallback(
     (agentSessionId: string) => tabsApi.tabs.some((t) => t.agentSessionId === agentSessionId),
@@ -277,12 +309,41 @@ export default function App(): ReactElement {
           ))}
           {tabsApi.tabs.length === 0 && <div className="terminal-stack__empty">タブがありません</div>}
         </div>
-        {notice && (
-          <div className="notice-banner" role="alert">
-            <span>{notice}</span>
-            <button onClick={() => setNotice(null)} aria-label="閉じる" title="閉じる">
-              x
-            </button>
+        {notices.length > 0 && (
+          // 通知1件ごとに role="alert" を付けると、複数件が同時に現れたとき
+          // assertive な live region が2つ以上になり、支援技術の読み上げが互いを
+          // 潰し合う（design-review.md 0-4 の既知の失敗）。そこで何件・何 severity
+          // 積んでいても、露出する live region はこの入れ物1個だけにする
+          // （中身だけが増減し、要素自体は増えない）。
+          // role はエラーが1件でもあれば "alert"（assertive。中断してでも伝える）、
+          // 情報しか無ければ "status"（polite。読み上げの順番待ちに入るだけで、
+          // 既存の発話を中断しない）に出し分ける。後者のときに他の polite な
+          // live region（.app-status、S48 が「常に1個」を固定）と2つ同時に
+          // 存在することはあるが、polite 同士は互いを中断しないため
+          // S37/S48 が守る「assertive な live region は常に1個」という
+          // 不変条件は壊さない。
+          <div
+            className="notice-list"
+            role={notices.some((n) => n.severity === 'error') ? 'alert' : 'status'}
+          >
+            {notices.map((n) => (
+              <div key={n.id} className={`notice-banner notice-banner--${n.severity}`}>
+                <span className="notice-banner__icon" aria-hidden="true">
+                  {n.severity === 'error' ? '!' : 'i'}
+                </span>
+                <span className="notice-banner__label">
+                  {n.severity === 'error' ? 'エラー' : '情報'}
+                </span>
+                <span className="notice-banner__message">{n.message}</span>
+                <button
+                  onClick={() => dismissNoticeById(n.id)}
+                  aria-label="閉じる"
+                  title="閉じる"
+                >
+                  x
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </main>
