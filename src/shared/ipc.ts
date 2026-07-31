@@ -425,6 +425,12 @@ export type PaneRatioAdjustment = 'widen' | 'narrow' | 'reset';
  */
 export type PaneMoveDirection = 'up' | 'down' | 'left' | 'right';
 
+/**
+ * 「あなたの番」のタブへジャンプする向き（`Cmd+J` / `Cmd+Shift+J`。Issue #20 J）。
+ * forward が次、backward が逆順（Shift 付き）。
+ */
+export type YourTurnJumpDirection = 'forward' | 'backward';
+
 export type AppAction =
   | { type: 'new-shell-tab' }
   | { type: 'close-tab' }
@@ -465,7 +471,27 @@ export type AppAction =
    * ガード（`shortcuts.ts` の `passesModifierGate`）は PR 1（#87）で既に矢印キーに
    * 限って altKey を許可済みなので、このアクションはそのまま発火する。
    */
-  | { type: 'move-pane-focus'; direction: PaneMoveDirection };
+  | { type: 'move-pane-focus'; direction: PaneMoveDirection }
+  /**
+   * 次の「あなたの番」のタブへジャンプする（`Cmd+J` / `Cmd+Shift+J`。Issue #20 J）。
+   * 想定 100〜200回/日、1日 200〜600手の削減。探索・突き合わせの実体は
+   * Renderer 側の純粋関数 `tabs/tabYourTurn.ts` の `findNextYourTurnTab` が持つ
+   * （AppAction はキー/メニューからの語彙を運ぶだけ）。
+   */
+  | { type: 'jump-your-turn-tab'; direction: YourTurnJumpDirection }
+  /**
+   * 直前にアクティブだったタブへ戻る（`Cmd+E`。Issue #20 J）。ブラウザの「戻る」に
+   * 近く、2回連続で押すと直近2枚のタブをトグルする（`tabs/tabHistory.ts` 参照）。
+   */
+  | { type: 'last-active-tab' }
+  /**
+   * タブの並び順で次/前のタブへ移動する（`Cmd+Shift+]` / `Cmd+Shift+[`。Issue #20 J。
+   * iTerm2・Ghostty・Chrome 共通の筋肉記憶。`Cmd+]` / `Cmd+[`（`next-pane` /
+   * `previous-pane`）はペイン移動に既に割り当て済みのため、タブ側は Shift 付きにして
+   * 衝突を避けてある（`shortcuts.ts` 参照）。
+   */
+  | { type: 'next-tab' }
+  | { type: 'previous-tab' };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義

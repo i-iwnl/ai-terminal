@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
-import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
+import type { AgentTask, AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
 import Sidebar from './sidebar/Sidebar';
@@ -25,15 +25,20 @@ import {
   findPaneByAgentSessionId,
   findTabByAgentSessionId,
   findTabByPtyId,
+  nextTabId,
+  previousTabId,
   tabLeaf,
   type PaneLocation,
 } from './tabs/tabPane';
+import { findNextYourTurnTab } from './tabs/tabYourTurn';
+import { previousActiveTab, recordActiveTab, type TabHistory } from './tabs/tabHistory';
 import CloseTabConfirmDialog from './tabs/CloseTabConfirmDialog';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
 import { dismissNotice, pushNotice, severityForExit, type Notice, type NoticeSeverity } from './lib/notices';
+import { subscribeAgentTasks } from './lib/agentTasksStore';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
 // styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
@@ -131,6 +136,27 @@ export default function App(): ReactElement {
   const tabsApi = useTabs(showError);
   const tabsApiRef = useRef(tabsApi);
   tabsApiRef.current = tabsApi;
+
+  // 直前のタブへ戻る（Cmd+E。Issue #20 J）ための、最近アクティブだったタブ id の
+  // 履歴。レンダーのたびに作り直す必要が無い（表示に使わない）ため state ではなく
+  // ref に持つ。記録ロジック自体（recordActiveTab / previousActiveTab）は
+  // tabs/tabHistory.ts の純粋関数で、ここは「いつ記録するか」だけを扱う。
+  const tabHistoryRef = useRef<TabHistory>([]);
+  useEffect(() => {
+    tabHistoryRef.current = recordActiveTab(tabHistoryRef.current, tabsApi.activeTabId);
+  }, [tabsApi.activeTabId]);
+
+  // 次の「あなたの番」のタブへジャンプする（Cmd+J。Issue #20 J）ための、タスク一覧の
+  // 最新スナップショット。表示（TaskList.tsx）とは別に、ここでも
+  // window.api.agents.list を呼び直さないよう共有ハブ（lib/agentTasksStore.ts）を
+  // 購読する。ジャンプ計算にしか使わないため state ではなく ref に持つ
+  // （タスク一覧が変わるたびに App 全体を再描画する理由が無い）。
+  const agentTasksRef = useRef<AgentTask[]>([]);
+  useEffect(() => {
+    return subscribeAgentTasks((e) => {
+      agentTasksRef.current = e.tasks;
+    });
+  }, []);
 
   // ペイン（leaf）ごとの TerminalHandle。paneId をキーにする（Issue #56 PR 4）。
   // 分割前は tab.id と leaf の paneId が常に同じ値だったため tab.id キーで
@@ -385,6 +411,42 @@ export default function App(): ReactElement {
           }
           break;
         }
+        case 'jump-your-turn-tab': {
+          // 状態の意味（あなたの番 = busy 以外）の判定は tabYourTurn.ts が
+          // src/shared/agent-status.ts の toTaskState に委ねている（唯一の正）。
+          const target = findNextYourTurnTab(
+            api.tabs,
+            api.activeTabId,
+            agentTasksRef.current,
+            action.direction,
+          );
+          if (target) {
+            api.setActiveTabId(target);
+          } else {
+            // 「あなたの番」のタブが1つも無いときに何も起きないまま終わらせない
+            // （Issue #56 U4「画面が1pxも動かず壊れて見える」の再発防止）。
+            showNotice('あなたの番のタブはありません', 'info');
+            announce('あなたの番のタブはありません');
+          }
+          break;
+        }
+        case 'last-active-tab': {
+          const existing = new Set(api.tabs.map((t) => t.id));
+          const target = previousActiveTab(tabHistoryRef.current, existing);
+          if (target) {
+            api.setActiveTabId(target);
+          } else {
+            showNotice('直前のタブはありません', 'info');
+            announce('直前のタブはありません');
+          }
+          break;
+        }
+        case 'next-tab':
+          if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
+          break;
+        case 'previous-tab':
+          if (api.activeTabId) api.setActiveTabId(previousTabId(api.tabs, api.activeTabId));
+          break;
         case 'adjust-split-ratio': {
           // メニュー項目「分割比を広げる/狭める/50%に戻す」（Issue #56 PR 7）。
           // ドラッグの Equivalent 例外の根拠になるため、ドラッグを一切経由せず
