@@ -156,21 +156,41 @@ describe('matchShortcut', () => {
     expect(matchShortcut(keyEvent({ key: 'w', metaKey: true, altKey: true }))).toBeNull();
   });
 
-  // Issue #56（ターミナル分割表示）のペイン間移動に Cmd+Option+矢印 を使う計画があるため、
-  // 矢印キーだけは altKey ガードの例外にする（矢印キーは Option と組み合わせても文字を
-  // 生成しないため、Option+英数字キーと違って安全）。ガードそのものの変更は上の
+  // Issue #56 PR 8: ペイン間移動に Cmd+Option+矢印 を割り当てた。矢印キーだけは
+  // altKey ガードの例外にする（矢印キーは Option と組み合わせても文字を生成しない
+  // ため、Option+英数字キーと違って安全）。ガードそのものの変更は上の
   // `passesModifierGate` の describe で固定済み。
   //
-  // ここで固定するのは別の事実: 「何を割り当てるか」はこの PR の担当ではない
-  // （AppAction はまだ増やしていない）ため、matchShortcut 経由では現時点で
-  // Cmd+Option+矢印 に対応する操作が無く、結果は null のままになる。
-  // 後続 PR（design-review.md の PR 4 以降）でここに AppAction を割り当てたとき、
-  // このテストが（意図して）赤くなることでその変化に気づけるようにするための記録。
-  it('Cmd+Option+矢印 は、まだ操作が割り当たっていないので matchShortcut は null を返す', () => {
-    expect(matchShortcut(keyEvent({ key: 'ArrowUp', metaKey: true, altKey: true }))).toBeNull();
-    expect(matchShortcut(keyEvent({ key: 'ArrowDown', metaKey: true, altKey: true }))).toBeNull();
-    expect(matchShortcut(keyEvent({ key: 'ArrowLeft', metaKey: true, altKey: true }))).toBeNull();
-    expect(matchShortcut(keyEvent({ key: 'ArrowRight', metaKey: true, altKey: true }))).toBeNull();
+  // このテストはかつて「まだ操作が割り当たっていないので null を返す」ことを
+  // 固定していた（renderer-lib.test.ts の以前のコメント参照）。design-review.md
+  // U1 の記録どおり、PR 8 で実際に AppAction を割り当てたことでここが
+  // 意図して変わった（この変化に気づけるようにするための記録、という以前の
+  // コメントが指していたのがこの変更そのもの）。
+  it('Cmd+Option+矢印 は4方向のペイン移動に割り当たる', () => {
+    expect(matchShortcut(keyEvent({ key: 'ArrowUp', metaKey: true, altKey: true }))).toEqual({
+      type: 'move-pane-focus',
+      direction: 'up',
+    });
+    expect(matchShortcut(keyEvent({ key: 'ArrowDown', metaKey: true, altKey: true }))).toEqual({
+      type: 'move-pane-focus',
+      direction: 'down',
+    });
+    expect(matchShortcut(keyEvent({ key: 'ArrowLeft', metaKey: true, altKey: true }))).toEqual({
+      type: 'move-pane-focus',
+      direction: 'left',
+    });
+    expect(matchShortcut(keyEvent({ key: 'ArrowRight', metaKey: true, altKey: true }))).toEqual({
+      type: 'move-pane-focus',
+      direction: 'right',
+    });
+  });
+
+  // Cmd+Shift+Option+矢印 は未定義のまま素通しする（Cmd+Option+矢印 とは別の
+  // 組み合わせで、意図せず何かに割り当たっていないことを固定する）。
+  it('Cmd+Shift+Option+矢印 は未定義のまま null を返す', () => {
+    expect(
+      matchShortcut(keyEvent({ key: 'ArrowUp', metaKey: true, altKey: true, shiftKey: true })),
+    ).toBeNull();
   });
 
   // Cmd が付いていない Option+矢印 は、Terminal.app / iTerm2 / シェルの readline で
@@ -264,6 +284,21 @@ describe('matchShortcut', () => {
   it('Cmd+0 はタブ切り替えに割り当てない', () => {
     // 添字が -1 になるため 1〜9 のみを受け付ける
     expect(matchShortcut(keyEvent({ key: '0', metaKey: true }))).toBeNull();
+  });
+
+  // Issue #56 PR 8（design-review.md 提案 I）: ペインの最大化トグル。
+  // ドラッグ 2〜5回/日 に対し最大化 10〜30回/日（ヘビーユーザーの実測）。
+  it('Cmd+Shift+Enter でペインの最大化をトグルする', () => {
+    expect(matchShortcut(keyEvent({ key: 'Enter', metaKey: true, shiftKey: true }))).toEqual({
+      type: 'toggle-maximize-pane',
+    });
+  });
+
+  // Issue #56 PR 8（design-review.md 提案 B'）: 次/前のペイン。
+  // Cmd+Option+矢印 より先に併設される第一のキー（U1 のガード修正に依存しない）。
+  it('Cmd+] / Cmd+[ で次/前のペインへ移動する', () => {
+    expect(matchShortcut(keyEvent({ key: ']', metaKey: true }))).toEqual({ type: 'next-pane' });
+    expect(matchShortcut(keyEvent({ key: '[', metaKey: true }))).toEqual({ type: 'previous-pane' });
   });
 });
 

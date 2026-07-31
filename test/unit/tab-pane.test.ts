@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PaneLeaf, PaneNode, PaneSplit } from '../../src/renderer/src/tabs/paneTree';
 import {
+  findPaneByAgentSessionId,
   findTabByAgentSessionId,
   findTabByPtyId,
   tabLeaf,
@@ -40,6 +41,7 @@ function tab(overrides: Partial<TabState> & { layout?: PaneNode } = {}): TabStat
     layout,
     activePaneId: firstLeaf?.paneId ?? 'pane-1',
     createdAt: 0,
+    maximized: false,
     ...overrides,
   };
 }
@@ -74,6 +76,7 @@ describe('findTabByPtyId', () => {
       layout: splitRow([activeLeaf, backgroundLeaf]),
       activePaneId: 'active',
       createdAt: 0,
+      maximized: false,
     };
     expect(findTabByPtyId([t], 'pty-background')).toBe(t);
     // 従来どおりアクティブ側でも見つかること（退行していないこと）も併せて確認する。
@@ -113,7 +116,41 @@ describe('findTabByAgentSessionId', () => {
       layout: splitRow([shellLeaf, claudeLeaf]),
       activePaneId: 'shell',
       createdAt: 0,
+      maximized: false,
     };
     expect(findTabByAgentSessionId([t], 'session-background')).toBe(t);
+  });
+});
+
+describe('findPaneByAgentSessionId（U4: タスク一覧・通知クリックをペイン粒度で突き合わせる）', () => {
+  it('agentSessionId が一致する leaf の paneId と、そのタブの id を返す', () => {
+    const shellLeaf = leaf({ paneId: 'shell', ptyId: 'pty-shell' });
+    const claudeLeaf = leaf({
+      paneId: 'claude',
+      ptyId: 'pty-claude',
+      ptyKind: 'claude',
+      agentSessionId: 'session-background',
+    });
+    const t: TabState = {
+      id: 'pty-shell',
+      layout: splitRow([shellLeaf, claudeLeaf]),
+      activePaneId: 'shell',
+      createdAt: 0,
+      maximized: false,
+    };
+    expect(findPaneByAgentSessionId([t], 'session-background')).toEqual({
+      tabId: 'pty-shell',
+      paneId: 'claude',
+    });
+  });
+
+  it('対象ペインが既にアクティブでも、タブ id とペイン id を同じ形で返す（呼び出し側が「既にアクティブか」を判定できる）', () => {
+    const a = tab({ layout: leaf({ paneId: 'a', ptyId: 'pty-a', agentSessionId: 'session-a' }) });
+    expect(findPaneByAgentSessionId([a], 'session-a')).toEqual({ tabId: a.id, paneId: 'a' });
+  });
+
+  it('一致する leaf が無ければ undefined', () => {
+    const a = tab({ layout: leaf({ paneId: 'a', ptyId: 'pty-a', agentSessionId: 'session-a' }) });
+    expect(findPaneByAgentSessionId([a], 'missing')).toBeUndefined();
   });
 });

@@ -50,6 +50,15 @@ export interface PaneSplitterHandleProps {
    */
   onActivateSide: (side: 'first' | 'second') => void;
   /**
+   * ペインの最大化中（Issue #56 PR 8）、この分割の片側が0幅へ畳まれているため
+   * スプリッタ自体を隠す。木の `ratio` はそのままなので `PaneTreeView.tsx` 側で
+   * 判定して渡す。visibility: hidden + pointer-events: none は styles.css の
+   * `.pane-splitter--hidden` が持つ（`.pane-split--hidden` と同じ理由）。
+   * ドラッグ開始のガードも入れておく（CSS の pointer-events で通常は届かないが、
+   * 二重の安全策として）。
+   */
+  hidden?: boolean;
+  /**
    * このスプリッタの DOM 要素の登録・解除（App.tsx 側の splitterRefs に対応）。
    * メニュー項目「分割比を広げる/狭める/50%に戻す」が、比率を動かした
    * **その対象のスプリッタへ `.focus()` する**ために使う（レビュー指摘。
@@ -91,6 +100,7 @@ export default function PaneSplitterHandle(props: PaneSplitterHandleProps): Reac
   const isRow = props.dir === 'row';
 
   const handleMouseDown = (e: ReactMouseEvent<HTMLDivElement>): void => {
+    if (props.hidden) return;
     if (e.button !== 0) return;
     const container = elRef.current?.parentElement;
     if (!container) return;
@@ -156,7 +166,7 @@ export default function PaneSplitterHandle(props: PaneSplitterHandleProps): Reac
         elRef.current = el;
         props.registerRef?.(el);
       }}
-      className={`pane-splitter pane-splitter--${props.dir}`}
+      className={`pane-splitter pane-splitter--${props.dir}${props.hidden ? ' pane-splitter--hidden' : ''}`}
       role="separator"
       aria-orientation={isRow ? 'vertical' : 'horizontal'}
       aria-label={props.ariaLabel}

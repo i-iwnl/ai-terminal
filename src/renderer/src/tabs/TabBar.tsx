@@ -72,10 +72,26 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
+import { flattenPaneTree } from './paneTree';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
 import { tabLeaf, type TabState } from './tabPane';
 import { providerLabel } from './tabProvider';
+
+/**
+ * タブバーの x ボタンのラベル（Issue #56 PR 8・design-review.md 提案 E'）。
+ *
+ * `Cmd+Shift+W` を新設していないため、このボタンがマウス経由で複数の PTY を
+ * 一度に閉じられる唯一の抜け穴になる。`title` / `aria-label` にペイン数を
+ * 出しておくことで、押す前に「何本のプロセスが道連れになるか」が分かる
+ * （実際の確認ダイアログは App.tsx の requestCloseTab が2ペイン以上のときだけ出す）。
+ * `src/main/menu.ts` の `closeTabLabel` と同じ文言・同じ条件（プロセス構造が
+ * Main / Renderer の別プロセスにまたがるため、小さな文字列組み立ては
+ * やむを得ず両側に持つ。C.f. `PaneSplitDirection` を ipc.ts に再宣言している事情と同種）。
+ */
+function closeTabButtonLabel(paneCount: number): string {
+  return paneCount > 1 ? `タブを閉じる（${paneCount} ペイン）` : 'タブを閉じる';
+}
 
 export interface TabBarProps {
   tabs: TabState[];
@@ -199,6 +215,10 @@ export default function TabBar({
             // leaf を引いてから読む。木は常に leaf 1枚（PR 3）。
             const leaf = tabLeaf(tab);
             const provider = providerLabel(leaf.ptyKind);
+            // x ボタンが複数 PTY を一度に閉じる抜け穴にならないよう、押す前に
+            // ペイン数が分かるようにする（design-review.md 提案 E'）。
+            const paneCount = flattenPaneTree(tab.layout).length;
+            const closeLabel = closeTabButtonLabel(paneCount);
             // 可視テキスト（タブタイトル）を先頭に含める（WCAG 2.5.3 Label in
             // Name）。aria-label を使うとボタンの子要素のテキストは無視される
             // ため、タイトル・プロバイダ・終了状態のすべてをここで組み立て直す。
@@ -236,8 +256,8 @@ export default function TabBar({
                     e.stopPropagation();
                     onClose(tab.id);
                   }}
-                  aria-label="タブを閉じる"
-                  title="タブを閉じる"
+                  aria-label={closeLabel}
+                  title={closeLabel}
                 >
                   x
                 </button>
