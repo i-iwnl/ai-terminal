@@ -15,8 +15,10 @@ import {
   getLeaf,
   splitPane,
   updateLeaf,
+  updateSplitRatio as updateSplitRatioInTree,
   type PaneCellMetrics,
   type PaneLeaf,
+  type PanePath,
   type SplitDirection,
 } from './paneTree';
 import { findTabByPtyId, tabLeaf, type TabState } from './tabPane';
@@ -65,6 +67,13 @@ export interface UseTabsResult {
   closeActivePane: () => Promise<void>;
   /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
   setActivePaneInTab: (tabId: string, paneId: string) => void;
+  /**
+   * 指定したタブの、指定した分割ノード（経路）の ratio を更新する（Issue #56 PR 7）。
+   * スプリッタのドラッグ確定（mouseup）とメニュー項目（分割比を広げる/狭める/
+   * 50%に戻す）の両方がこの1本を通る。クランプは `paneTree.ts` の
+   * `updateSplitRatio` にそのまま委ねる（ここでは書き直さない）。
+   */
+  updateSplitRatio: (tabId: string, path: PanePath, ratio: number, metrics: PaneCellMetrics) => void;
 }
 
 // 初期の桁数/行数。マウント後すぐに fitAddon.fit() で実サイズに補正される。
@@ -373,6 +382,26 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     );
   }, []);
 
+  /**
+   * スプリッタのドラッグ確定（mouseup）とメニュー項目（分割比を広げる/狭める/
+   * 50%に戻す）の両方から呼ばれる、分割ノードの ratio 更新の唯一の入口
+   * （Issue #56 PR 7）。
+   *
+   * **ここで React state（setTabs）を書き換えるのは呼び出し1回につき1回だけ。**
+   * ドラッグ中は `PaneSplitterHandle.tsx` がゴースト線だけを動かし、この関数は
+   * `mouseup` の瞬間にしか呼ばれない。ドラッグ中に何度も呼ばれる経路ではないため、
+   * ここで `.pane-split__cell` の flex-grow が実際に変わるのも mouseup 後の
+   * 1回だけになる（design-review.md 提案 D' の関門）。
+   */
+  const updateSplitRatio = useCallback(
+    (tabId: string, path: PanePath, ratio: number, metrics: PaneCellMetrics): void => {
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, layout: updateSplitRatioInTree(t.layout, path, ratio, metrics) } : t)),
+      );
+    },
+    [],
+  );
+
   const markExited = useCallback((ptyId: string, exit: { exitCode: number; signal?: number }) => {
     setTabs((prev) => {
       const tab = findTabByPtyId(prev, ptyId);
@@ -412,5 +441,6 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     splitActivePane,
     closeActivePane,
     setActivePaneInTab,
+    updateSplitRatio,
   };
 }

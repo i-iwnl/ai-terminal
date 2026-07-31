@@ -645,10 +645,14 @@ body {
 /* ---------------------------------------------------------------------- */
 
 /* 分割ノード1つぶんのコンテナ。`dir: 'row'` は左右、`'column'` は上下に
-   2つの子（.pane-split__cell）を並べる。ratio は JSX 側のインライン style
-   （flex-grow）で反映する（固定比率 0.5 のみ。ドラッグでの変更は PR 7）。 */
+   2つの子（.pane-split__cell）を、その間にスプリッタ（.pane-splitter、下記）を
+   並べる。ratio は JSX 側のインライン style（flex-grow）で反映する。
+   `position: relative` はスプリッタの当たり判定（::before の絶対配置）の
+   基準にするため（PR 7。ゴースト線自体は `position: fixed` で別に置くので
+   ここには依存しない。PaneSplitterHandle.tsx 参照）。 */
 .pane-split {
   display: flex;
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -671,6 +675,19 @@ body {
   inset: 0;
 }
 
+/* タブ切り替えの非表示（`.terminal-pane--hidden` と同じ理由・同じ値）。
+   全タブが同時にマウントされたまま `visibility` だけで出し分けている
+   （ResizeObserver / fit が壊れるため display: none にしない）ため、
+   `.terminal-pane` は元から leaf ごとに個別で隠れるが、**スプリッタ
+   （.pane-splitter。Issue #56 PR 7）は leaf ではないのでその仕組みに
+   乗っていない。** ルート（`.terminal-stack > .pane-split`）だけに付けて
+   `visibility` の継承で子のスプリッタも一緒に隠す（非表示タブの分割線が、
+   切り替えた先のタブの上に描画されたまま残る事故を防ぐ）。 */
+.pane-split--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* 分割の子1つぶんの枠。ratio に応じた flex-grow は JSX 側のインライン
    style で与える（4px グリッドに乗らない連続値のため、トークン化の対象外。
    styles.css の :root がトークンとして持つのは離散的なデザイン値であって、
@@ -680,6 +697,88 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------- */
+/* スプリッタ（Issue #56 PR 7・design-review.md 提案 D'） */
+/* ---------------------------------------------------------------------- */
+
+/* 表示は 1px。`flex: 0 0 1px` が `.pane-split` の主軸（row なら幅、column なら
+   高さ）の基準値になり、交差軸は align-items の既定（stretch）でコンテナいっぱいに
+   広がる。**色は --border-control**（--border-subtle の 1.13 は不可視。
+   design-review.md「5人中4人が『--border-control にせよ』と書いた」の結論）。
+   新しいトークンは作らない。 */
+.pane-splitter {
+  position: relative;
+  flex: 0 0 1px;
+  background: var(--border-control);
+  z-index: 1;
+}
+
+.pane-splitter--row {
+  cursor: col-resize;
+}
+
+.pane-splitter--column {
+  cursor: row-resize;
+}
+
+/* 当たり判定 8px。`.tab-bar__close::before` 等（既存のターゲットサイズ拡張）と
+   同じ「本体より大きい ::before を transform で中央寄せする」手法をそのまま使う。
+   表示の 1px と当たり判定の 8px を分けるのは、8px の実要素にすると隣接ペインの
+   端 1.5桁ぶんが xterm のテキスト選択から死ぬため（design-review.md「却下した
+   提案: スプリッタを24pxに広げて2.5.8を満たす」と同じ理屈を8pxにも適用）。 */
+.pane-splitter::before {
+  content: '';
+  position: absolute;
+}
+
+.pane-splitter--row::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 8px;
+  transform: translateX(-50%);
+}
+
+.pane-splitter--column::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+}
+
+/* フォーカスリングは 8px の当たり判定ボックス側に outline-offset: 0 で描く
+   （design-review.md 提案 D'。1px の本体側に outline-offset: -2px を置くと
+   リングが退化して見えなくなる）。
+
+   **`.pane-splitter` は `tabIndex={-1}` を持つ（PaneSplitterHandle.tsx）ので
+   Tab のシーケンシャルナビゲーションでは到達しない**（Tab は xterm が端末
+   入力として食う。同ドキュメント「スプリッタのキーボード到達」）。だが
+   `-1` はプログラム的な `.focus()` を妨げない。メニュー項目
+   「分割比を広げる/狭める/50%に戻す」（View メニュー）が比率を動かした
+   その対象へ App.tsx から `.focus()` するため、**この規則は実際に発火する**
+   （ペインが3枚以上でスプリッタが複数本あるとき、どれが動いたかを示す
+   唯一の手がかりになる。E2E は e2e/specs/S59-pane-splitter.spec.ts）。 */
+.pane-splitter:focus-visible {
+  outline: none;
+}
+
+.pane-splitter:focus-visible::before {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+/* ドラッグ中だけ現れるゴースト線。`position: fixed`（PaneSplitterHandle.tsx が
+   getBoundingClientRect() で求めた viewport 座標をそのまま使う）なので、
+   ネストした分割や `.terminal-stack { overflow: hidden }` の影響を受けない。
+   ドラッグ中は Grid（.pane-split__cell の flex-grow）を一切動かさないので、
+   実際に見えるのはこの線だけが動く（design-review.md「ゴースト方式」）。 */
+.pane-splitter__ghost {
+  z-index: 20;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 /* タブが1枚も無いときの表示。**画面に他の文字が1つも無い状態**なので、

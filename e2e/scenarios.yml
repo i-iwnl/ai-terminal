@@ -632,3 +632,25 @@ scenarios:
       上辺1本）とドロップ枠（box-shadow: inset 0 0 0 2px、4辺）の
       computed box-shadow を比較し、色ではなく**形**（スプレッド半径の
       有無）で区別されていることも実測する。
+
+  # --- スプリッタ（Issue #56 PR 7） -------------------------------------------
+  - id: S59
+    title: スプリッタはドラッグ中resizeを飛ばさずmouseupで確定し、閾値未満クリックはアクティブ化に倒れ、メニュー項目でも調整できる
+    spec: S59-pane-splitter.spec.ts
+    readme: false
+    note: >-
+      design-review.md「提案 D'（改訂）: スプリッタ」の関門を実測で固定する。
+      **最重要の関門**: ドラッグ中は `pty:resize` が1回も飛ばず、`mouseup` で
+      確定した瞬間にだけ飛ぶこと（PR 5 の周で実証済みの手法どおり、
+      `electronApp.evaluate()` に `ipcMain.on` を足して回数を数える。ゴースト
+      方式をやめて `.pane-split__cell` の flex-grow を直接動かす実装に戻すと
+      ドラッグ中の各ステップで即座に赤くなる）。あわせて role="separator" +
+      aria-label + aria-valuenow/min/max + aria-valuetext と、**`aria-orientation`
+      が分割線自身の向き**であること（左右分割は縦線なので vertical。`dir` を
+      そのまま渡すと逆になる）、tabindex を持たないこと、ペインの端 8px の
+      デッドゾーン（移動量が閾値未満の mouseup は ratio を変えずに押した側の
+      ペインをアクティブにするだけになること）、メニュー項目
+      「分割比を広げる/狭める/50%に戻す」が実在し実際に ratio を動かせること
+      （WCAG 2.5.7 のドラッグ動作と 2.5.8 のターゲットサイズを同時に満たす
+      Equivalent 例外の根拠）、分割されていないタブでは通知を出すだけで
+      落ちないことを見る。

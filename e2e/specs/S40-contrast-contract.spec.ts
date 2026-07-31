@@ -110,6 +110,18 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
   await expect(window.locator('.notice-banner--error')).toBeVisible({ timeout: 15_000 });
   await expect(window.locator('.notice-banner--info')).toBeVisible();
 
+  // Issue #56 PR 7: スプリッタの線（.pane-splitter）を測るため、1枚シェルタブを
+  // 足して分割する。**測ったあとは5枚目（exit-7）のタブへ戻す**（「アクティブ
+  // ペインの枠線」は分割していない1枚ペインを測る、という既存の前提を保つため。
+  // `getComputedStyle` は `visibility: hidden` でも実効値を返すため、分割タブが
+  // 非アクティブに戻った状態のままでもスプリッタの色は測れる）。
+  await window.keyboard.press('Meta+t');
+  await expect(window.locator('.tab-bar__tab')).toHaveCount(6, { timeout: 15_000 });
+  await window.keyboard.press('Meta+d');
+  await expect(window.locator('.pane-splitter')).toHaveCount(1, { timeout: 15_000 });
+  await window.keyboard.press('Meta+5');
+  await expect(window.locator('.tab-bar__tab').nth(4)).toHaveClass(/is-active/, { timeout: 5_000 });
+
   const mainTargets: ContrastTarget[] = [
     {
       name: 'メタ情報の文字（サイドバー上）',
@@ -265,6 +277,24 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       selector: '.terminal-pane.is-active .terminal-pane__container',
       property: 'box-shadow',
     },
+    // Issue #56 PR 7: スプリッタ（design-review.md 提案 D'）の表示 1px。
+    // ドラッグの当たり判定（8px、::before の絶対配置）と違い、この線自体は
+    // 分割中は常時見えている持続的な視覚要素（ドラッグ中だけのゴースト線とは
+    // 別。ゴーストは drop-target ハイライトと同じ「操作中だけ見える」表現なので
+    // S40 の対象に含めない。S58 の前例と同じ切り分け）。**新しいトークンは
+    // 作らず --border-control をそのまま使う**（design-review.md「5人中4人が
+    // --border-control にせよと書いた」の結論）。
+    {
+      // .pane-splitter 自身の塗り（background-color）は非透明なので、against を
+      // 省略すると「選択中タブの塗り」と同じ理由で自分自身と比較して 1.0 になる
+      // （contrast.ts の既定挙動。値が要る背景は明示的に渡す必要がある）。
+      // 実際に乗っているのは .terminal-stack の --surface-1。
+      name: 'スプリッタの枠線（対 --surface-1）',
+      kind: 'non-text',
+      selector: '.pane-splitter',
+      property: 'background-color',
+      against: '.terminal-stack',
+    },
   ];
 
   const main = await measureContrast(window, mainTargets);
@@ -370,6 +400,10 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     // 既定は --accent をそのまま使う（--pane-active-accent が var(--accent) を
     // 参照しているだけなので、値は「選択中タブの色相アクセント」等と同じ #5b9cff）。
     'アクティブペインの枠線（対 --surface-1）': { ratio: 6.07, wcag: 'pass' },
+    // Issue #56 PR 7: スプリッタの線。新しいトークンは作らず --border-control
+    // をそのまま使う（design-review.md 提案 D'）。--surface-1 に対して 3:1 を
+    // 満たす（他の --border-control 使用箇所と同じ設計判断）。
+    'スプリッタの枠線（対 --surface-1）': { ratio: 3.88, wcag: 'pass' },
     // 設定ウィンドウ（最も明るい面）
     '設定の入力欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.30 から（PR 5-4）
     // 2.4.11。**アクセント色では 1.70 で満たせない**（PR 5-4 で枠を明るくしたため）
