@@ -42,8 +42,17 @@ test('S31 設定パネルから変更するとターミナルに反映される'
   const soundSelect = dialog.locator('select[aria-label="通知音"]');
   await expect(soundSelect).toHaveValue('');
 
-  // フォントサイズを既定（13）と違う値に変える
-  const fontSize = dialog.locator('input[type="number"]').first();
+  // フォントサイズを既定（13）と違う値に変える。
+  //
+  // **`input[type="number"]` の `.first()` で引かないこと。** 数値入力は
+  // 「表示 > サイズ」と「動作 > ポーリング間隔(ms)」の2つあり、`.first()` が
+  // 前者を指すのは「表示 が最初のセクションだから」という暗黙の DOM 順序への
+  // 依存でしかない。セクションを並べ替えるとポーリング間隔のほうに化け、
+  // fill('22') が coerceConfig で 500 にクランプされてフォントサイズは 13 のまま、
+  // 下の toBe('22px') が 20 秒のタイムアウトで落ちる（原因の分かりにくい壊れ方）。
+  //
+  // `.settings__row` は <label> が入力欄を内包する形なので、ラベルの文字で引ける。
+  const fontSize = dialog.getByLabel('サイズ');
   await fontSize.fill('22');
   await fontSize.blur();
 
@@ -61,7 +70,7 @@ test('S31 設定パネルから変更するとターミナルに反映される'
 
   // Cmd+, で開き直すと、変更した値が保持されている
   const reopened = await openSettingsWindow(launched, () => window.keyboard.press('Meta+,'));
-  await expect(reopened.locator('input[type="number"]').first()).toHaveValue('22');
+  await expect(reopened.getByLabel('サイズ')).toHaveValue('22');
 
   // Cmd+W でも閉じる（設定ウィンドウ側のキー処理）
   await reopened.keyboard.press('Meta+w').catch(() => undefined);
