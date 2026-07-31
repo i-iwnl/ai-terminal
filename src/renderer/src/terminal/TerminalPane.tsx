@@ -184,7 +184,13 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
 
   return (
     <div
-      className={`terminal-pane${visible ? '' : ' terminal-pane--hidden'}${active ? ' is-active' : ''}${isDropTarget ? ' terminal-pane--drop-target' : ''}`}
+      // `terminal-pane--split` は `showHeader` と同じ判定（呼び出し側 PaneTreeView が
+      // `props.node.kind === 'split'` で決める。分割中は木の全 leaf で true）。
+      // アクティブ表現の3層のうち2層目（アクセント線）は、3層目（ペインヘッダ）と
+      // 同じく**分割中だけ**出す（design-review.md 提案 G「1ペインのときは出さない」）。
+      // ペインが1枚しかないタブでは「どれがアクティブか」を伝える必要が無く、
+      // 常時出ていて何も伝えないクロームは原則3に反する（レビュー指摘）。
+      className={`terminal-pane${visible ? '' : ' terminal-pane--hidden'}${active ? ' is-active' : ''}${showHeader ? ' terminal-pane--split' : ''}${isDropTarget ? ' terminal-pane--drop-target' : ''}`}
       // タブバーの role="tab" と対になる tabpanel。ARIA 仕様は tab に aria-controls で
       // 対応する tabpanel を要求するので、片方だけ足すと role が嘘になる。
       // 非表示のタブは terminal-pane--hidden（visibility: hidden）で

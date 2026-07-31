@@ -32,6 +32,16 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
   await window.keyboard.press('Meta+t');
   await expect(window.locator('.tab-bar__tab')).toHaveCount(2, { timeout: 15_000 });
 
+  // アクティブペインのアクセント線は「分割中だけ」しか出ない（PR 5 の実装漏れの
+  // 是正。styles.css の `.terminal-pane.is-active.terminal-pane--split` 参照）ため、
+  // このタブを分割してから測る（分割していないと box-shadow が無く、計測が
+  // 静かに欠落する。measureContrast は見つからない項目を素通りするだけなので、
+  // 分割し忘れると下の「3項目とも測れていること」の突き合わせで気づく設計）。
+  await window.keyboard.press('Meta+d');
+  await expect(window.locator('.terminal-pane.is-active.terminal-pane--split')).toHaveCount(1, {
+    timeout: 15_000,
+  });
+
   const targets: ContrastTarget[] = [
     {
       name: 'メタ情報の文字',
@@ -57,7 +67,8 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
     // 切り替わることを見る。--border-control（#7a7a7a）との比が 1.56 しか無く
     // 隣接して見分けが付かなくなるための切り替えなので、白のほうが対
     // --surface-1 でも明らかに強くなる（S40 の「全員一致の対案をそのまま
-    // 実装しなかった箇所」参照）。
+    // 実装しなかった箇所」参照）。この線は分割中だけ出るため、上でタブを
+    // 分割してから測っている。
     {
       name: 'アクティブペインの枠線',
       kind: 'non-text',

@@ -586,7 +586,8 @@ scenarios:
   - id: S56
     title: Cmd+D で分割でき、2つの xterm-screen が同時に見え、拒否と Cmd+W が働く
     spec: S56-split-pane.spec.ts
-    readme: false
+    screenshot: S56-split-pane.png
+    readme: true
     note: >-
       design-review.md「3. 改訂した導入計画」PR 4 行の関門（2つの .xterm-screen
       が同時に可視 + .terminal-pane.is-active で一意に引ける hook）を実測で

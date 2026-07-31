@@ -111,16 +111,21 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
   await expect(window.locator('.notice-banner--info')).toBeVisible();
 
   // Issue #56 PR 7: スプリッタの線（.pane-splitter）を測るため、1枚シェルタブを
-  // 足して分割する。**測ったあとは5枚目（exit-7）のタブへ戻す**（「アクティブ
-  // ペインの枠線」は分割していない1枚ペインを測る、という既存の前提を保つため。
-  // `getComputedStyle` は `visibility: hidden` でも実効値を返すため、分割タブが
-  // 非アクティブに戻った状態のままでもスプリッタの色は測れる）。
+  // 足して分割する。**このタブを選択したまま測る（5枚目の exit-7 タブへは戻さない）。**
+  // アクティブペインのアクセント線は「分割中だけ」しか出ない（PR 5 の実装漏れの
+  // 是正。`.terminal-pane--split` が無いと box-shadow が付かない。styles.css 参照）ため、
+  // 「分割していない1枚ペインを測る」という以前の前提はもう成立しない。むしろ
+  // このタブが選択中のまま（＝分割後にアクティブなペインが `visible && is-active`
+  // を両方持つ状態）でいることが、アクセント線を測るための必須条件になった。
+  // `getComputedStyle` は `visibility: hidden` でも実効値を返すため、スプリッタの
+  // 色はこのタブが選択中のままでも問題なく測れる。
   await window.keyboard.press('Meta+t');
   await expect(window.locator('.tab-bar__tab')).toHaveCount(6, { timeout: 15_000 });
   await window.keyboard.press('Meta+d');
   await expect(window.locator('.pane-splitter')).toHaveCount(1, { timeout: 15_000 });
-  await window.keyboard.press('Meta+5');
-  await expect(window.locator('.tab-bar__tab').nth(4)).toHaveClass(/is-active/, { timeout: 5_000 });
+  await expect(window.locator('.terminal-pane.is-active.terminal-pane--split')).toHaveCount(1, {
+    timeout: 5_000,
+  });
 
   const mainTargets: ContrastTarget[] = [
     {
@@ -268,9 +273,12 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     // 文字列で返るが、measureContrast の parse は文字列中の最初の rgba?(...) を
     // 拾うだけなので、そのまま渡してよい（border-top-color 等と同じ扱い）。
     // ペインヘッダは通常フローに入れてあり .terminal-pane__container の上には
-    // 重ならない（レビュー指摘で重ね描きをやめた）ため、分割の有無に関わらず
-    // この線は常に .terminal-pane__container 自身の padding 帯（対 --surface-1）
-    // に乗る。ここで測るのは分割していない1枚ペイン（直前に exit 7 させたシェル）。
+    // 重ならない（レビュー指摘で重ね描きをやめた）ため、乗る面（対 --surface-1）は
+    // 分割の有無に関わらず変わらない。**ただしこの線自体は「分割中だけ」しか
+    // 出ない**（`.terminal-pane--split` が無いレイヤーには box-shadow が付かない。
+    // PR 5 はこの条件を欠いており単一ペインでも常時表示されていた実装漏れを、
+    // ペインヘッダと同じ「分割中のみ」の条件に揃えて是正した）。そのため
+    // ここで測るのは、直前に作った6枚目のタブを分割した直後の、分割中のアクティブペイン。
     {
       name: 'アクティブペインの枠線（対 --surface-1）',
       kind: 'non-text',

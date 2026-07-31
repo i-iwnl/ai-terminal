@@ -9,7 +9,7 @@ import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from './fix
 /**
  * README の「使い方ガイド」用スクリーンショットの撮影スクリプト。
  *
- * e2e/scenarios.yml の readme: true な11シナリオについて、対応する spec と同じ
+ * e2e/scenarios.yml の readme: true な13シナリオについて、対応する spec と同じ
  * 手順でハーネス（隔離 HOME + 偽 CLI）越しにアプリの画面状態を作り、docs/images/
  * に screenshot: で指定されたファイル名で保存する。
  *
@@ -757,4 +757,45 @@ test('screenshots S31 設定パネル', async () => {
   ],
   // 設定ウィンドウは幅 520px。1200 に引き伸ばすとぼやけるので実寸に寄せる。
   620);
+});
+
+test('screenshots S56 分割表示', async () => {
+  launched = await launchApp();
+  const { window } = launched;
+
+  const screen = window.locator('.terminal-pane__container .xterm-screen').first();
+  await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000 });
+
+  // Cmd+D で右に分割する（Issue #56）。分割中だけペインヘッダとスプリッタが現れ、
+  // アクティブなペインには上辺のアクセント線が付く。
+  await window.keyboard.press('Meta+d');
+  const panes = window.locator('.terminal-pane');
+  await expect(panes).toHaveCount(2);
+
+  const activeScreen = window.locator('.terminal-pane.is-active .xterm-screen');
+  await expect(activeScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
+  // ヘッダの文字列（種別 + cwd の basename）が実際に描画されるまで待つ。
+  await expect(window.locator('.pane-header').first()).not.toBeEmpty();
+
+  await annotateAndShoot(window, 'S56-split-pane.png', [
+    {
+      selector: '.pane-header',
+      index: 0,
+      number: 1,
+      caption: 'ペインヘッダ: 種別とディレクトリ名（分割中だけ表示）',
+      side: 'below',
+    },
+    {
+      selector: '.pane-splitter',
+      number: 2,
+      caption: 'スプリッタ: ドラッグで分割比を変更',
+      side: 'right',
+    },
+    {
+      selector: '.terminal-pane.is-active',
+      number: 3,
+      caption: 'アクティブなペイン: 上辺の青い線で分かる',
+      side: 'below',
+    },
+  ]);
 });

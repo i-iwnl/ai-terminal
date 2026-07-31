@@ -63,12 +63,28 @@ test('S57 分割中だけペインヘッダが出て、最初の行を隠さず�
     ).toBeLessThanOrEqual(firstRowBox!.y + 1);
   }
 
+  /** アクティブなペインのコンテナに実際に描かれている box-shadow（アクセント線）。 */
+  const activeAccentBoxShadow = (): Promise<string> =>
+    window
+      .locator('.terminal-pane.is-active .terminal-pane__container')
+      .first()
+      .evaluate((el) => getComputedStyle(el).boxShadow);
+
   // --- 起動直後: 1タブ1ペイン。ヘッダは出ない -------------------------------
   await expect(panes).toHaveCount(1);
   await expect(headers).toHaveCount(0);
   await expect(window.locator('.terminal-pane.is-active .xterm-screen')).toContainText(
     new RegExp(`${cwdName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[%#]`),
     { timeout: 20_000 },
+  );
+
+  // アクティブ表現の3層のうち2層目（アクセント線）も、3層目（ペインヘッダ）と
+  // 同じく「分割中だけ」出す（design-review.md 提案 G「1ペインのときは出さない」）。
+  // 1ペインのタブでは、この線は「どのペインがアクティブか」を伝える相手が無く、
+  // 常時出ていて何も伝えないクロームになる（PR 5 の実装漏れ。ペインヘッダの
+  // 条件と食い違っていた不具合の是正をここで固定する）。
+  expect(await activeAccentBoxShadow(), '1ペインのときにアクセント線が出てしまっている').toBe(
+    'none',
   );
 
   const rowCountBeforeSplit = await rowsOf('.terminal-pane.is-active').count();
@@ -82,6 +98,9 @@ test('S57 分割中だけペインヘッダが出て、最初の行を隠さず�
   // 収まるまで待ってから座標を測る。
   await expect(rowsOf('.terminal-pane.is-active')).not.toHaveCount(0, { timeout: 10_000 });
   await expect(rowsOf('.terminal-pane:not(.is-active)')).not.toHaveCount(0, { timeout: 10_000 });
+
+  // 分割中は逆に出ること（ヘッダと対で固定する）。
+  expect(await activeAccentBoxShadow(), '分割中なのにアクセント線が出ていない').not.toBe('none');
 
   // --- 関門3: ヘッダが最初の行を隠していないこと（両方のペインで） -----------
   await expectHeaderDoesNotCoverFirstRow(activePane);
@@ -113,4 +132,9 @@ test('S57 分割中だけペインヘッダが出て、最初の行を隠さず�
   await expect(rowsOf('.terminal-pane.is-active')).toHaveCount(rowCountBeforeSplit, {
     timeout: 10_000,
   });
+  // ヘッダと同じく、1ペインに戻ればアクセント線も消えること。
+  expect(
+    await activeAccentBoxShadow(),
+    '1ペインに戻ったのにアクセント線が残っている',
+  ).toBe('none');
 });
