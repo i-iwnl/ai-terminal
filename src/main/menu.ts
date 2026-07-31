@@ -81,6 +81,17 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
     { role: 'zoomIn', label: '拡大' },
     { role: 'zoomOut', label: '縮小' },
     { type: 'separator' },
+    // スプリッタの分割比調整（Issue #56 PR 7・design-review.md 提案 D'）。
+    // スプリッタの当たり判定は 8px しかなく、WCAG 2.5.7（ドラッグ動作）と
+    // 2.5.8（ターゲットサイズ 24x24）のどちらも単体では満たせない。この3項目が
+    // ドラッグの Equivalent（同等の操作手段）として両方の根拠になる。
+    // キーは割り当てない（ドラッグの代替であることが目的で、頻度の高い専用
+    // ショートカットを新設する理由が無いため。design-review.md はこの3項目に
+    // accelerator を要求していない）。
+    actionItem(win, '分割比を広げる', undefined, { type: 'adjust-split-ratio', adjustment: 'widen' }),
+    actionItem(win, '分割比を狭める', undefined, { type: 'adjust-split-ratio', adjustment: 'narrow' }),
+    actionItem(win, '分割比を50%に戻す', undefined, { type: 'adjust-split-ratio', adjustment: 'reset' }),
+    { type: 'separator' },
     { role: 'togglefullscreen', label: 'フルスクリーン' },
   ];
 

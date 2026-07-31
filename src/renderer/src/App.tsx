@@ -7,7 +7,15 @@ import TabBar from './tabs/TabBar';
 import PaneTreeView from './tabs/PaneTreeView';
 import type { TerminalHandle } from './terminal/useTerminal';
 import { startPtyStream } from './terminal/ptyStream';
-import { flattenPaneTree } from './tabs/paneTree';
+import {
+  findPanePath,
+  flattenPaneTree,
+  getNodeAtPath,
+  type PaneCellMetrics,
+  type PanePath,
+  type SplitDirection,
+} from './tabs/paneTree';
+import { adjustSplitRatioFor, pathKey } from './tabs/paneSplitter';
 import { findTabByAgentSessionId, findTabByPtyId, tabLeaf } from './tabs/tabPane';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
@@ -31,6 +39,30 @@ const STATUS_REGION_STYLE: CSSProperties = {
   whiteSpace: 'nowrap',
   border: 0,
 };
+
+/**
+ * メニュー項目「分割比を広げる/狭める/50%に戻す」（Issue #56 PR 7）が使う
+ * `PaneCellMetrics` を組み立てる。
+ *
+ * `clampSplitRatio`（paneTree.ts）が求めるのは「分割対象の領域全体」の実寸だが、
+ * ドラッグを経由しないこの経路には測る手がかりが `.pane-split` コンテナの DOM
+ * 参照（`splitContainerRefs`）しか無い。cwd/フォントは全ペイン共通のため、
+ * セル寸法（cellWidthPx/cellHeightPx）はどの leaf の TerminalHandle から
+ * 読んでも同じ値になる（representative の leaf から読む）。コンテナの実寸
+ * （widthPx/heightPx）だけを、分割の向きに応じてその leaf 自身の値から
+ * 実測値へ差し替える。
+ */
+function buildSplitMetrics(
+  dir: SplitDirection,
+  containerEl: HTMLDivElement | undefined,
+  leafMetrics: PaneCellMetrics | undefined,
+): PaneCellMetrics {
+  const fallback: PaneCellMetrics = { widthPx: 0, heightPx: 0, cellWidthPx: 0, cellHeightPx: 0 };
+  const base = leafMetrics ?? fallback;
+  const rect = containerEl?.getBoundingClientRect();
+  if (!rect) return base;
+  return dir === 'row' ? { ...base, widthPx: rect.width } : { ...base, heightPx: rect.height };
+}
 
 export default function App(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
@@ -78,6 +110,28 @@ export default function App(): ReactElement {
   // 正しく引けるよう paneId キーに変える（design-review.md Q5）。
   const handlesRef = useRef(new Map<string, TerminalHandle>());
   const initializedRef = useRef(false);
+
+  // 分割ノード（`.pane-split`）の DOM コンテナ。paneSplitter.ts の pathKey() で
+  // 経路から作ったキーで引く（Issue #56 PR 7）。スプリッタのドラッグ自体は
+  // PaneSplitterHandle.tsx がドラッグ開始時に自分の親要素から直接測るため
+  // この登録簿を使わないが、**メニュー項目（分割比を広げる/狭める/50%に戻す）は
+  // ドラッグ操作を経由しないため、コンテナの実寸をここから引く必要がある**。
+  const splitContainerRefsRef = useRef(new Map<string, HTMLDivElement>());
+  const registerSplitContainer = useCallback((key: string, el: HTMLDivElement | null) => {
+    if (el) splitContainerRefsRef.current.set(key, el);
+    else splitContainerRefsRef.current.delete(key);
+  }, []);
+
+  // スプリッタ本体（`.pane-splitter`）の DOM。`tabIndex={-1}` なのでプログラム的
+  // にしか到達できないが、メニュー項目「分割比を広げる/狭める/50%に戻す」が
+  // 比率を動かした**その対象**へ `.focus()` するために引く（レビュー指摘。
+  // ペインが3枚以上あるとスプリッタが複数本になり、フォーカスリングが出て
+  // 初めてどちらが動いたかが画面から分かる）。
+  const splitterRefsRef = useRef(new Map<string, HTMLDivElement>());
+  const registerSplitterElement = useCallback((key: string, el: HTMLDivElement | null) => {
+    if (el) splitterRefsRef.current.set(key, el);
+    else splitterRefsRef.current.delete(key);
+  }, []);
 
   // 設定の読み込み。失敗してもフォールバック値のまま続行する。
   useEffect(() => {
@@ -201,6 +255,39 @@ export default function App(): ReactElement {
         case 'close-pane':
           void api.closeActivePane();
           break;
+        case 'adjust-split-ratio': {
+          // メニュー項目「分割比を広げる/狭める/50%に戻す」（Issue #56 PR 7）。
+          // ドラッグの Equivalent 例外の根拠になるため、ドラッグを一切経由せず
+          // アクティブなペインを含む「直近の親の分割」だけを操作する。
+          const tab = api.tabs.find((t) => t.id === api.activeTabId);
+          if (!tab) break;
+          const path = findPanePath(tab.layout, tab.activePaneId);
+          if (!path || path.length === 0) {
+            // アクティブなペインが分割されていない（木がそのまま leaf 1枚）。
+            showNotice('アクティブなペインは分割されていません', 'info');
+            break;
+          }
+          const parentPath: PanePath = path.slice(0, -1);
+          const childIndex = path[path.length - 1] === 0 ? 0 : 1;
+          const splitNode = getNodeAtPath(tab.layout, parentPath);
+          if (!splitNode || splitNode.kind !== 'split') break;
+
+          const containerEl = splitContainerRefsRef.current.get(pathKey(parentPath));
+          const representativePaneId = flattenPaneTree(splitNode)[0].paneId;
+          const leafMetrics = handlesRef.current.get(representativePaneId)?.getCellMetrics();
+          const metrics = buildSplitMetrics(splitNode.dir, containerEl, leafMetrics);
+          const targetRatio = adjustSplitRatioFor(childIndex, splitNode.ratio, action.adjustment);
+
+          api.updateSplitRatio(tab.id, parentPath, targetRatio, metrics);
+          // **動かした対象のスプリッタへ .focus() する**（レビュー指摘）。
+          // ペインが3枚以上あるとスプリッタは2本以上になり、フォーカスリング
+          // （styles.css `.pane-splitter:focus-visible`）が出て初めて
+          // 「どのスプリッタが動いたか」が画面から分かる。`tabIndex={-1}`
+          // なので Tab では到達できないが `.focus()` は効く
+          // （PaneSplitterHandle.tsx 冒頭コメント参照）。
+          splitterRefsRef.current.get(pathKey(parentPath))?.focus();
+          break;
+        }
       }
     },
     [showNotice],
@@ -383,6 +470,20 @@ export default function App(): ReactElement {
               registerHandle={(paneId, handle) => {
                 if (handle) handlesRef.current.set(paneId, handle);
                 else handlesRef.current.delete(paneId);
+              }}
+              registerSplitRef={registerSplitContainer}
+              registerSplitterRef={registerSplitterElement}
+              // スプリッタのドラッグが mouseup で確定したときの唯一の入口
+              // （Issue #56 PR 7）。ドラッグ中に何度も呼ばれることはなく、
+              // ここで呼ぶのは確定した1回だけ（PaneSplitterHandle.tsx 参照）。
+              onRatioCommit={(path, ratio) => {
+                const splitNode = getNodeAtPath(tab.layout, path);
+                if (!splitNode || splitNode.kind !== 'split') return;
+                const containerEl = splitContainerRefsRef.current.get(pathKey(path));
+                const representativePaneId = flattenPaneTree(splitNode)[0].paneId;
+                const leafMetrics = handlesRef.current.get(representativePaneId)?.getCellMetrics();
+                const metrics = buildSplitMetrics(splitNode.dir, containerEl, leafMetrics);
+                tabsApiRef.current.updateSplitRatio(tab.id, path, ratio, metrics);
               }}
             />
           ))}

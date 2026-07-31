@@ -392,6 +392,16 @@ export interface WebhookSendResult {
  */
 export type PaneSplitDirection = 'row' | 'column';
 
+/**
+ * スプリッタの分割比を調整する向き（Issue #56 PR 7・design-review.md 提案 D'）。
+ *
+ * `widen` / `narrow` はアクティブなペインの取り分を広げる/狭める、`reset` は
+ * 50% に戻す。この3項目1組が **WCAG 2.5.7（ドラッグ動作）と 2.5.8（ターゲット
+ * サイズ 24x24）を同時に満たす Equivalent 例外の根拠**になる（スプリッタの
+ * 当たり判定は 8px しかなく、どちらの基準も単体では満たせない）。
+ */
+export type PaneRatioAdjustment = 'widen' | 'narrow' | 'reset';
+
 export type AppAction =
   | { type: 'new-shell-tab' }
   | { type: 'close-tab' }
@@ -410,7 +420,13 @@ export type AppAction =
    * 「確定している仕様」）。ペインが1枚しか無いタブでは、結果としてタブそのものが
    * 閉じる（呼び出し側 = useTabs.ts の closeActivePane が判断する）。
    */
-  | { type: 'close-pane' };
+  | { type: 'close-pane' }
+  /**
+   * アクティブなペインを含む分割の比率を調整する（Issue #56 PR 7）。
+   * アクティブなペインが分割されていないタブでは何もしない（呼び出し側で
+   * 通知を出す）。
+   */
+  | { type: 'adjust-split-ratio'; adjustment: PaneRatioAdjustment };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義
