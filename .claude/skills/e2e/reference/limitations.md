@@ -72,3 +72,76 @@ E2E には「本番にどこまで近いか」の段階があり、レーンを�
 E2E は CI に組み込んでいない（**単体テストは `npm run unit` として CI で走る**）。Linux ランナーでは Electron の GUI 起動に xvfb が要り、macOS ランナーは実行コストが高い（`playwright.config.ts` のコメントにも明記）。現状は**ローカル実行のみ**（`make e2e`）。
 
 **`make e2e` がウィンドウを表示しないことは、CI 対応を意味しない。** あれは Electron のウィンドウを画面に出さないだけで、OS のウィンドウサーバ（macOS の GUI セッション）は必要なまま。ヘッドレスな Linux ランナーで回すには依然として xvfb が要る。両者を混同しないこと（詳細は [../operations/run-e2e.md](../operations/run-e2e.md)）。
+
+---
+
+## spec を書くときに繰り返し踏んだ落とし穴
+
+**すべて実際に落ちてから直したもの。** 書く前に読むこと。
+
+### 起動直後にキーを押さない（`useEffect` のリスナは間に合わない）
+
+グローバルショートカットの keydown リスナは `App.tsx` の `useEffect` で張られる。
+**マウント前に押したキーは失われる。**
+
+```ts
+// 悪い: いきなり押す（アプリの初期化を待っていない）
+await window.keyboard.press('Meta+t');
+
+// 良い: 最初のシェルタブが出るまで待ってから押す
+await expect(window.locator('.tab-bar__tab')).toHaveCount(1, { timeout: 15_000 });
+await window.keyboard.press('Meta+t');
+```
+
+**S55（#96）と S67 / S68（#107）がこれで落ちた。** `S06` などが最初に `toHaveCount(1)` を
+待っているのは同じ理由。
+
+### `viewportSize()` は Electron では `null` を返す
+
+Playwright がビューポートを設定していないため。**実寸は Renderer に聞く。**
+
+```ts
+const width = await window.evaluate(() => window.innerWidth);
+```
+
+`e2e/screenshots.spec.ts` が同じ理由で `window.innerWidth` を使っている。
+
+### セレクタを変えたら `e2e/specs/` ではなく `e2e/` 全体を grep する
+
+**`e2e/screenshots.spec.ts` は `e2e/` 直下にあり、`e2e/specs/*` の glob から漏れる。**
+
+`make e2e`（`playwright.config.ts`）と撮影（`e2e/screenshots.playwright.config.ts`）は
+**config が分かれている**ので、`make e2e` は全 green のまま壊れた状態が main に入る。
+**`make e2e-screenshots` を回して初めて落ちる**（Issue #90）。
+
+### 1 spec = 1 `test()`
+
+`make e2e-lint` の check7 が機械的に検査する。**`test()` を2つ書いたらファイルを分ける**
+（`scenarios.yml` も2エントリに分ける）。
+
+### 順序に依存するセレクタを書かない
+
+`.foo').first()` は並び順が変われば別の要素を指す。**内容で引くか、状態クラスで絞る。**
+
+- `S39` はタスク一覧の**先頭行**で `demo-project` を引いていて、並び順を変えた PR 8 で落ちた
+- `S40` も同じ理由で「一覧の先頭 = busy」を前提にしていた
+
+### 「押せるはずの領域が本当に押せるか」は S44 では分からない
+
+`S44` は**小さいボタンが 24x24 以上あるか**を見る検査で、
+**大きい要素の内側に死角があることは検出しない。**
+
+PR 19（#108）でタブの中央がコンテナの `<div>` に当たり、
+**クリックしても何も起きない**状態になっていたが、S44 は green のままだった。
+
+**押せることを主張するなら `document.elementFromPoint(中央)` が
+目的のインタラクティブ要素に解決することを見る**（`S69` がその形）。
+座標は決め打ちせず `boundingBox()` から計算する。
+
+### 合成 DOM を注入する spec は、CSS の位置指定を変えると壊れる
+
+`S44` は `.notice-banner` を `document.body` 直下に注入して当たり判定を測っている。
+PR 11（#96）で `position: absolute` を親の `.notice-list` へ移したとき、
+**注入した要素が通常フローに落ちてビューポート外へ出た。**
+
+**`position` を動かすときは、合成 DOM を注入している spec を探すこと。**
