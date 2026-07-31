@@ -192,10 +192,26 @@ describe('matchShortcut', () => {
 
   it('タブ操作を判定する', () => {
     expect(matchShortcut(keyEvent({ key: 't', metaKey: true }))).toEqual({ type: 'new-shell-tab' });
-    expect(matchShortcut(keyEvent({ key: 'w', metaKey: true }))).toEqual({ type: 'close-tab' });
+    // Cmd+W は Issue #56 PR 4 で「ペインを閉じる」に意味が変わった
+    // （design-review.md「確定している仕様」。タブそのものを閉じる close-tab は
+    // メニュー専用になり、キーを持たない）。
+    expect(matchShortcut(keyEvent({ key: 'w', metaKey: true }))).toEqual({ type: 'close-pane' });
     expect(matchShortcut(keyEvent({ key: '3', metaKey: true }))).toEqual({
       type: 'switch-tab',
       index: 2,
+    });
+  });
+
+  // Issue #56 PR 4: 分割のキー。右は Cmd+D、下は Cmd+Shift+D
+  // （design-review.md 提案 B'）。
+  it('分割を判定する', () => {
+    expect(matchShortcut(keyEvent({ key: 'd', metaKey: true }))).toEqual({
+      type: 'split-pane',
+      dir: 'row',
+    });
+    expect(matchShortcut(keyEvent({ key: 'd', metaKey: true, shiftKey: true }))).toEqual({
+      type: 'split-pane',
+      dir: 'column',
     });
   });
 

@@ -1,11 +1,15 @@
-// tabs/tabPane.ts（Issue #56 PR 3）の単体テスト。
+// tabs/tabPane.ts（Issue #56 PR 3 / PR 4）の単体テスト。
 //
 // PTY のメタ（ptyId / kind / title / agentSessionId / cwd / exit）を leaf に
 // 持たせたことで生まれた、TabState から leaf を引く経路を固定する
-// （design-review.md Q4）。PR 3 の時点では木は常に leaf 1枚。
+// （design-review.md Q4）。PR 3 の時点では木は常に leaf 1枚だったが、
+// PR 4 で分割が有効になり、木が複数 leaf を持ちうるようになった。
+// findTabByPtyId / findTabByAgentSessionId は「アクティブな leaf 1枚だけ」
+// ではなく木の全 leaf を見る必要がある（非アクティブなペインの PTY が
+// 終了する・非アクティブなペインで claude/gemini が動く、のどちらも起こりうる）。
 
 import { describe, expect, it } from 'vitest';
-import type { PaneLeaf } from '../../src/renderer/src/tabs/paneTree';
+import type { PaneLeaf, PaneNode, PaneSplit } from '../../src/renderer/src/tabs/paneTree';
 import {
   findTabByAgentSessionId,
   findTabByPtyId,
@@ -24,12 +28,17 @@ function leaf(overrides: Partial<PaneLeaf> = {}): PaneLeaf {
   };
 }
 
-function tab(overrides: Partial<TabState> & { layout?: PaneLeaf } = {}): TabState {
+function splitRow(children: [PaneNode, PaneNode]): PaneSplit {
+  return { kind: 'split', dir: 'row', children, ratio: 0.5 };
+}
+
+function tab(overrides: Partial<TabState> & { layout?: PaneNode } = {}): TabState {
   const layout = overrides.layout ?? leaf();
+  const firstLeaf = layout.kind === 'leaf' ? layout : undefined;
   return {
-    id: layout.ptyId,
+    id: firstLeaf?.ptyId ?? 'tab-id',
     layout,
-    activePaneId: layout.paneId,
+    activePaneId: firstLeaf?.paneId ?? 'pane-1',
     createdAt: 0,
     ...overrides,
   };
@@ -53,6 +62,23 @@ describe('findTabByPtyId', () => {
     const a = tab({ layout: leaf({ paneId: 'a', ptyId: 'pty-a' }) });
     expect(findTabByPtyId([a], 'missing')).toBeUndefined();
   });
+
+  // Issue #56 PR 4: 分割後、非アクティブな leaf（= tabLeaf() では引けない側）の
+  // PTY が終了することがある。tabLeaf(t) だけを見ていると、この経路は
+  // 「タブが見つからない」扱いになり、markExited が静かに no-op になっていた。
+  it('分割したタブで、非アクティブな leaf の ptyId でも見つかる', () => {
+    const activeLeaf = leaf({ paneId: 'active', ptyId: 'pty-active' });
+    const backgroundLeaf = leaf({ paneId: 'background', ptyId: 'pty-background' });
+    const t: TabState = {
+      id: 'pty-active',
+      layout: splitRow([activeLeaf, backgroundLeaf]),
+      activePaneId: 'active',
+      createdAt: 0,
+    };
+    expect(findTabByPtyId([t], 'pty-background')).toBe(t);
+    // 従来どおりアクティブ側でも見つかること（退行していないこと）も併せて確認する。
+    expect(findTabByPtyId([t], 'pty-active')).toBe(t);
+  });
 });
 
 describe('findTabByAgentSessionId', () => {
@@ -70,5 +96,24 @@ describe('findTabByAgentSessionId', () => {
   it('一致するタブが無ければ undefined', () => {
     const a = tab({ layout: leaf({ paneId: 'a', ptyId: 'pty-a', agentSessionId: 'session-a' }) });
     expect(findTabByAgentSessionId([a], 'missing')).toBeUndefined();
+  });
+
+  // Issue #56 PR 4: 分割で非アクティブなペインに claude/gemini が動いていても、
+  // そのタブ自体はタスク一覧・通知から前面化できる必要がある。
+  it('分割したタブで、非アクティブな leaf の agentSessionId でも見つかる', () => {
+    const shellLeaf = leaf({ paneId: 'shell', ptyId: 'pty-shell' });
+    const claudeLeaf = leaf({
+      paneId: 'claude',
+      ptyId: 'pty-claude',
+      ptyKind: 'claude',
+      agentSessionId: 'session-background',
+    });
+    const t: TabState = {
+      id: 'pty-shell',
+      layout: splitRow([shellLeaf, claudeLeaf]),
+      activePaneId: 'shell',
+      createdAt: 0,
+    };
+    expect(findTabByAgentSessionId([t], 'session-background')).toBe(t);
   });
 });

@@ -192,6 +192,19 @@ export function clampSplitRatio(
   return clampNumber(ratio, minRatio, maxRatio);
 }
 
+/**
+ * `canSplitPane` が拒否した理由を、通知バナーに出せる日本語の文にする。
+ *
+ * design-review.md「必ず守る設計判断」: 分割を拒否したときは理由を通知に出す。
+ * 閾値そのもの（実セル幅・実セル高さ x `MIN_PANE_COLUMNS`/`MIN_PANE_ROWS`）は
+ * `canSplitPane` の docstring が唯一の正なので、ここでは繰り返さない。
+ */
+export function describeSplitRejection(dir: SplitDirection): string {
+  return dir === 'row'
+    ? `分割できません（左右に分割すると各ペインが ${MIN_PANE_COLUMNS} 桁未満になります）`
+    : `分割できません（上下に分割すると各ペインが ${MIN_PANE_ROWS} 行未満になります）`;
+}
+
 /** 木の中から、指定した経路のノードを取り出す。経路が leaf の先まで続いていた場合は undefined。 */
 export function getNodeAtPath(tree: PaneNode, path: PanePath): PaneNode | undefined {
   let node: PaneNode = tree;

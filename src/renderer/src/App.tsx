@@ -3,16 +3,16 @@ import type { AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@s
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import Sidebar from './sidebar/Sidebar';
 import TabBar from './tabs/TabBar';
-import TerminalPane from './terminal/TerminalPane';
+import PaneTreeView from './tabs/PaneTreeView';
 import type { TerminalHandle } from './terminal/useTerminal';
 import { startPtyStream } from './terminal/ptyStream';
+import { flattenPaneTree } from './tabs/paneTree';
 import { findTabByAgentSessionId, findTabByPtyId, tabLeaf } from './tabs/tabPane';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
-import { tabButtonId, tabPanelId } from './tabs/tabAriaIds';
-import { dismissNotice, pushNotice, severityForExit, type Notice } from './lib/notices';
+import { dismissNotice, pushNotice, severityForExit, type Notice, type NoticeSeverity } from './lib/notices';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
 // styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
@@ -53,12 +53,14 @@ export default function App(): ReactElement {
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
   const [accessibilitySupport, setAccessibilitySupport] = useState(false);
 
-  const showError = useCallback(
-    (message: string) => {
-      setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity: 'error' }));
+  const showNotice = useCallback(
+    (message: string, severity: NoticeSeverity) => {
+      setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity }));
     },
     [nextNoticeId],
   );
+
+  const showError = useCallback((message: string) => showNotice(message, 'error'), [showNotice]);
 
   const dismissNoticeById = useCallback((id: string) => {
     setNotices((prev) => dismissNotice(prev, id));
@@ -68,6 +70,11 @@ export default function App(): ReactElement {
   const tabsApiRef = useRef(tabsApi);
   tabsApiRef.current = tabsApi;
 
+  // ペイン（leaf）ごとの TerminalHandle。paneId をキーにする（Issue #56 PR 4）。
+  // 分割前は tab.id と leaf の paneId が常に同じ値だったため tab.id キーで
+  // 足りていたが、分割後は1タブに複数の leaf（複数の paneId）が同時に存在するため、
+  // Cmd+F / Cmd+K 等のグローバル操作が「アクティブなタブの、アクティブなペイン」を
+  // 正しく引けるよう paneId キーに変える（design-review.md Q5）。
   const handlesRef = useRef(new Map<string, TerminalHandle>());
   const initializedRef = useRef(false);
 
@@ -102,52 +109,76 @@ export default function App(): ReactElement {
 
   // アプリ操作の実行。キーボード（matchShortcut）とメニュー（menu:action）が
   // 同じ AppAction を流してくるので、処理はここ1本に集約する。
-  const runAction = useCallback((action: AppAction) => {
-    const api = tabsApiRef.current;
-    switch (action.type) {
-      case 'new-shell-tab':
-        void api.newShellTab();
-        break;
-      case 'close-tab':
-        if (api.activeTabId) void api.closeTab(api.activeTabId);
-        break;
-      case 'switch-tab': {
-        const target = api.tabs[action.index];
-        if (target) api.setActiveTabId(target.id);
-        break;
+  const runAction = useCallback(
+    (action: AppAction) => {
+      const api = tabsApiRef.current;
+      // Cmd+F / Cmd+K 等は「アクティブなタブの、アクティブなペイン」に向ける
+      // （design-review.md Q5）。handlesRef は paneId をキーにしている。
+      const activePaneId = (): string | undefined =>
+        api.tabs.find((t) => t.id === api.activeTabId)?.activePaneId;
+
+      switch (action.type) {
+        case 'new-shell-tab':
+          void api.newShellTab();
+          break;
+        case 'close-tab':
+          if (api.activeTabId) void api.closeTab(api.activeTabId);
+          break;
+        case 'switch-tab': {
+          const target = api.tabs[action.index];
+          if (target) api.setActiveTabId(target.id);
+          break;
+        }
+        case 'new-claude-tab':
+          void api.newAgentTab('claude');
+          break;
+        case 'new-gemini-tab':
+          void api.newAgentTab('gemini');
+          break;
+        case 'toggle-search': {
+          const id = activePaneId();
+          if (id) handlesRef.current.get(id)?.toggleSearch();
+          break;
+        }
+        case 'find-next': {
+          const id = activePaneId();
+          if (id) handlesRef.current.get(id)?.findNext();
+          break;
+        }
+        case 'find-previous': {
+          const id = activePaneId();
+          if (id) handlesRef.current.get(id)?.findPrevious();
+          break;
+        }
+        case 'clear-terminal': {
+          const id = activePaneId();
+          if (id) handlesRef.current.get(id)?.clear();
+          break;
+        }
+        case 'toggle-settings':
+          // 設定は独立ウィンドウ。既に開いていれば Main 側が前に出す。
+          window.api.settings.open();
+          break;
+        case 'split-pane': {
+          const id = activePaneId();
+          const metrics = (id && handlesRef.current.get(id)?.getCellMetrics()) || {
+            widthPx: 0,
+            heightPx: 0,
+            cellWidthPx: 0,
+            cellHeightPx: 0,
+          };
+          void api.splitActivePane(action.dir, metrics).then((result) => {
+            if (!result.ok) showNotice(result.reason, 'error');
+          });
+          break;
+        }
+        case 'close-pane':
+          void api.closeActivePane();
+          break;
       }
-      case 'new-claude-tab':
-        void api.newAgentTab('claude');
-        break;
-      case 'new-gemini-tab':
-        void api.newAgentTab('gemini');
-        break;
-      case 'toggle-search': {
-        const id = api.activeTabId;
-        if (id) handlesRef.current.get(id)?.toggleSearch();
-        break;
-      }
-      case 'find-next': {
-        const id = api.activeTabId;
-        if (id) handlesRef.current.get(id)?.findNext();
-        break;
-      }
-      case 'find-previous': {
-        const id = api.activeTabId;
-        if (id) handlesRef.current.get(id)?.findPrevious();
-        break;
-      }
-      case 'clear-terminal': {
-        const id = api.activeTabId;
-        if (id) handlesRef.current.get(id)?.clear();
-        break;
-      }
-      case 'toggle-settings':
-        // 設定は独立ウィンドウ。既に開いていれば Main 側が前に出す。
-        window.api.settings.open();
-        break;
-    }
-  }, []);
+    },
+    [showNotice],
+  );
 
   const runActionRef = useRef(runAction);
   runActionRef.current = runAction;
@@ -217,10 +248,15 @@ export default function App(): ReactElement {
       });
       // markExited 呼び出し前の tabs から探す（タイトルは終了で変わらないのでどちらでも同じ）。
       // PTY のメタ（title 含む）は leaf に持たせてある（design-review Q4）ので、
-      // タブそのものではなく tabLeaf() で leaf を引いてから読む。
+      // タブそのものではなく leaf を引いてから読む。
+      // **`tabLeaf(tab)`（アクティブな leaf 1枚だけ）ではなく、終了した ptyId に
+      // 一致する leaf を木の全体から探す。** 分割後は非アクティブなペインが
+      // 終了することもあり、そのまま tabLeaf(tab) を使うと無関係な（アクティブな）
+      // leaf のタイトルで通知してしまう。
       const tab = findTabByPtyId(tabsApiRef.current.tabs, event.ptyId);
       if (tab) {
-        const title = tabLeaf(tab).title;
+        const exitedLeaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === event.ptyId);
+        const title = exitedLeaf?.title ?? tabLeaf(tab).title;
         setExitAnnouncement(`${title} が終了しました（コード ${event.exitCode}）`);
         // 通知バナー側は severity で見た目を分ける。正常終了（コード 0・シグナル無し）は
         // 「情報」、異常終了（0 以外のコード・シグナルによる終了）は「エラー」。
@@ -264,6 +300,16 @@ export default function App(): ReactElement {
     }
   }, []);
 
+  // アクティブなタブのペイン数を Main へ知らせる。「タブを閉じる（N ペイン）」の
+  // ラベル（src/main/menu.ts）を動かすためだけの一方向通知（design-review.md
+  // 「確定している仕様」）。tabs か activeTabId が変わるたびに送るので、
+  // タブ切り替え・分割・ペインを閉じるのいずれでも最新化される。
+  useEffect(() => {
+    const activeTab = tabsApi.tabs.find((t) => t.id === tabsApi.activeTabId);
+    const paneCount = activeTab ? flattenPaneTree(activeTab.layout).length : 1;
+    window.api.menu.reportPaneCount(paneCount);
+  }, [tabsApi.tabs, tabsApi.activeTabId]);
+
   return (
     <div className="app">
       <Sidebar
@@ -283,32 +329,35 @@ export default function App(): ReactElement {
         />
         <div className="terminal-stack">
           {tabsApi.tabs.map((tab) => (
-            <TerminalPane
+            // タブ1枚ぶんのペインの木を再帰的に描画する（Issue #56 PR 4。
+            // 分割していないタブは leaf 1枚 = 従来どおり .terminal-pane が
+            // 1つ、.terminal-stack を絶対配置で覆う。分割していれば
+            // .pane-split が同じ役目を持つ。PaneTreeView.tsx 参照）。
+            <PaneTreeView
               key={tab.id}
-              ref={(handle) => {
-                if (handle) handlesRef.current.set(tab.id, handle);
-                else handlesRef.current.delete(tab.id);
-              }}
-              ptyId={tabLeaf(tab).ptyId}
-              active={tab.id === tabsApi.activeTabId}
-              // タブバーの role="tab" と対にする（id の生成規則は tabs/tabAriaIds.ts が正）。
-              panelId={tabPanelId(tab.id)}
-              labelledBy={tabButtonId(tab.id)}
+              node={tab.layout}
+              tabId={tab.id}
+              activePaneId={tab.activePaneId}
+              tabVisible={tab.id === tabsApi.activeTabId}
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
               theme={config.theme}
-              // screenReaderMode はアクティブなタブにだけ渡す。
-              // xterm は screenReaderMode 有効時に aria-live="assertive" の live region を
-              // 生成する（AccessibilityManager）。assertive は読み上げを割り込んで中断するため、
-              // 支援技術に露出している live region は常に1個でなければならない
-              // （2個以上が同時に喋ると、片方の読み上げがもう片方に潰される）。
-              // 今日は非アクティブなペインが visibility: hidden で a11y ツリーからも
-              // 除去されるため、全タブに渡しても結果的に露出は1個に収まる（実質 no-op）。
-              // だが Issue #56（分割表示）が入ると同一タブ内の複数ペインが同時に visible に
-              // なり、この遮断が効かなくなる。そのときに複数ペインが同時に
-              // screenReaderMode: true を持たないよう、ここで不変条件として明示しておく。
-              screenReaderMode={tab.id === tabsApi.activeTabId && (config.screenReaderMode || accessibilitySupport)}
+              // screenReaderMode を有効にしてよいかの設定側の判断（アクティブな
+              // タブ・アクティブなペインへの絞り込みは PaneTreeView 側が担う）。
+              // xterm は screenReaderMode 有効時に aria-live="assertive" の live
+              // region を生成する（AccessibilityManager）。assertive は読み上げを
+              // 割り込んで中断するため、支援技術に露出している live region は
+              // 常に1個でなければならない（2個以上が同時に喋ると、片方の読み上げが
+              // もう片方に潰される）。分割（Issue #56）で同一タブ内の複数ペインが
+              // 同時に visible になっても、PaneTreeView がアクティブな1ペインにしか
+              // true を渡さないため、この不変条件は保たれる（S37 が固定）。
+              screenReaderModeEnabled={config.screenReaderMode || accessibilitySupport}
               onExit={handleExit}
+              onActivate={(paneId) => tabsApiRef.current.setActivePaneInTab(tab.id, paneId)}
+              registerHandle={(paneId, handle) => {
+                if (handle) handlesRef.current.set(paneId, handle);
+                else handlesRef.current.delete(paneId);
+              }}
             />
           ))}
           {tabsApi.tabs.length === 0 && <div className="terminal-stack__empty">タブがありません</div>}

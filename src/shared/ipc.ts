@@ -383,6 +383,15 @@ export interface WebhookSendResult {
  * 実際に押されるキーの定義は Main 側のメニュー（`src/main/menu.ts`）が唯一の正。
  * Renderer 側の `matchShortcut()` は、メニューが載せていないキーだけを拾う。
  */
+/**
+ * ペインの分割方向。`tabs/paneTree.ts` の `SplitDirection` と同じ意味
+ * （'row' = 左右分割、'column' = 上下分割）だが、**ここでは独立に定義する**。
+ * `PaneNode` を含むペインの木そのものは `src/shared/` に置かない
+ * （design-review.md の非目標。Main はペインの木を知る必要が無い）ため、
+ * 型を import せず同じ形を再宣言してある。
+ */
+export type PaneSplitDirection = 'row' | 'column';
+
 export type AppAction =
   | { type: 'new-shell-tab' }
   | { type: 'close-tab' }
@@ -393,7 +402,15 @@ export type AppAction =
   | { type: 'find-next' }
   | { type: 'find-previous' }
   | { type: 'toggle-settings' }
-  | { type: 'clear-terminal' };
+  | { type: 'clear-terminal' }
+  /** 右／下にペインを分割する（Issue #56 PR 4）。'row' が右、'column' が下。 */
+  | { type: 'split-pane'; dir: PaneSplitDirection }
+  /**
+   * アクティブなペインを閉じる。**`close-tab` とは意味が別**（design-review.md
+   * 「確定している仕様」）。ペインが1枚しか無いタブでは、結果としてタブそのものが
+   * 閉じる（呼び出し側 = useTabs.ts の closeActivePane が判断する）。
+   */
+  | { type: 'close-pane' };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義
@@ -425,6 +442,13 @@ export const IpcSend = {
   ptyResize: 'pty:resize',
   settingsOpen: 'settings:open',
   settingsClose: 'settings:close',
+  /**
+   * アクティブなタブのペイン数を Main へ知らせる。
+   * 「タブを閉じる（N ペイン）」メニュー項目のラベルを動的に更新するために使う
+   * （design-review.md の確定仕様。何本の PTY が失われるかをメニューの時点で
+   * 見せる）。ペインの木そのものは Renderer だけが持つため、Main は数だけを受け取る。
+   */
+  menuPaneCount: 'menu:pane-count',
 } as const;
 
 /** Main -> Renderer（push） */
@@ -511,6 +535,11 @@ export interface RendererApi {
   menu: {
     /** メニューから選ばれた操作の購読。購読解除関数を返す */
     onAction(listener: (action: AppAction) => void): () => void;
+    /**
+     * アクティブなタブのペイン数を Main へ知らせる。
+     * 「タブを閉じる（N ペイン）」のラベル更新にだけ使う（IpcSend.menuPaneCount 参照）。
+     */
+    reportPaneCount(count: number): void;
   };
   session: {
     /**

@@ -18,6 +18,7 @@ import {
   clampSplitRatio,
   closePane,
   createPaneTree,
+  describeSplitRejection,
   findPanePath,
   flattenPaneTree,
   getLeaf,
@@ -144,6 +145,27 @@ describe('canSplitPane（分割の拒否条件・幅と高さの両軸）', () =
   it('上下分割: 行数は変えるが列数は変えないので、既に左右分割で幅が閾値未満なら拒否する', () => {
     const tooNarrow = metrics({ widthPx: 100, cellWidthPx: 13 });
     expect(canSplitPane(tooNarrow, 'column')).toBe(false);
+  });
+});
+
+// design-review.md「必ず守る設計判断」: 分割を拒否したときは理由を通知に出す。
+// 方向ごとに違う文（左右/上下、桁/行）になっていること・具体的な閾値の数字
+// （MIN_PANE_COLUMNS / MIN_PANE_ROWS）が本文に含まれることを固定する。
+describe('describeSplitRejection', () => {
+  it('左右分割の拒否理由には「左右」と桁数の閾値が含まれる', () => {
+    const reason = describeSplitRejection('row');
+    expect(reason).toContain('左右');
+    expect(reason).toContain(String(MIN_PANE_COLUMNS));
+  });
+
+  it('上下分割の拒否理由には「上下」と行数の閾値が含まれる', () => {
+    const reason = describeSplitRejection('column');
+    expect(reason).toContain('上下');
+    expect(reason).toContain(String(MIN_PANE_ROWS));
+  });
+
+  it('左右分割と上下分割で異なる文になる', () => {
+    expect(describeSplitRejection('row')).not.toBe(describeSplitRejection('column'));
   });
 });
 

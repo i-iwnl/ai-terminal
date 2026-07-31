@@ -508,6 +508,9 @@ body {
   background: var(--surface-1);
 }
 
+/* タブの中身のルート（分割していないタブなら leaf 1枚がそのままここに来る）。
+   `.terminal-stack` を絶対配置で覆う。分割時のルートは `.pane-split` 側が
+   同じ役目を持つ（下の `.terminal-stack > .pane-split` 参照）。 */
 .terminal-pane {
   position: absolute;
   inset: 0;
@@ -522,10 +525,66 @@ body {
   pointer-events: none;
 }
 
+/* 分割（`.pane-split__cell`）の中に入れ子になった leaf は、タブ全体を覆う
+   絶対配置ではなく、割り当てられたセルいっぱいに広がる必要がある
+   （Issue #56 PR 4）。`position: absolute; inset: 0` のままだと2ペインが
+   互いに重なって表示されてしまう。**border ではなく box-sizing で寸法を
+   決める**（境界線を足すと実寸が変わり、フォーカス移動のたびに
+   ResizeObserver 経由で SIGWINCH が飛ぶ。design-review.md 提案 C'）。 */
+.pane-split__cell > .terminal-pane {
+  position: relative;
+  inset: auto;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+}
+
 .terminal-pane__container {
   flex: 1;
   min-height: 0;
   padding: var(--sp-1);
+}
+
+/* ---------------------------------------------------------------------- */
+/* ペイン分割（Issue #56 PR 4） */
+/* ---------------------------------------------------------------------- */
+
+/* 分割ノード1つぶんのコンテナ。`dir: 'row'` は左右、`'column'` は上下に
+   2つの子（.pane-split__cell）を並べる。ratio は JSX 側のインライン style
+   （flex-grow）で反映する（固定比率 0.5 のみ。ドラッグでの変更は PR 7）。 */
+.pane-split {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-split--row {
+  flex-direction: row;
+}
+
+.pane-split--column {
+  flex-direction: column;
+}
+
+/* 分割の木のルートがここに来た場合（タブ自体が分割されている場合）だけ、
+   `.terminal-pane`（分割していないタブ）と同じく `.terminal-stack` を
+   絶対配置で覆う。入れ子になった分割（`.pane-split__cell` の中の
+   `.pane-split`）はこの対象外で、親セルの大きさにそのまま従う。 */
+.terminal-stack > .pane-split {
+  position: absolute;
+  inset: 0;
+}
+
+/* 分割の子1つぶんの枠。ratio に応じた flex-grow は JSX 側のインライン
+   style で与える（4px グリッドに乗らない連続値のため、トークン化の対象外。
+   styles.css の :root がトークンとして持つのは離散的なデザイン値であって、
+   実行時に決まる分割比率はここでは扱わない）。 */
+.pane-split__cell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* タブが1枚も無いときの表示。**画面に他の文字が1つも無い状態**なので、
@@ -549,6 +608,11 @@ body {
   padding: var(--sp-1) 6px;
   border-radius: 4px;
   box-shadow: var(--shadow-float);
+  /* Issue #67: 入力欄 + ボタン3個で実測 260px 前後あり、細いペインからはみ出していた。
+     `.terminal-pane`（position: relative になった、分割時の入れ子含む）を基準に
+     はみ出さない上限を持たせる。分割（Issue #56）で常態化するまでは
+     ウィンドウ最小幅でだけ踏む問題だったため気づかれていなかった。 */
+  max-width: calc(100% - var(--sp-4));
 }
 
 .terminal-search input {
@@ -558,6 +622,10 @@ body {
   padding: 2px 6px;
   border-radius: var(--radius-md);
   font-size: var(--fs-sm);
+  /* flex item の既定 min-width: auto だと、親の max-width を無視して
+     テキストの intrinsic size ぶん広がろうとする（Issue #67 の本体）。 */
+  flex: 1;
+  min-width: 0;
 }
 
 .terminal-search button {
