@@ -23,6 +23,16 @@ export interface TabState {
   /** 木の中で「今表示している」leaf の paneId。 */
   activePaneId: string;
   createdAt: number;
+  /**
+   * アクティブなペイン（`activePaneId`）を最大化して表示するか（Issue #56 PR 8。
+   * design-review.md 提案 I）。**PTY のメタ（Q4 の対象）ではなく、木の構造
+   * （`ratio` / leaf の並び）にも一切触れない一時的な表示状態**なので leaf では
+   * なくここに持つ。`activePaneId` が変われば最大化の対象も追従する
+   * （常に「今アクティブなペインを最大化するかどうか」という1つの真偽値）。
+   * 分割・ペインを閉じるなど木の構造が変わる操作（`splitActivePane` /
+   * `closeActivePane`）は、この値を false に戻す（useTabs.ts 参照）。
+   */
+  maximized: boolean;
 }
 
 /**
@@ -64,4 +74,30 @@ export function findTabByAgentSessionId(
   agentSessionId: string,
 ): TabState | undefined {
   return tabs.find((t) => flattenPaneTree(t.layout).some((leaf) => leaf.agentSessionId === agentSessionId));
+}
+
+/** タブとペインの両方を指す位置（U4: タスク一覧・通知クリックの突き合わせ結果）。 */
+export interface PaneLocation {
+  tabId: string;
+  paneId: string;
+}
+
+/**
+ * agentSessionId から、そのセッションが動いているタブ**とペイン**の両方を特定する
+ * （design-review.md U4）。
+ *
+ * `findTabByAgentSessionId` はタブしか返さないため、対象ペインが今のタブに
+ * 既に見えている（= `setActiveTabId` が no-op になる）場合に「画面が1pxも
+ * 動かない」壊れ方をする。呼び出し側（App.tsx）はこの関数が返す `paneId` へ
+ * `setActivePaneInTab` することで、タブ切り替えとは独立にペインへフォーカスを移す。
+ */
+export function findPaneByAgentSessionId(
+  tabs: TabState[],
+  agentSessionId: string,
+): PaneLocation | undefined {
+  for (const t of tabs) {
+    const leaf = flattenPaneTree(t.layout).find((l) => l.agentSessionId === agentSessionId);
+    if (leaf) return { tabId: t.id, paneId: leaf.paneId };
+  }
+  return undefined;
 }

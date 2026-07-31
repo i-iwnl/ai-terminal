@@ -77,6 +77,40 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
   const viewSubmenu: MenuItemConstructorOptions[] = [
     actionItem(win, '画面を消去', 'Cmd+K', { type: 'clear-terminal' }),
     { type: 'separator' },
+    // ペインの最大化トグル（Issue #56 PR 8・design-review.md 提案 I）。
+    // ドラッグ 2〜5回/日 に対し最大化 10〜30回/日（ヘビーユーザーの実測）。
+    // 木は一切変えない一時的な表示切り替えで、PTY も kill しない。
+    actionItem(win, 'ペインを最大化', 'Cmd+Shift+Enter', { type: 'toggle-maximize-pane' }),
+    { type: 'separator' },
+    // ペイン間の移動（design-review.md 提案 B'）。Issue 本文の表は
+    // 「次 / 前のペイン | Cmd+] / Cmd+[ を第一に、Cmd+Option+矢印 を併設
+    // （4方向 = 4項目） | 表示」で、「メニュー」列は行全体に掛かる。
+    // 「4方向 = 4項目」は Cmd+Option+矢印 側の注記（メニューの accelerator は
+    // 1項目1つなので「次のペイン」1項目には4方向のキーが載らず4項目に
+    // 分ける、という意味）であって、**`Cmd+]` / `Cmd+[` をメニューから
+    // 外す指示ではない**。`Cmd+]` / `Cmd+[` は「第一」と明記された割り当てで、
+    // それだけがメニューに載らない状態は Issue #22（ショートカットがメニューに
+    // 1つも載っておらず発見できない）の再発になる。次/前を先に置き、
+    // 4方向をその後に続ける。
+    actionItem(win, '次のペインへ', 'Cmd+]', { type: 'next-pane' }),
+    actionItem(win, '前のペインへ', 'Cmd+[', { type: 'previous-pane' }),
+    actionItem(win, '上のペインへ移動', 'Cmd+Option+Up', {
+      type: 'move-pane-focus',
+      direction: 'up',
+    }),
+    actionItem(win, '下のペインへ移動', 'Cmd+Option+Down', {
+      type: 'move-pane-focus',
+      direction: 'down',
+    }),
+    actionItem(win, '左のペインへ移動', 'Cmd+Option+Left', {
+      type: 'move-pane-focus',
+      direction: 'left',
+    }),
+    actionItem(win, '右のペインへ移動', 'Cmd+Option+Right', {
+      type: 'move-pane-focus',
+      direction: 'right',
+    }),
+    { type: 'separator' },
     { role: 'resetZoom', label: '実際のサイズ' },
     { role: 'zoomIn', label: '拡大' },
     { role: 'zoomOut', label: '縮小' },

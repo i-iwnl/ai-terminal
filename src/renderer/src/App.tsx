@@ -10,13 +10,25 @@ import { startPtyStream } from './terminal/ptyStream';
 import {
   findPanePath,
   flattenPaneTree,
+  getLeaf,
   getNodeAtPath,
+  movePaneInDirection,
+  nextPane,
+  previousPane,
   type PaneCellMetrics,
   type PanePath,
   type SplitDirection,
 } from './tabs/paneTree';
 import { adjustSplitRatioFor, pathKey } from './tabs/paneSplitter';
-import { findTabByAgentSessionId, findTabByPtyId, tabLeaf } from './tabs/tabPane';
+import { paneHeaderLabel } from './tabs/paneHeader';
+import {
+  findPaneByAgentSessionId,
+  findTabByAgentSessionId,
+  findTabByPtyId,
+  tabLeaf,
+  type PaneLocation,
+} from './tabs/tabPane';
+import CloseTabConfirmDialog from './tabs/CloseTabConfirmDialog';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
@@ -80,11 +92,28 @@ export default function App(): ReactElement {
   // .app 直下に置く role="status" 用の告知文。PTY の終了は現状 TabBar の
   // 終了バッジ（視覚のみ）でしか分からないため、ここで非視覚的にも拾えるようにする。
   // 空文字のときは何も読み上げられない（初期状態でここが鳴ることはない）。
-  const [exitAnnouncement, setExitAnnouncement] = useState('');
+  //
+  // Issue #56 PR 8: 用途が PTY 終了だけでなく「Cmd+W がペインを閉じたのか
+  // タブごと閉じたのか」（提案 E'）・「タスク一覧のクリックで対象ペインが
+  // 既にアクティブだった」（U4）にも広がったため、変数名を汎用の
+  // statusAnnouncement にした（region 自体（.app-status、常に1個）は増やさない）。
+  const [statusAnnouncement, setStatusAnnouncement] = useState('');
+  const announce = useCallback((message: string) => setStatusAnnouncement(message), []);
   // OS の支援技術（VoiceOver 等）が動いているか。
   // 動いていれば設定に関わらず screenReaderMode を有効にする。
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
   const [accessibilitySupport, setAccessibilitySupport] = useState(false);
+  // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
+  // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
+  const [closeConfirmation, setCloseConfirmationState] = useState<{
+    tabId: string;
+    paneCount: number;
+  } | null>(null);
+  const closeConfirmationRef = useRef(closeConfirmation);
+  const setCloseConfirmation = useCallback((value: { tabId: string; paneCount: number } | null) => {
+    closeConfirmationRef.current = value;
+    setCloseConfirmationState(value);
+  }, []);
 
   const showNotice = useCallback(
     (message: string, severity: NoticeSeverity) => {
@@ -132,6 +161,77 @@ export default function App(): ReactElement {
     if (el) splitterRefsRef.current.set(key, el);
     else splitterRefsRef.current.delete(key);
   }, []);
+
+  // タブを実際に閉じる（確認が要らない、または確認済みの経路）。
+  // 閉じたあと role="status" で結果を告知する（design-review.md 提案 E'）。
+  const performCloseTab = useCallback(
+    async (tabId: string): Promise<void> => {
+      await tabsApiRef.current.closeTab(tabId);
+      announce('タブを閉じました');
+    },
+    [announce],
+  );
+
+  /**
+   * タブを閉じる唯一の入口（Issue #56 PR 8・design-review.md 提案 E'）。
+   * タブバーの x ボタン（TabBar.tsx）とメニュー / キーボード（`close-tab`
+   * アクション）の両方がここを通る。
+   *
+   * **2つ以上の PTY を一度に閉じるときだけ確認する。** 1ペインのタブ
+   * （PTY 1本）はそのまま閉じる。`Cmd+Shift+W` を新設していないため、
+   * タブバーの x ボタンがマウス経由の抜け穴にならないよう、ここで両方の
+   * 入口を合流させる。
+   */
+  const requestCloseTab = useCallback(
+    (tabId: string): void => {
+      const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
+      const paneCount = tab ? flattenPaneTree(tab.layout).length : 1;
+      if (paneCount >= 2) {
+        setCloseConfirmation({ tabId, paneCount });
+        return;
+      }
+      void performCloseTab(tabId);
+    },
+    [performCloseTab, setCloseConfirmation],
+  );
+
+  /**
+   * タスク一覧のクリック・OS 通知のクリックの両方から呼ぶ、共通のペイン粒度の
+   * フォーカス移動（design-review.md U4）。
+   *
+   * 「タブを前に出す」（`setActiveTabId`）だけでは、対象ペインが今のタブに
+   * 既に見えている場合に no-op になり、画面が1pxも動かず壊れて見える。
+   * ここでは **タブとペインの両方**を同じ呼び出しで更新したうえで、
+   * 「呼び出し前から既にこのペインがアクティブだったか」を見て、
+   * 変化が無い場合だけ追加の手がかりを出す。
+   *
+   * 選んだ手がかり: (1) `handle.focus()` を明示的に呼び直す（`active` prop が
+   * 変化しないと TerminalPane.tsx 側の自動フォーカスが発火しないため）、
+   * (2) 通知バナー（視覚）+ role="status"（読み上げ）で
+   * 「このペインは既に表示されています」を伝える。**「何も起きない」で
+   * 終わらせない**ことが要件で、色や位置の変化だけでは色覚特性・スクリーン
+   * リーダーの両方に届かないため、語で明示する経路を選んだ。
+   */
+  const focusPaneLocation = useCallback(
+    (location: PaneLocation) => {
+      const api = tabsApiRef.current;
+      const tab = api.tabs.find((t) => t.id === location.tabId);
+      const wasAlreadyActive =
+        tab !== undefined && tab.id === api.activeTabId && tab.activePaneId === location.paneId;
+
+      api.setActiveTabId(location.tabId);
+      api.setActivePaneInTab(location.tabId, location.paneId);
+
+      if (wasAlreadyActive) {
+        handlesRef.current.get(location.paneId)?.focus();
+        const leaf = tab ? getLeaf(tab.layout, location.paneId) : undefined;
+        const label = leaf ? paneHeaderLabel(leaf) : 'このペイン';
+        showNotice(`${label} は既に表示されています`, 'info');
+        announce(`${label} は既に表示されています`);
+      }
+    },
+    [announce, showNotice],
+  );
 
   // 設定の読み込み。失敗してもフォールバック値のまま続行する。
   useEffect(() => {
@@ -191,6 +291,11 @@ export default function App(): ReactElement {
   // 同じ AppAction を流してくるので、処理はここ1本に集約する。
   const runAction = useCallback(
     (action: AppAction) => {
+      // 確認ダイアログ（提案 E'）を開いている間は他の操作を一切通さない
+      // （モーダルの標準的な振る舞い。ダイアログ自体のボタンは onClick で
+      // 直接 requestCloseTab の結果を処理するため、この経路を通らない）。
+      if (closeConfirmationRef.current) return;
+
       const api = tabsApiRef.current;
       // Cmd+F / Cmd+K 等は「アクティブなタブの、アクティブなペイン」に向ける
       // （design-review.md Q5）。handlesRef は paneId をキーにしている。
@@ -202,7 +307,7 @@ export default function App(): ReactElement {
           void api.newShellTab();
           break;
         case 'close-tab':
-          if (api.activeTabId) void api.closeTab(api.activeTabId);
+          if (api.activeTabId) requestCloseTab(api.activeTabId);
           break;
         case 'switch-tab': {
           const target = api.tabs[action.index];
@@ -253,8 +358,33 @@ export default function App(): ReactElement {
           break;
         }
         case 'close-pane':
-          void api.closeActivePane();
+          // 結果（ペインを閉じたのか、タブごと閉じたのか）を role="status" で
+          // 告知する（design-review.md 提案 E'。視覚以外で区別する手段が
+          // 現状ゼロだった）。
+          void api.closeActivePane().then((outcome) => {
+            announce(outcome.kind === 'tab-closed' ? 'タブを閉じました' : 'ペインを閉じました');
+          });
           break;
+        case 'toggle-maximize-pane':
+          api.toggleMaximizePane();
+          break;
+        case 'next-pane': {
+          const tab = api.tabs.find((t) => t.id === api.activeTabId);
+          if (tab) api.setActivePaneInTab(tab.id, nextPane(tab.layout, tab.activePaneId));
+          break;
+        }
+        case 'previous-pane': {
+          const tab = api.tabs.find((t) => t.id === api.activeTabId);
+          if (tab) api.setActivePaneInTab(tab.id, previousPane(tab.layout, tab.activePaneId));
+          break;
+        }
+        case 'move-pane-focus': {
+          const tab = api.tabs.find((t) => t.id === api.activeTabId);
+          if (tab) {
+            api.setActivePaneInTab(tab.id, movePaneInDirection(tab.layout, tab.activePaneId, action.direction));
+          }
+          break;
+        }
         case 'adjust-split-ratio': {
           // メニュー項目「分割比を広げる/狭める/50%に戻す」（Issue #56 PR 7）。
           // ドラッグの Equivalent 例外の根拠になるため、ドラッグを一切経由せず
@@ -290,7 +420,7 @@ export default function App(): ReactElement {
         }
       }
     },
-    [showNotice],
+    [announce, requestCloseTab, showNotice],
   );
 
   const runActionRef = useRef(runAction);
@@ -330,14 +460,16 @@ export default function App(): ReactElement {
     return window.api.menu.onAction((action) => runActionRef.current(action));
   }, []);
 
-  // OS 通知のクリックから「このセッションのタブを前に出せ」が飛んでくる。
-  // 対応するタブが無い場合は何もしない（ウィンドウの前面化は Main 側で済んでいる）。
+  // OS 通知のクリックから「このセッションを前に出せ」が飛んでくる。
+  // 対応するペインが無い場合は何もしない（ウィンドウの前面化は Main 側で済んでいる）。
+  // タブ単位ではなくペイン単位で解決する（design-review.md U4。対象ペインが
+  // 今のタブに既に見えている場合、タブの前面化だけでは画面が1pxも動かない）。
   useEffect(() => {
     return window.api.session.onFocus((agentSessionId) => {
-      const tab = findTabByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
-      if (tab) tabsApiRef.current.setActiveTabId(tab.id);
+      const location = findPaneByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
+      if (location) focusPaneLocation(location);
     });
-  }, []);
+  }, [focusPaneLocation]);
 
   // 支援技術の起動状態。初期値を取り、以降は変化を購読する。
   // 取得に失敗しても false のまま続行する（設定からは有効にできる）。
@@ -370,10 +502,10 @@ export default function App(): ReactElement {
       if (tab) {
         const exitedLeaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === event.ptyId);
         const title = exitedLeaf?.title ?? tabLeaf(tab).title;
-        setExitAnnouncement(`${title} が終了しました（コード ${event.exitCode}）`);
+        announce(`${title} が終了しました（コード ${event.exitCode}）`);
         // 通知バナー側は severity で見た目を分ける。正常終了（コード 0・シグナル無し）は
         // 「情報」、異常終了（0 以外のコード・シグナルによる終了）は「エラー」。
-        // exitAnnouncement（role="status"、常に1個・a11y 専用）とは別系統で、
+        // statusAnnouncement（role="status"、常に1個・a11y 専用）とは別系統で、
         // こちらは晴眼のユーザー向けに可視のバナーとして右上に積む。
         const severity = severityForExit({ exitCode: event.exitCode, signal: event.signal });
         const message =
@@ -383,18 +515,26 @@ export default function App(): ReactElement {
         setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity }));
       }
     },
-    [nextNoticeId],
+    [announce, nextNoticeId],
   );
 
+  // クリック可否の判定は「対応するタブがあるか」のままでよい（design-review.md
+  // U4 が直すのは「クリックしたときにどのペインへ向けるか」であって、
+  // クリック可能性の判定基準ではない）。
   const canFocusTaskTab = useCallback(
     (agentSessionId: string) => findTabByAgentSessionId(tabsApi.tabs, agentSessionId) !== undefined,
     [tabsApi.tabs],
   );
 
-  const focusTaskTab = useCallback((agentSessionId: string) => {
-    const tab = findTabByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
-    if (tab) tabsApiRef.current.setActiveTabId(tab.id);
-  }, []);
+  // タスク一覧の行クリック。OS 通知クリック（session.onFocus）と同じ
+  // ペイン粒度の解決を通す（design-review.md U4）。
+  const focusTaskTab = useCallback(
+    (agentSessionId: string) => {
+      const location = findPaneByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
+      if (location) focusPaneLocation(location);
+    },
+    [focusPaneLocation],
+  );
 
   const resumeHistory = useCallback((entry: SessionHistoryEntry) => {
     const title = sessionDisplayTitle(entry);
@@ -435,7 +575,7 @@ export default function App(): ReactElement {
           tabs={tabsApi.tabs}
           activeTabId={tabsApi.activeTabId}
           onSelect={tabsApi.setActiveTabId}
-          onClose={(id) => void tabsApi.closeTab(id)}
+          onClose={requestCloseTab}
           onNewShell={() => void tabsApi.newShellTab()}
           onRename={tabsApi.renameTab}
           onOpenSettings={() => window.api.settings.open()}
@@ -452,6 +592,9 @@ export default function App(): ReactElement {
               tabId={tab.id}
               activePaneId={tab.activePaneId}
               tabVisible={tab.id === tabsApi.activeTabId}
+              // 最大化中（Issue #56 PR 8）は「今アクティブなペイン」がそのまま
+              // 最大化対象になる（tab.maximized は真偽値。useTabs.ts 参照）。
+              maximizedPaneId={tab.maximized ? tab.activePaneId : undefined}
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
               theme={config.theme}
@@ -540,8 +683,21 @@ export default function App(): ReactElement {
         タブ単位のまま1個で足りる（ペイン単位の告知は将来の PR の対象）。
       */}
       <div className="app-status" role="status" style={STATUS_REGION_STYLE}>
-        {exitAnnouncement}
+        {statusAnnouncement}
       </div>
+      {closeConfirmation && (
+        // 2つ以上の PTY を一度に閉じるときの確認（Issue #56 PR 8・design-review.md
+        // 提案 E'）。position: fixed のオーバーレイなので DOM 上の位置は問わない。
+        <CloseTabConfirmDialog
+          paneCount={closeConfirmation.paneCount}
+          onCancel={() => setCloseConfirmation(null)}
+          onConfirm={() => {
+            const { tabId } = closeConfirmation;
+            setCloseConfirmation(null);
+            void performCloseTab(tabId);
+          }}
+        />
+      )}
     </div>
   );
 }

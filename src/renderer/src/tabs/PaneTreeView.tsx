@@ -40,6 +40,17 @@ export interface PaneTreeViewProps {
   activePaneId: string;
   /** タブ自体が今表示されているか（タブ切り替えの可視性）。 */
   tabVisible: boolean;
+  /**
+   * 最大化表示の対象 leaf の paneId（Issue #56 PR 8・design-review.md 提案 I）。
+   * 未設定（最大化していない）なら undefined。
+   *
+   * **木の `ratio` や構造には一切触れない。** 対象を含まない側の
+   * `.pane-split__cell` を一時的に0幅へ畳み（`pane-split__cell--collapsed`）、
+   * 対象を含む側を `flex: 1 1 100%` で埋めるだけの、レンダリング時だけの
+   * 上書き。畳んだ側は PTY もマウントも維持したまま（visibility だけ
+   * hidden）なので、最大化を解除すれば元の ratio のまま瞬時に戻る。
+   */
+  maximizedPaneId?: string;
   fontFamily: string;
   fontSize: number;
   theme: TerminalTheme;
@@ -131,6 +142,26 @@ function renderNode(
   // 先のタブの上に描画されたまま残る事故を防ぐ）。
   const rootHiddenClass = isRoot && !props.tabVisible ? ' pane-split--hidden' : '';
 
+  // 最大化（Issue #56 PR 8）: 対象 leaf がこのノードのどちら側の部分木に
+  // 属するかを見て、含まない側を0幅へ畳む。木の `ratio` はここでは
+  // 一切書き換えない（`node.ratio` を読むだけ）ので、最大化を解除すれば
+  // 元の flex-grow がそのまま復活する。
+  const maximizedPaneId = props.maximizedPaneId;
+  const firstHasMaximized =
+    maximizedPaneId !== undefined &&
+    flattenPaneTree(node.children[0]).some((l) => l.paneId === maximizedPaneId);
+  const secondHasMaximized =
+    maximizedPaneId !== undefined &&
+    flattenPaneTree(node.children[1]).some((l) => l.paneId === maximizedPaneId);
+  const isMaximizing = firstHasMaximized || secondHasMaximized;
+
+  const firstFlex = isMaximizing ? (firstHasMaximized ? '1 1 100%' : '0 0 0%') : `${node.ratio} 1 0%`;
+  const secondFlex = isMaximizing
+    ? (secondHasMaximized ? '1 1 100%' : '0 0 0%')
+    : `${1 - node.ratio} 1 0%`;
+  const firstCollapsed = isMaximizing && !firstHasMaximized;
+  const secondCollapsed = isMaximizing && !secondHasMaximized;
+
   return (
     <div
       className={`pane-split pane-split--${node.dir}${rootHiddenClass}`}
@@ -139,7 +170,10 @@ function renderNode(
       aria-labelledby={isRoot ? tabButtonId(props.tabId) : undefined}
       ref={(el) => props.registerSplitRef(pathKey(path), el)}
     >
-      <div className="pane-split__cell" style={{ flex: `${node.ratio} 1 0%` }}>
+      <div
+        className={`pane-split__cell${firstCollapsed ? ' pane-split__cell--collapsed' : ''}`}
+        style={{ flex: firstFlex }}
+      >
         {renderNode(node.children[0], false, [...path, 0], props)}
       </div>
       <PaneSplitterHandle
@@ -150,8 +184,12 @@ function renderNode(
         onCommitRatio={(ratio) => props.onRatioCommit(path, ratio)}
         onActivateSide={activateFirstOf}
         registerRef={(el) => props.registerSplitterRef(pathKey(path), el)}
+        hidden={isMaximizing}
       />
-      <div className="pane-split__cell" style={{ flex: `${1 - node.ratio} 1 0%` }}>
+      <div
+        className={`pane-split__cell${secondCollapsed ? ' pane-split__cell--collapsed' : ''}`}
+        style={{ flex: secondFlex }}
+      >
         {renderNode(node.children[1], false, [...path, 1], props)}
       </div>
     </div>

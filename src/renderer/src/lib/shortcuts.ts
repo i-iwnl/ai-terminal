@@ -120,9 +120,33 @@ export function passesModifierGate(
 export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   if (!passesModifierGate(e)) return null;
 
+  // Cmd+Option+矢印: ペイン間移動（Issue #56 PR 8。design-review.md 提案 B'）。
+  // `passesModifierGate` は矢印キーに限って altKey を許可している（PR 1 で
+  // 地ならし済み）ので、altKey が付いている時点でキーは必ず4方向のいずれか
+  // （ガードを通過した以上、他のキーではここへ来ない）。shiftKey が同時に
+  // 付いた組み合わせ（Cmd+Shift+Option+矢印）は未定義のまま素通しする。
+  if (e.altKey) {
+    if (e.shiftKey) return null;
+    switch (e.key) {
+      case 'ArrowUp':
+        return { type: 'move-pane-focus', direction: 'up' };
+      case 'ArrowDown':
+        return { type: 'move-pane-focus', direction: 'down' };
+      case 'ArrowLeft':
+        return { type: 'move-pane-focus', direction: 'left' };
+      case 'ArrowRight':
+        return { type: 'move-pane-focus', direction: 'right' };
+      default:
+        return null;
+    }
+  }
+
   const key = e.key.toLowerCase();
 
   if (e.shiftKey) {
+    // ペインの最大化トグル（Issue #56 PR 8。design-review.md 提案 I）。
+    // ドラッグ 2〜5回/日 に対し最大化 10〜30回/日（ヘビーユーザーの実測）。
+    if (key === 'enter') return { type: 'toggle-maximize-pane' };
     // AI CLI の起動は Cmd+Shift 系に置く。
     // Cmd+K は iTerm2 / Terminal.app / Ghostty のいずれでも「画面を消去」で、
     // ここを奪うと**クリアのつもりで押した人が本物の claude を1本余計に起動する**。
@@ -157,6 +181,11 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   // Cmd+, は macOS で「アプリの環境設定」の標準ショートカット
   if (key === ',') return { type: 'toggle-settings' };
   if (/^[1-9]$/.test(e.key)) return { type: 'switch-tab', index: Number(e.key) - 1 };
+  // 次/前のペイン（Issue #56 PR 8。design-review.md 提案 B'）。
+  // Cmd+Option+矢印 を「併設」する第一のキー。2ペインでは「どっちの方向か」の
+  // 判断も要らないため、こちらを主に使う想定（40〜80回/日で最も効く）。
+  if (key === ']') return { type: 'next-pane' };
+  if (key === '[') return { type: 'previous-pane' };
 
   return null;
 }

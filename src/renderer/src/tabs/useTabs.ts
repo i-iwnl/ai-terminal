@@ -43,6 +43,13 @@ export interface SpawnOpts {
 /** `splitActivePane` の結果。拒否された場合は理由（通知バナーにそのまま出せる文）を持つ。 */
 export type SplitPaneOutcome = { ok: true } | { ok: false; reason: string };
 
+/**
+ * `closeActivePane`（Cmd+W）の結果。design-review.md 提案 E' が要求する
+ * 「Cmd+W が『ペインを閉じた』のか『タブごと閉じた』のかを role="status" で
+ * 告知する」ための区別。呼び出し側（App.tsx）はこれを見て告知文を出し分ける。
+ */
+export type CloseActivePaneOutcome = { kind: 'pane-closed' } | { kind: 'tab-closed' };
+
 export interface UseTabsResult {
   tabs: TabState[];
   activeTabId: string | null;
@@ -62,11 +69,21 @@ export interface UseTabsResult {
   /**
    * アクティブなタブのアクティブなペインを閉じる（Cmd+W。意味変更）。
    * ペインが1枚しか無い場合は、結果としてタブそのものを閉じる
-   * （design-review.md「確定している仕様」）。
+   * （design-review.md「確定している仕様」）。戻り値は role="status" の
+   * 告知文を出し分けるための区別（提案 E'）。
    */
-  closeActivePane: () => Promise<void>;
+  closeActivePane: () => Promise<CloseActivePaneOutcome>;
   /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
   setActivePaneInTab: (tabId: string, paneId: string) => void;
+  /**
+   * アクティブなタブの、アクティブなペインの最大化表示をトグルする
+   * （Cmd+Shift+Enter。Issue #56 PR 8・design-review.md 提案 I）。
+   *
+   * **木（`ratio` / 構造）には一切触れず、PTY も kill しない。** 一時的な
+   * 表示の切り替えであって木の変形ではない（design-review.md）。実際の
+   * レイアウト上書きは `PaneTreeView.tsx` が `tab.maximized` を見て行う。
+   */
+  toggleMaximizePane: () => void;
   /**
    * 指定したタブの、指定した分割ノード（経路）の ratio を更新する（Issue #56 PR 7）。
    * スプリッタのドラッグ確定（mouseup）とメニュー項目（分割比を広げる/狭める/
@@ -219,6 +236,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
         layout: createPaneTree(newLeaf),
         activePaneId: newLeaf.paneId,
         createdAt: Date.now(),
+        maximized: false,
       };
       setTabs((prev) => [...prev, tab]);
       setActiveTabIdState(newLeaf.ptyId);
@@ -333,8 +351,12 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       }
 
       // 新しいペインへフォーカスを移す（分割したら、その場でそこに打てる状態にする）。
+      // maximized は false に戻す（PR 8）: 木の構造が変わった以上、最大化中の
+      // 「表示中の1枚」という前提が崩れるため、分割のたびに通常表示へ戻す。
       setTabs((prev) =>
-        prev.map((t) => (t.id === tab.id ? { ...t, layout: nextTree, activePaneId: newLeaf.paneId } : t)),
+        prev.map((t) =>
+          t.id === tab.id ? { ...t, layout: nextTree, activePaneId: newLeaf.paneId, maximized: false } : t,
+        ),
       );
       return { ok: true };
     },
@@ -345,17 +367,22 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
    * アクティブなタブのアクティブなペインを閉じる（Cmd+W。意味変更）。
    * ペインが1枚しか無い（`closePane` が畳む先を持たない）場合は、結果として
    * タブそのものを閉じる（design-review.md「確定している仕様」）。
+   *
+   * 戻り値（`CloseActivePaneOutcome`）は、呼び出し側（App.tsx）が
+   * role="status" の告知文を「ペインを閉じた」/「タブを閉じた」で
+   * 出し分けるために使う（design-review.md 提案 E'。Cmd+W を押した結果を
+   * 視覚以外の手段で区別する唯一の手がかり）。
    */
-  const closeActivePane = useCallback(async (): Promise<void> => {
+  const closeActivePane = useCallback(async (): Promise<CloseActivePaneOutcome> => {
     const tabId = activeTabIdRef.current;
-    if (!tabId) return;
+    if (!tabId) return { kind: 'pane-closed' };
     const tab = tabsRef.current.find((t) => t.id === tabId);
-    if (!tab) return;
+    if (!tab) return { kind: 'pane-closed' };
 
     const result = closePane(tab.layout, tab.activePaneId);
     if (result === null) {
       await closeTab(tabId);
-      return;
+      return { kind: 'tab-closed' };
     }
 
     const closedLeaf = getLeaf(tab.layout, tab.activePaneId);
@@ -368,12 +395,32 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       forgetPty(closedLeaf.ptyId);
     }
 
+    // maximized は false に戻す（PR 8）: splitActivePane と同じ理由
+    // （木の構造が変わった以上、最大化中の前提が崩れる）。
     setTabs((prev) =>
       prev.map((t) =>
-        t.id === tabId ? { ...t, layout: result.tree, activePaneId: result.activePaneId } : t,
+        t.id === tabId
+          ? { ...t, layout: result.tree, activePaneId: result.activePaneId, maximized: false }
+          : t,
       ),
     );
+    return { kind: 'pane-closed' };
   }, [closeTab]);
+
+  /**
+   * アクティブなタブの、アクティブなペインの最大化表示をトグルする
+   * （Cmd+Shift+Enter。Issue #56 PR 8・design-review.md 提案 I）。
+   *
+   * ここでは真偽値を反転させるだけ。実際にどのペインを最大化するかは
+   * 「今の `activePaneId`」がそのまま対象になる（`PaneTreeView.tsx` 側の
+   * 解釈）ため、ペイン間移動（`Cmd+]` 等）で `activePaneId` が変わっても
+   * 最大化状態はそのまま追従する。
+   */
+  const toggleMaximizePane = useCallback((): void => {
+    const tabId = activeTabIdRef.current;
+    if (!tabId) return;
+    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, maximized: !t.maximized } : t)));
+  }, []);
 
   /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
   const setActivePaneInTab = useCallback((tabId: string, paneId: string) => {
@@ -442,5 +489,6 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     closeActivePane,
     setActivePaneInTab,
     updateSplitRatio,
+    toggleMaximizePane,
   };
 }

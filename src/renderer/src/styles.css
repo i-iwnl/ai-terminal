@@ -699,6 +699,24 @@ body {
   overflow: hidden;
 }
 
+/* ペインの最大化トグル（Issue #56 PR 8・design-review.md 提案 I）。
+   木の `ratio` はそのまま、最大化対象を含まない側の枝だけを一時的に0幅へ
+   畳む（PaneTreeView.tsx 参照）。「一時的な表示の切り替えであって木の
+   変形ではない」ため、畳んだ側の PTY は kill しない・アンマウントもしない
+   （visibility だけを隠す。`.pane-split--hidden` と同じ理由でアクセシビリティ
+   ツリーからも除かれる）。 */
+.pane-split__cell--collapsed {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 最大化中、畳んだ枝との境界にあるスプリッタも一緒に隠す（片側が0幅の
+   スプリッタは動かせても意味が無い）。 */
+.pane-splitter--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* ---------------------------------------------------------------------- */
 /* スプリッタ（Issue #56 PR 7・design-review.md 提案 D'） */
 /* ---------------------------------------------------------------------- */
@@ -916,6 +934,79 @@ body {
   cursor: pointer;
   font-size: var(--fs-sm);
   flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 閉じる確認ダイアログ（Issue #56 PR 8・design-review.md 提案 E'） */
+/* ---------------------------------------------------------------------- */
+
+/* アプリ全体を覆うオーバーレイ。既存の最前面（.notice-list z-index: 20）より
+   さらに前に出す必要があるモーダルなので z-index を1段上げる。 */
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.confirm-dialog {
+  max-width: 360px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
+  padding: var(--sp-4);
+}
+
+.confirm-dialog__title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: bold;
+  color: var(--text-bright);
+}
+
+.confirm-dialog__body {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.confirm-dialog__button {
+  background: transparent;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.confirm-dialog__button:hover {
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+/* 「終了する」（破壊的な操作）だけ、通知バナーのエラー配色を流用して警告色を
+   足す。色だけに頼らず、語（「終了する」）が既に主要な手がかりであることに
+   注意（design-rules.md 原則2）。 */
+.confirm-dialog__button--danger {
+  background: var(--notice-error-bg);
+  border-color: var(--notice-error-border);
+  color: var(--notice-error-fg);
+}
+
+.confirm-dialog__button--danger:hover {
+  border-color: var(--notice-error-border);
+  color: var(--text-bright);
 }
 
 /* ---------------------------------------------------------------------- */

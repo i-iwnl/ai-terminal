@@ -402,6 +402,13 @@ export type PaneSplitDirection = 'row' | 'column';
  */
 export type PaneRatioAdjustment = 'widen' | 'narrow' | 'reset';
 
+/**
+ * ペイン間移動の4方向（Issue #56 PR 8）。`tabs/paneTree.ts` の `MoveDirection` と
+ * 同じ意味だが、`PaneSplitDirection` と同じ理由でここでは独立に再宣言する
+ * （`PaneNode` を含む木そのものは `src/shared/` に置かない。design-review.md の非目標）。
+ */
+export type PaneMoveDirection = 'up' | 'down' | 'left' | 'right';
+
 export type AppAction =
   | { type: 'new-shell-tab' }
   | { type: 'close-tab' }
@@ -426,7 +433,23 @@ export type AppAction =
    * アクティブなペインが分割されていないタブでは何もしない（呼び出し側で
    * 通知を出す）。
    */
-  | { type: 'adjust-split-ratio'; adjustment: PaneRatioAdjustment };
+  | { type: 'adjust-split-ratio'; adjustment: PaneRatioAdjustment }
+  /**
+   * アクティブなペインの最大化トグル（Issue #56 PR 8・design-review.md 提案 I）。
+   * 木（`ratio` / 構造）は一切変えない一時的な表示切り替えで、PTY も kill しない
+   * （呼び出し側 = Renderer 側のレイアウトだけで完結する。Main はこの操作を
+   * 一切知らない）。
+   */
+  | { type: 'toggle-maximize-pane' }
+  /** 平坦化した順で次/前のペインへフォーカスを移す（`Cmd+]` / `Cmd+[`。design-review.md 提案 B'）。 */
+  | { type: 'next-pane' }
+  | { type: 'previous-pane' }
+  /**
+   * 空間的な方向でペイン間を移動する（`Cmd+Option+矢印`。design-review.md 提案 B'）。
+   * ガード（`shortcuts.ts` の `passesModifierGate`）は PR 1（#87）で既に矢印キーに
+   * 限って altKey を許可済みなので、このアクションはそのまま発火する。
+   */
+  | { type: 'move-pane-focus'; direction: PaneMoveDirection };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義
