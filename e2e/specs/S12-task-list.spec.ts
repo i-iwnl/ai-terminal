@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
+import {
+  launchApp,
+  closeApp,
+  setAgentEntries,
+  agentEntriesWithStatus,
+  type LaunchedApp,
+} from '../fixtures/harness';
 
 let launched: LaunchedApp;
 
@@ -28,11 +34,16 @@ test.afterEach(async () => {
  * - グループ見出しで区切る（ソートだけでは境界が視覚以外に伝わらない）
  * - 並び順は CLI が返した順ではなく「あなたの番」が先頭
  *
- * 「待たせている時間」（yourTurnSince）はこのテストでは検証しない。
- * 固定フィクスチャは busy -> idle の遷移が一度も起きないため、poller.ts の
- * 遷移検知が働かず yourTurnSince は常に undefined のまま
- * （= セッション起動からの通算 formatElapsed にフォールバックし続ける、
- * 期待どおりの縮退表示）。遷移そのものの検証は poller 側の単体テストが担う。
+ * Issue #120 D-2（周5）で、**「待たせている時間」（yourTurnSince）の検証を末尾に足した。**
+ *
+ * それまでは「固定フィクスチャは busy -> idle の遷移が一度も起きないので検証しない」
+ * としていた。遷移ロジック自体は `test/unit/your-turn-since.test.ts` が7件固定して
+ * いるが、**結合は一度も実行されていなかった**（PR #82 で入れた「待たせています」が
+ * E2E からもスクリーンショットからも通っていなかった）。
+ *
+ * 遷移は**偽 CLI を改造せずに**作る。偽 CLI は呼ばれるたびに `agents.json` を
+ * 読み直すので、`setAgentEntries()` でファイルを差し替えれば次のポーリングから
+ * 新しい内容になる（`harness.ts` のコメント参照）。
  */
 test('S12 実行中タスクが一覧に表示され、状態で区別される', async () => {
   const { window } = launched;
@@ -106,4 +117,44 @@ test('S12 実行中タスクが一覧に表示され、状態で区別される'
     groups.map((g) => (g.querySelector('.task-item--your-turn') ? 'your-turn' : 'working')),
   );
   expect(groupOrder).toEqual(['your-turn', 'working']);
+
+  // --- Issue #120 D-2: busy -> idle の遷移で「待たせています」に切り替わる -------
+  //
+  // ここまでの assert が「遷移前」の状態を固定しているので、遷移はこの後で起こす。
+  //
+  // **other-project-idle を idle -> busy -> idle と往復させる。**
+  // 「demo を idle にする」でも遷移は作れるが、それだと
+  // `demo-project-busy` という名前の行が「あなたの番」に出る = **名前と状態が
+  // 矛盾した画面**になる（撮影レーンの S12 が同じ手順で README 用の画像を撮るので、
+  // 配布物にその矛盾がそのまま載る）。往復なら名前と状態が最後まで一致する。
+  //
+  // 偽 CLI は改造していない。呼ばれるたびに `agents.json` を読み直すので、
+  // ファイルを差し替えれば次のポーリングから新しい内容になる。
+  const setStatuses = (statusByName: Record<string, string>): void =>
+    setAgentEntries(launched, agentEntriesWithStatus(launched, statusByName));
+
+  // 1) idle 側を busy にする。**ポーラーがこの busy を1周期観測することが要る**
+  //    （`poller.ts` は前回の観測と比べて busy -> 非busy を見るので、
+  //    観測されないまま idle へ戻すと遷移が起きない）。画面で確認してから次へ進む。
+  setStatuses({ 'other-project-idle': 'busy' });
+  await expect(window.locator('.task-item--working')).toHaveCount(2, { timeout: 15_000 });
+
+  // 2) 既定（idle）へ戻す。ここで busy -> idle の遷移が観測される。
+  setStatuses({});
+  await expect(window.locator('.task-item--your-turn')).toHaveCount(1, { timeout: 15_000 });
+
+  // **本題**: 遷移を観測した側だけが「待たせています」になる。
+  // 遷移前は startedAt からの通算（`H時間M分`）だったので、文言の形が変わる。
+  const yourTurnElapsed = window.locator('.task-item--your-turn .task-item__elapsed');
+  await expect(yourTurnElapsed).toContainText('待たせています', { timeout: 15_000 });
+  // 名前と状態が矛盾していないこと（撮影レーンが同じ手順で画像を作るため）。
+  await expect(window.locator('.task-item--your-turn .task-item__name')).toContainText(
+    'other-project-idle',
+  );
+
+  // 遷移していない側（ずっと busy）は通算のまま。ここを見ないと
+  // 「全部の行が待たせていますになった」壊れ方を見逃す。
+  await expect(window.locator('.task-item--working .task-item__elapsed')).not.toContainText(
+    '待たせています',
+  );
 });

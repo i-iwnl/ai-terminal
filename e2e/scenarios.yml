@@ -80,6 +80,21 @@ scenarios:
     spec: S12-task-list.spec.ts
     screenshot: S12-task-list.png
     readme: true
+    note: >-
+      Issue #120 D-2（周5）で、末尾に **busy -> idle の遷移**を足した。
+      それまで固定フィクスチャでは遷移が一度も起きず、PR #82 で入れた
+      「待たせています」（yourTurnSince）が E2E からも撮影からも一度も
+      実行されていなかった（README は待たせている時間を一度も見せていなかった）。
+      遷移は偽 CLI を改造せずに作る。偽 CLI は呼ばれるたびに agents.json を
+      読み直すので、harness の setAgentEntries() でファイルを差し替えれば
+      次のポーリングから新しい内容になる。「呼び出し回数で内容を変える」方式は
+      採らなかった（agents:list の IPC とポーリングが同じ偽 CLI 起動を食い合い、
+      ポーラーが busy を一度も観測しないまま閾値を跨ぐ競合が原理的に残るため）。
+      other-project-idle を idle -> busy -> idle と往復させる。demo を idle に
+      するだけでも遷移は作れるが、それだと `demo-project-busy` という名前の行が
+      「あなたの番」に出る = 名前と状態が矛盾した画面になり、**同じ手順で撮る
+      README 用の画像にその矛盾がそのまま載る**。遷移していない側が通算表示の
+      ままであることも見る（全行が「待たせています」になる壊れ方を捕まえる）。
   - id: S13
     title: 実行中タスクが0件のとき、次の行動つきの空状態が表示される
     spec: S13-task-empty.spec.ts
