@@ -113,6 +113,32 @@ HOME を差し替えても分離されない。ここで自動テストを回す
   （ボタンの多くは `background: transparent` なので、自分の背景を読むと透明が返る）。
   この「何を背景と見なすか」を紙の上で決めようとして、**3回続けて誤った**
 
+## ベース設定に `projects` を足すと、それを spread している別レーンが黙って壊れる
+
+**`make install-app` が 2026-08-04 まで壊れていた。** 症状は
+`npx playwright test --config=e2e/packaged.playwright.config.ts` が
+**`No tests found`** で落ちること。
+
+原因は Playwright の優先順位。`packaged.playwright.config.ts` は
+`{ ...baseConfig, testDir: './specs', testMatch: [...4本] }` の形で書かれていたが、
+
+- Issue #120 周5（PR #125）が撮影レーンを取り込むため、**ベース設定に `projects` を足した**
+- **`projects` があると、トップレベルの `testDir` / `testMatch` は無視される**
+  （各 project の指定が優先される）
+- ベース側の project の `testDir: './e2e/specs'` が、この設定ファイル基準
+  （`e2e/`）で解決されて **`e2e/e2e/specs`** になり、存在しないので 0 件
+
+**PR #125 から気づかれるまで、この関門は一度も動いていなかった。**
+`make e2e-packaged` は `install-app` からしか回らず、`make e2e` にも
+`make check` にも入っていないため、**踏むまで分からない経路**だった。
+
+対策として `packaged.playwright.config.ts` は `projects` を明示的に外している。
+
+**一般化: 設定を spread で継承しているレーンがあるとき、継承元にキーを足す変更は
+継承先の意味を変える。** 特に Playwright の `projects` は
+「あると他の指定を無効化する」種類のキーなので、足すときは
+`grep -l "baseConfig\|playwright.config" e2e/*.ts` で継承先を数えること。
+
 ## 本番忠実度の階段と、自動化の天井（Issue #40 / #42）
 
 E2E には「本番にどこまで近いか」の段階があり、レーンを分けている。

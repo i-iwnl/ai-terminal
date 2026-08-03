@@ -40,8 +40,23 @@ if (!appBundle) {
 // ハーネス（e2e/fixtures/harness.ts）はこの環境変数を見て executablePath を切り替える
 process.env.AI_TERMINAL_E2E_PACKAGED_APP = join(appBundle, 'Contents', 'MacOS', 'ai-terminal');
 
+// **ベース設定の `projects` は引き継がない。**
+//
+// Issue #120 周5（PR #125）が撮影レーンを取り込むためベース設定に `projects` を
+// 足したが、**この設定はそれを spread しており、Playwright は `projects` がある場合
+// トップレベルの `testDir` / `testMatch` を無視する**（各 project の指定が優先される）。
+// その結果、ここで指定しているスモーク4本ではなく、ベース側の project の
+// `testDir: './e2e/specs'` がこの設定ファイル基準（= `e2e/e2e/specs`）で解決され、
+// **存在しないディレクトリを見て `No tests found` で落ちていた。**
+//
+// つまり `make e2e-packaged` と、それを関門にしている `make install-app` は
+// PR #125 以降ずっと壊れていた（install-app を回すまで誰も踏まない経路だったため
+// 気づかれなかった）。**ベース設定に project を足す変更は、それを spread している
+// このレーンを黙って壊す。**
+const { projects: _baseProjects, ...baseWithoutProjects } = baseConfig;
+
 export default defineConfig({
-  ...baseConfig,
+  ...baseWithoutProjects,
   // ベース設定の testDir はルート基準の './e2e/specs'。この設定ファイルは e2e/ に
   // 置かれており、testDir は設定ファイルからの相対で解決されるため指定し直す
   testDir: './specs',
