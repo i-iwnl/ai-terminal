@@ -13,6 +13,23 @@
 
 `make e2e` はビルド済みの `out/` を使うため `build` に依存する（コードを変更したら再ビルドされてから実行される）。
 
+## 3つのレーン
+
+| レーン | 何を回すか | いつ回るか | 画像の出力先 |
+|---|---|---|---|
+| 通常 | `e2e/specs/*.spec.ts`（81本） | `make e2e` の project `specs` | - |
+| **撮影** | `e2e/screenshots.spec.ts`（13本） | **`make e2e` の project `screenshots`** と `make e2e-screenshots` | `make e2e` → `e2e/.screenshots-out/`（捨て先）/ `make e2e-screenshots` → `docs/images/` |
+| パッケージ版スモーク | `e2e/packaged.playwright.config.ts` が選ぶ4本 | `make e2e-packaged` / `make install-app` の関門 | - |
+
+**撮影レーンが `make e2e` に入ったのは Issue #120 D-1（周5）から。** それまでは
+`e2e/` 直下にあって `testDir: './e2e/specs'` から外れており、**`make e2e` 全 green のまま
+壊れた状態がマージされた**実例がある（Issue #90）。経緯と、採らなかった代案
+（CSS セレクタの静的検査）は [reference/limitations.md](../reference/limitations.md) が正。
+
+**`make e2e` は `docs/images/` を書き換えない。** 同じコードで2回撮っても
+13枚中13枚がバイト差になるため、出力先を `AI_TERMINAL_E2E_IMAGES_DIR` で
+捨て先へ振っている。**README 用の画像を更新するのは `make e2e-screenshots` だけ。**
+
 ## ウィンドウ非表示が既定であること
 
 **`make e2e` はウィンドウを画面に出さない。** 表示したまま走らせると、テスト中のキー入力とマウス操作を Electron のウィンドウが奪い、実行中は他の作業ができなくなるため。
@@ -29,7 +46,7 @@ macOS では加えて `app.dock.hide()` を呼ぶ。**ウィンドウを出さ�
 2. **遅い。** 表示 -> 非表示の遷移コストで、1テストあたり約 4.6 秒余計にかかった。フル実行で **約3分 -> 約30秒** の差になる
 3. **`page.screenshot()` が 30 秒でタイムアウトする。** 一度表示したウィンドウを隠すと Chromium が occluded 扱いにして合成を止めるため、CDP の `Page.captureScreenshot` がフレームを待ち続ける
 
-`show()` を最初から無効化すれば、この3つとも起きない。実測で `isVisible()` / `isFocused()` がいずれも常に false であること、README 用の撮影12枚が表示時と同じ画像になることを確認済み。
+`show()` を最初から無効化すれば、この3つとも起きない。実測で `isVisible()` / `isFocused()` がいずれも常に false であること、README 用の撮影13枚が表示時と同じ画像になることを確認済み。
 
 **「隠す」の実現方法によって、できることが変わる。** 同じ「ウィンドウが見えない」状態でも、表示済みを隠したのか最初から出していないのかで Chromium の扱いが違う。方式を変えるときは撮影まで通して確認すること。
 
@@ -42,13 +59,13 @@ macOS / Electron 43 での実測:
 | `requestAnimationFrame` の1秒あたりフレーム数 | 61 | 61 |
 | WebGL レンダラの非背景ピクセル数（入力前 -> 後） | 2085 -> 4694 | 2085 -> 4694 |
 
-描画が止まらず、`capturePage()` のピクセルも表示時と一致した。全35シナリオが非表示のまま green（描画・マウス選択・IME 経路を含む）。
+描画が止まらず、`capturePage()` のピクセルも表示時と一致した。全シナリオが非表示のまま green（描画・マウス選択・IME 経路を含む）。
 
 **`backgroundThrottling` は関係ない。** 遅さの原因を Chromium のバックグラウンド throttling と疑い、`webPreferences.backgroundThrottling: false` を試したが**測定値は変わらなかった**。原因は上記の表示遷移。アプリ側の設定は変更していない。
 
 ### 撮影も隠したままでよい
 
-`make e2e-screenshots`（`page.screenshot()`）も非表示のまま動く。全12枚が表示時と同じ内容になることを実測で確認した。
+`make e2e-screenshots`（`page.screenshot()`）も非表示のまま動く。全13枚が表示時と同じ内容になることを実測で確認した。
 
 前は「撮影には表示が要る」として `screenshots.spec.ts` で表示を強制していたが、**これは誤りだった**。タイムアウトしていたのは上の「表示してから隠す」方式のときだけで、原因を取り違えたまま例外を作っていた。
 

@@ -18,6 +18,7 @@ import {
   chmodSync,
   utimesSync,
   realpathSync,
+  renameSync,
   rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -74,6 +75,119 @@ export interface LaunchedApp {
    * 1件だけ置いてある（workDir 側の3件とはタイトルが明確に異なる）。
    */
   otherWorkDir: string;
+  /**
+   * 偽 CLI が読むフィクスチャの置き場（`<home>/fixtures`）。
+   * `setAgentEntries()` が `agents.json` を書き換えるのに使う（Issue #120 D-2）。
+   */
+  fixturesDir: string;
+}
+
+/**
+ * 偽 `claude agents --json` が返す1件分（Issue #120 D-2 で型を起こした）。
+ * 実 CLI の出力に合わせた最小限のフィールドだけを持つ。
+ */
+export interface AgentFixtureEntry {
+  pid: number;
+  cwd: string;
+  kind: string;
+  startedAt: number;
+  sessionId: string;
+  name: string;
+  status: string;
+}
+
+/**
+ * `startedAt` を「いまから見た経過時間」で決める（Issue #120 D-2）。
+ *
+ * **以前は `Date.UTC(2026, 6, 27, …)` のベタ書きだった。** 実時刻との差が
+ * 撮るたびに増えるため、`docs/images/` の**8枚が毎回書き換わっていた**
+ * （`174時間59分` -> `176時間47分` のように単調増加する）。
+ * `issue-119/known-issues.md` の 8「撮影レーンの非決定性」の主因。
+ *
+ * **オフセットは1時間以上かつ「分の中央」にする。**
+ * `formatElapsed`（`src/renderer/src/lib/format.ts`）は
+ * `hours > 0` なら分単位の表示（`H時間M分`）になるので、1時間を超えていれば
+ * 秒の桁が画面に出ない。さらに端数を 30 秒にしておくと、起動から描画までの
+ * 数秒のゆらぎでは分の桁が動かない（次に動くのは 30 秒後）。
+ * **1時間未満にすると `M分S秒` 表示になり、毎回変わる。**
+ */
+/** 履歴フィクスチャの mtime を決める基準（`N日前` の N。最も新しい1件の値）。 */
+const HISTORY_NEWEST_DAYS_AGO = 11;
+const DAY_MS = 24 * 60 * 60_000;
+
+const BUSY_STARTED_AGO_MS = 2 * 60 * 60_000 + 30 * 60_000 + 30_000; // 2時間30分30秒
+const IDLE_STARTED_AGO_MS = 1 * 60 * 60_000 + 45 * 60_000 + 30_000; // 1時間45分30秒
+
+/** 既定の agents.json の中身。**ここを変えると既存シナリオが軒並み動く。** */
+function defaultAgentEntries(workDir: string): AgentFixtureEntry[] {
+  const now = Date.now();
+  return [
+    {
+      pid: 4321,
+      cwd: workDir,
+      kind: 'interactive',
+      startedAt: now - BUSY_STARTED_AGO_MS,
+      sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      name: 'demo-project-busy',
+      status: 'busy',
+    },
+    {
+      pid: 4322,
+      cwd: '/tmp/other-project',
+      kind: 'interactive',
+      startedAt: now - IDLE_STARTED_AGO_MS,
+      sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      name: 'other-project-idle',
+      status: 'idle',
+    },
+  ];
+}
+
+/**
+ * `agents.json` を**原子的に**書く。
+ *
+ * 偽 CLI は `cat` で読むだけなので、書き換え中の部分読みで JSON が壊れると
+ * その周期がまるごと「取得エラー」になる（`poller.ts` はエラーの周期では
+ * `previousTasks` を更新しないので、遷移の検出も1周期ぶん飛ぶ）。
+ * 一時ファイルへ書いてから rename する。
+ */
+function writeAgentsFixture(fixturesDir: string, entries: AgentFixtureEntry[]): void {
+  const target = join(fixturesDir, 'agents.json');
+  const tmp = `${target}.tmp`;
+  writeFileSync(tmp, JSON.stringify(entries, null, 2));
+  renameSync(tmp, target);
+}
+
+/**
+ * 実行中の `claude agents --json` の応答を差し替える（Issue #120 D-2）。
+ *
+ * **偽 CLI 側にモードもカウンタも足していない。** 偽 CLI は呼ばれるたびに
+ * `agents.json` を読み直すので、spec がファイルを書き換えれば次のポーリングから
+ * 新しい内容になる。「呼び出し回数で内容を変える」方式より決定的で、
+ * **既定の挙動は定義上1つも変わらない**（何も呼ばなければ起動時のまま）。
+ *
+ * 回数方式を採らなかった理由: `agents:list` の IPC（`agentTasksStore` が
+ * 起動時と cwd 変化時に呼ぶ）とポーリングが**同じ偽 CLI 起動を食い合う**ため、
+ * 「ポーラーが busy を一度も観測しないまま閾値を跨ぐ」競合が原理的に残る。
+ *
+ * **`yourTurnSince` を埋めたいなら、先に busy が画面に出るまで待つこと。**
+ * `poller.ts` は「前回の観測」と比べて busy -> 非busy の遷移を見るので、
+ * 1周期も busy を観測しないまま idle にすると遷移が起きない。
+ */
+export function setAgentEntries(launched: LaunchedApp, entries: AgentFixtureEntry[]): void {
+  writeAgentsFixture(launched.fixturesDir, entries);
+}
+
+/** 既定の2件を、名前で status だけ差し替えて返す（`setAgentEntries` に渡す用）。 */
+export function agentEntriesWithStatus(
+  launched: LaunchedApp,
+  statusByName: Record<string, string>,
+): AgentFixtureEntry[] {
+  return defaultAgentEntries(launched.workDir).map((entry) =>
+    statusByName[entry.name] !== undefined
+      ? { ...entry, status: statusByName[entry.name] }
+      : entry,
+  );
 }
 
 export interface LaunchOptions {
@@ -311,8 +425,19 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     entries.forEach(([id, body], index) => {
       const file = join(projectDir, `${id}.jsonl`);
       writeFileSync(file, `${body}\n`);
-      // mtime を明示的にずらす（後に書いたものほど新しい = 一覧の先頭に来る）
-      const when = new Date(Date.UTC(2026, 6, 20 + index, 10, 0, 0));
+      // mtime を明示的にずらす（後に書いたものほど新しい = 一覧の先頭に来る）。
+      //
+      // Issue #120 D-2（周5）: **ここも `Date.UTC(2026, 6, 20 + index, …)` の
+      // ベタ書きだった。** 履歴行の `N日前`（`formatRelativeTime`）は
+      // `Math.floor(diff / DAY)` なので、**日をまたぐたびに `11日前` -> `12日前` と
+      // 増え、`docs/images/` の3枚（S16 / S18 / S19）が書き換わっていた。**
+      // タスク一覧の経過時間と同じ型の非決定性で、こちらは1日に1回しか動かないぶん
+      // 気づきにくい（周3 の撮り直しでは差分が出ず、翌日に出た）。
+      //
+      // 相対化すれば `diff` は常に「N日 + 起動からの数ミリ秒」になり、
+      // `Math.floor` の結果が動かない。
+      const daysAgo = HISTORY_NEWEST_DAYS_AGO + (entries.length - 1 - index);
+      const when = new Date(Date.now() - daysAgo * DAY_MS);
       utimesSync(file, when, when);
     });
 
@@ -323,7 +448,8 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     const otherSessionId = '44444444-4444-4444-8444-444444444444';
     const otherFile = join(otherProjectDir, `${otherSessionId}.jsonl`);
     writeFileSync(otherFile, `${otherProjectSessionJsonl(otherWorkDir, otherSessionId)}\n`);
-    const otherWhen = new Date(Date.UTC(2026, 6, 23, 10, 0, 0));
+    // こちらも相対化する（上と同じ理由）。workDir 側の3件より新しくしておく。
+    const otherWhen = new Date(Date.now() - (HISTORY_NEWEST_DAYS_AGO - 1) * DAY_MS);
     utimesSync(otherFile, otherWhen, otherWhen);
   }
 
@@ -340,33 +466,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   // 偽 CLI が読むフィクスチャ（cwd を埋め込む必要があるので実行時に生成する）
   const runtimeFixtures = join(home, 'fixtures');
   mkdirSync(runtimeFixtures, { recursive: true });
-  writeFileSync(
-    join(runtimeFixtures, 'agents.json'),
-    JSON.stringify(
-      [
-        {
-          pid: 4321,
-          cwd: workDir,
-          kind: 'interactive',
-          startedAt: Date.UTC(2026, 6, 27, 1, 0, 0),
-          sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          name: 'demo-project-busy',
-          status: 'busy',
-        },
-        {
-          pid: 4322,
-          cwd: '/tmp/other-project',
-          kind: 'interactive',
-          startedAt: Date.UTC(2026, 6, 27, 0, 30, 0),
-          sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-          name: 'other-project-idle',
-          status: 'idle',
-        },
-      ],
-      null,
-      2,
-    ),
-  );
+  writeAgentsFixture(runtimeFixtures, defaultAgentEntries(workDir));
   cpSync(join(FIXTURES_DIR, 'gemini-sessions.txt'), join(runtimeFixtures, 'gemini-sessions.txt'));
 
   // PATH の先頭に偽 CLI を置く。最小限のシステムパスだけを残し、
@@ -493,7 +593,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     // 再試行は playwright.config.ts の retries に委ねる。
     const window = await app.firstWindow({ timeout: 15_000 });
     await window.waitForLoadState('domcontentloaded');
-    return { app, window, home, workDir, otherWorkDir };
+    return { app, window, home, workDir, otherWorkDir, fixturesDir: runtimeFixtures };
   } catch (err) {
     // ウィンドウが出ないまま失敗した Electron は、呼び出し側が LaunchedApp を
     // 受け取れないため誰にも close されない。ここで確実に始末する。

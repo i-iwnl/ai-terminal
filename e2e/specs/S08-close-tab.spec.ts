@@ -61,7 +61,18 @@ test('S08 タブを閉じられ、最後の1枚を閉じると新しいシェル
   await expect(tabs).toHaveCount(1);
 
   // タブが0枚のときの空状態メッセージが出たままになっていないこと。
-  await expect(window.locator('.terminal-stack__empty')).toHaveCount(0);
+  //
+  // Issue #120 D-1（周5）: **この assert は空回りしていた。**
+  // 以前は `.terminal-stack__empty` の `toHaveCount(0)` だったが、
+  // Issue #20 I-3 で空状態そのものを廃止したため**このクラスは実装のどこにも
+  // 存在しない**（src にも styles.css にも無い）。存在しないセレクタが0件なのは
+  // 当たり前で、空状態が復活しても赤くならない。
+  // loop.md「revert しても green」の型。
+  //
+  // 検証したいのは「一瞬の tabs.length === 0 を恒久的な空状態のように
+  // 見せていないこと」なので、**文言そのものが画面に出ていないこと**を見る。
+  // 空状態を作り直すなら文言も一緒に来るので、そのとき赤くなる。
+  await expect(window.locator('.app')).not.toContainText('タブがありません');
 
   // 自動で開いた新しいシェルが実際に機能していること（プロンプトが表示される）。
   //

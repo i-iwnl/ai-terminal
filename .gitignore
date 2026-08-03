@@ -6,3 +6,6 @@ dist/
 # Playwright（E2E テスト）の生成物
 test-results/
 e2e/report/
+# make e2e が撮影レーンを回すときの捨て先（Issue #120 D-1）。
+# README 用の画像を実際に更新するのは make e2e-screenshots で、そちらは docs/images/ へ書く。
+e2e/.screenshots-out/

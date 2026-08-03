@@ -106,13 +106,60 @@ const width = await window.evaluate(() => window.innerWidth);
 
 `e2e/screenshots.spec.ts` が同じ理由で `window.innerWidth` を使っている。
 
-### セレクタを変えたら `e2e/specs/` ではなく `e2e/` 全体を grep する
+### 撮影レーンは `make e2e` に含まれている（Issue #120 D-1 で取り込んだ）
 
-**`e2e/screenshots.spec.ts` は `e2e/` 直下にあり、`e2e/specs/*` の glob から漏れる。**
+**この節はかつて「セレクタを変えたら `e2e/` 全体を grep する」だった。効かなかった。**
 
-`make e2e`（`playwright.config.ts`）と撮影（`e2e/screenshots.playwright.config.ts`）は
-**config が分かれている**ので、`make e2e` は全 green のまま壊れた状態が main に入る。
-**`make e2e-screenshots` を回して初めて落ちる**（Issue #90）。
+`e2e/screenshots.spec.ts` は `e2e/` 直下にあり `e2e/specs/*` の glob から漏れるため、
+PR #86 でセレクタが壊れたとき `make e2e` は全 green のまま main に入った（Issue #90）。
+対策としてここに「grep せよ」と書いたが、**人が思い出すことに賭ける対策は機能しなかった。**
+
+いまは `playwright.config.ts` の**第2 project** として `make e2e` に入っている。
+
+- コストは実測で **+12秒 / 163秒 = +7%**
+- **`docs/images/` は書き換えない。** `make e2e` は `AI_TERMINAL_E2E_IMAGES_DIR` で
+  出力先を `e2e/.screenshots-out/`（gitignore 済み）へ振る。
+  **同じコードで2回撮っても13枚中13枚がバイト差になる**ので、
+  `make e2e` のたびに約940KB のバイナリが dirty になるのを避けている
+- README 用の画像を実際に更新するのは `make e2e-screenshots` のまま
+
+**`make e2e-lint` の check10** が「`e2e/` 配下の spec が、どの config の
+`testDir` / `testMatch` にも入っていない」を検査する。また同じ形の事故
+（ファイルの所在がレーンから外れる）が起きたら、実行しなくても分かる。
+
+### 「参照しているクラスが実装に存在するか」の静的検査は採らなかった
+
+Issue #120 D-1 が提案していたが、**防ぎたい当の事例を捕まえられない。**
+
+PR #86 で壊れたのは**入れ子構造**で、クラス名ではない。
+
+```
+.tab-bar__tabs > .tab-bar__tab                       （変更前）
+.tab-bar__tabs > .tab-bar__tablist > .tab-bar__tab   （変更後 = ラッパーを挿入）
+```
+
+`tab-bar__tabs` も `tab-bar__tab` も変更後の実装に残っているので、静的検査は PASS を返す。
+
+加えて誤検知が多い。実測（`screenshots.spec.ts` の25トークン）で、
+最も緩い照合（src 内の任意トークン OR css）でも **12%** が「存在しない」と誤判定される。
+主因は2つ:
+
+- **動的な className が18件**（`` `task-item--${state}` `` / `` `notice-banner--${n.severity}` `` など）。
+  `className=` の素朴な grep では取れない
+- **`@xterm/xterm` が所有するクラス**（`.xterm-screen` / `.composition-view` /
+  `.xterm-helper-textarea` など）。**このリポジトリの src にも css にも無い**ので、
+  どんな照合先を選んでも消えない = 恒久的な allowlist が要る
+
+### 注釈のセレクタが外れたら落ちる（黙って飛ばさない）
+
+`screenshots.spec.ts` の `annotateAndShoot()` は、以前 `if (!target) continue;` で
+**マッチしなかった注釈を黙って飛ばしていた**。注釈が抜けた画像を吐いて green になり、
+**この `selector` フィールドからしか参照されないセレクタが12件**あったので、
+撮影レーンを回すこと自体が担保になっていなかった（PR #86 が落ちたのは、
+たまたま壊れたのが `locator()` 側だったから）。
+
+いまは throw する。エラーは「セレクタが1件もマッチしない」と
+「N件マッチしたが textContent が一致しない」を**分けて報告する**（直す場所が違う）。
 
 ### 1 spec = 1 `test()`
 

@@ -45,6 +45,58 @@
 | `config` | `config.json` の値を上書きする（既定値は `harness.ts` の `DEFAULT_CONFIG`） |
 | `gpu` | GPU を有効にして起動する（= xterm が WebGL レンダラになる）。既定は無効 |
 
+## 実行中に `claude agents --json` の応答を差し替える（Issue #120 D-2）
+
+`launchApp` のオプションではなく**関数**で行う。偽 CLI は呼ばれるたびに
+`agents.json` を読み直すので、`setAgentEntries(launched, entries)` でファイルを
+書き換えれば次のポーリングから新しい内容になる。**偽 CLI 側にモードもカウンタも
+足していないので、何も呼ばなければ既定の挙動は定義上1つも変わらない。**
+
+```ts
+import { setAgentEntries, agentEntriesWithStatus } from '../fixtures/harness';
+
+// busy が画面に出ていることを先に確認してから差し替える（下記）
+setAgentEntries(launched, agentEntriesWithStatus(launched, { 'other-project-idle': 'busy' }));
+```
+
+**「呼び出し回数で内容を変えるモード」は採らなかった。** `agents:list` の IPC
+（`agentTasksStore` が起動時と cwd 変化時に呼ぶ）とポーリングが**同じ偽 CLI 起動を
+食い合う**ため、「ポーラーが busy を一度も観測しないまま閾値を跨ぐ」競合が原理的に残る。
+
+### `yourTurnSince`（「待たせています」）を作るときの順序
+
+`poller.ts` は**前回の観測と比べて** busy -> 非busy を見る。**1周期も busy を
+観測しないまま idle にすると遷移が起きない。** 画面で busy を確認してから差し替えること。
+
+**片方を idle にするだけにしない。** `demo-project-busy` を idle にすると
+「あなたの番」の行に `demo-project-busy` という名前が出て、**名前と状態が矛盾する。**
+撮影レーンが同じ手順で README 用の画像を作るので、その矛盾が配布物に載る。
+`other-project-idle` を idle -> busy -> idle と**往復**させれば名前と状態が最後まで一致する。
+
+## フィクスチャの時刻は必ず「いまからの相対」で決める（Issue #120 D-2）
+
+`agents.json` の `startedAt` と履歴 JSONL の mtime は、**どちらも
+`Date.UTC(2026, 6, …)` のベタ書きだった。** 実時刻との差が伸び続けるので、
+`docs/images/` が撮るたびに書き換わっていた。
+
+| 値 | 表示 | 動き方 |
+|---|---|---|
+| `agents.json` の `startedAt` | タスク行の経過時間（`formatElapsed`） | **撮るたび**に増える（`174時間59分` -> `176時間47分`） |
+| 履歴 JSONL の mtime | 履歴行の `N日前`（`formatRelativeTime`） | **1日に1回**増える（気づきにくい） |
+
+いまは両方 `Date.now() - 固定オフセット` で決めている。
+
+- **経過時間のオフセットは1時間以上かつ「分の中央」にする。** `formatElapsed` は
+  `hours > 0` なら分単位表示なので、1時間を超えていれば秒が画面に出ない。
+  端数を 30 秒にしておくと、起動から描画までのゆらぎでは分の桁が動かない。
+  **1時間未満にすると `M分S秒` 表示になり毎回変わる。**
+- `N日前` は `Math.floor(diff / DAY)` なので、`Date.now() - N*DAY` にすれば
+  `diff` は常に「N日 + 数ミリ秒」で結果が動かない。
+
+**効果**: 同じコードで連続2回撮って画素差ゼロの枚数が **0/13 -> 11/13**。
+残る2枚（S09 / S56）はセッション UUID（アプリが `randomUUID()` で採番する）で、
+これは別の手当てが要る。
+
 ### `gpu` を使うときの注意
 
 既定では全シナリオを `--disable-gpu` で起動する。WebGL レンダラだと文字が canvas に描かれ DOM から読めないため、テキストで検証できなくなるからだ。

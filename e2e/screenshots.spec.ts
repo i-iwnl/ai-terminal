@@ -4,7 +4,14 @@ import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from './fixtures/harness';
+import {
+  launchApp,
+  closeApp,
+  openSettingsWindow,
+  setAgentEntries,
+  agentEntriesWithStatus,
+  type LaunchedApp,
+} from './fixtures/harness';
 
 /**
  * README の「使い方ガイド」用スクリーンショットの撮影スクリプト。
@@ -23,7 +30,17 @@ import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from './fix
 
 // package.json が "type": "module" のため __dirname は使えない
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const IMAGES_DIR = join(REPO_ROOT, 'docs', 'images');
+// 出力先。既定は README が参照する `docs/images/`（`make e2e-screenshots`）。
+//
+// Issue #120 D-1: **`make e2e` からもこの spec を回せるようにするため、
+// 出力先を差し替えられる口を開けた。** 撮影レーンの価値は「画像を作ること」と
+// 「セレクタが実装に追随しているかを確かめること」の2つあり、後者は
+// `make e2e` の側にこそ要る（PR #86 は「回せば落ちるが、回す動機が無かった」事例）。
+// しかし `docs/images/` は**同じコードで2回撮っても13枚中13枚がバイト差**になるため
+// （実測）、`make e2e` のたびに約940KB のバイナリが dirty になるのは受け入れられない。
+// `make e2e` からは一時ディレクトリへ吐かせ、検証だけを取り込む。
+const IMAGES_DIR =
+  process.env.AI_TERMINAL_E2E_IMAGES_DIR ?? join(REPO_ROOT, 'docs', 'images');
 // README に貼る画像の統一横幅。撮影環境が Retina だと screenshot() は
 // devicePixelRatio 分だけ大きいピクセル数になるため、撮影後に縮小する。
 const TARGET_WIDTH = 1200;
@@ -147,7 +164,30 @@ async function annotateAndShoot(
         // 負のインデックスは末尾から数える（-1 = 最後の要素）
         target = candidates[index < 0 ? candidates.length + index : index];
       }
-      if (!target) continue;
+      // Issue #120 D-1: **黙って飛ばさない。**
+      //
+      // 以前はここが `if (!target) continue;` で、セレクタが1件もマッチしなくても
+      // 注釈が抜けた画像を吐いて green のまま通っていた。撮影レーンを回しても
+      // 検証されないセレクタが 12 件あり（`locator()` を通らず、この
+      // `selector` フィールドからしか参照されないもの）、**レーンを回すこと自体が
+      // 担保にならなかった**。README に注釈の無い画像が配布される経路でもある。
+      //
+      // どちらの段で外れたかを分けて報告する。「セレクタが古い」と
+      // 「文言が変わった」は直す場所が違う。
+      if (!target) {
+        const why =
+          candidates.length === 0
+            ? `セレクタが1件もマッチしない`
+            : `${candidates.length}件マッチしたが、${
+                item.text !== undefined
+                  ? `textContent が ${item.exact ? '' : '部分一致で'}"${item.text}" のものが無い`
+                  : `index ${item.index ?? 0} が範囲外`
+              }`;
+        throw new Error(
+          `注釈${item.number}の対象が見つからない: '${item.selector}' — ${why}。` +
+            `実装のセレクタが変わっていないか確認すること（screenshots.spec.ts）`,
+        );
+      }
       const neighbors: Box[] = [target.previousElementSibling, target.nextElementSibling]
         .filter(hasVisibleText)
         .map((el) => el.getBoundingClientRect());
@@ -364,12 +404,30 @@ test.afterEach(async () => {
   if (launched) await closeApp(launched);
 });
 
+/**
+ * サイドバーのタスク一覧が埋まるまで待つ（Issue #120 D-2・周5）。
+ *
+ * **初回ポーリングが返る前に撮ると、サイドバーが空状態
+ * （「動いている AI はまだありません」）の画像になる。** 実際に同じコードで
+ * 連続2回撮って2回目がその状態だった。撮影レーンの非決定性の中でいちばん害が
+ * 大きい形で、経過時間の数字がずれるのと違い**画像の中身そのものが別物になる**。
+ *
+ * 注釈のセレクタがタスク行を指していない画面では `annotateAndShoot` の throw では
+ * 捕まらないので、本文の画面を作る側で明示的に待つ。
+ * サイドバーがタスクパネルを出している画面は全部これを通すこと。
+ */
+async function waitForTaskList(window: Page): Promise<void> {
+  await expect(window.locator('.task-list .task-item')).toHaveCount(2, { timeout: 15_000 });
+}
+
 test('screenshots S01 起動直後の画面', async () => {
   launched = await launchApp();
   const { window } = launched;
 
   const screen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000 });
+
+  await waitForTaskList(window);
 
   await annotateAndShoot(window, 'S01-launch.png', [
     {
@@ -421,6 +479,8 @@ test('screenshots S03 コマンド入力と出力', async () => {
     .filter({ hasText: /^hello-e2e$/ });
   await expect(outputRow).toHaveCount(1, { timeout: 10_000 });
 
+  await waitForTaskList(window);
+
   await annotateAndShoot(window, 'S03-shell-echo.png', [
     {
       selector: '.terminal-pane__container .xterm-rows > div',
@@ -458,6 +518,8 @@ test('screenshots S04 日本語と絵文字の文字幅', async () => {
     .locator('.terminal-pane__container .xterm-rows > div')
     .filter({ hasText: /^AB日本CD$/ });
   await expect(outputRow).toHaveCount(1, { timeout: 10_000 });
+
+  await waitForTaskList(window);
 
   await annotateAndShoot(window, 'S04-wide-chars.png', [
     {
@@ -509,6 +571,8 @@ test('screenshots S06 タブを増やす', async () => {
   await window.locator('button[aria-label="新しいタブを開く"]').click();
   await expect(menu).toBeVisible();
 
+  await waitForTaskList(window);
+
   await annotateAndShoot(window, 'S06-new-tab.png', [
     {
       selector: '.tab-bar__tabs',
@@ -547,6 +611,8 @@ test('screenshots S09 claude を起動する', async () => {
   const activeRows = window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-rows').first();
   await expect(activeRows).toContainText('FAKE CLAUDE READY', { timeout: 20_000 });
   await expect(activeRows).toContainText(/ARGS:.*--session-id/);
+
+  await waitForTaskList(window);
 
   await annotateAndShoot(window, 'S09-launch-claude.png', [
     {
@@ -608,6 +674,25 @@ test('screenshots S12 実行中タスク一覧', async () => {
   await window.locator('.sidebar__tabs button', { hasText: 'タスク' }).click();
   const items = window.locator('.task-list .task-item');
   await expect(items).toHaveCount(2, { timeout: 15_000 });
+
+  // Issue #120 D-2（周5）: **「待たせています」が出た状態で撮る。**
+  //
+  // それまでの画像は両方の行が「セッション起動からの通算時間」を出していた。
+  // PR #82 で入れた「待たせています」は E2E からも撮影からも一度も通っておらず、
+  // **README は待たせている時間を一度も見せていなかった。**
+  //
+  // `other-project-idle` を idle -> busy -> idle と往復させて遷移を作る
+  // （S12 の spec と同じ手順。理由もそちらのコメントが正 —
+  // 「demo を idle にする」だと名前と状態が矛盾した画像になる）。
+  const setStatuses = (statusByName: Record<string, string>): void =>
+    setAgentEntries(launched as LaunchedApp, agentEntriesWithStatus(launched as LaunchedApp, statusByName));
+  setStatuses({ 'other-project-idle': 'busy' });
+  await expect(window.locator('.task-item--working')).toHaveCount(2, { timeout: 15_000 });
+  setStatuses({});
+  await expect(window.locator('.task-item--your-turn .task-item__elapsed')).toContainText(
+    '待たせています',
+    { timeout: 15_000 },
+  );
 
   await annotateAndShoot(window, 'S12-task-list.png', [
     // 番号と配置は行の並び順に合わせる。Issue #20 B（PR 8）で「あなたの番」
@@ -808,6 +893,8 @@ test('screenshots S56 分割表示', async () => {
   await expect(activeScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
   // ヘッダの文字列（種別 + cwd の basename）が実際に描画されるまで待つ。
   await expect(window.locator('.pane-header').first()).not.toBeEmpty();
+
+  await waitForTaskList(window);
 
   await annotateAndShoot(window, 'S56-split-pane.png', [
     {
