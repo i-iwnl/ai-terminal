@@ -26,6 +26,7 @@
 //   check7  1つの spec ファイルに test() が複数（または0個）ある
 //   check8  readme: true なのに screenshot が指定されていない
 //   check9  screenshot が指定されているのに docs/images/<名前> が存在しない（WARN）
+//   check10 e2e/ 配下の spec が、どの playwright config の testDir / testMatch にも入っていない
 //
 // 出力: チェックごとに [PASS] / [FAIL] / [WARN] 理由を1行ずつ、最後に合計を表示。
 // 終了コード: FAIL が1件でもあれば 1、無ければ 0（WARN は exit code に影響しない）。
@@ -321,6 +322,63 @@ function check9() {
   }
 }
 
+// --- check10: e2e/ 配下の spec が、どのレーンにも入っていない ------------------
+//
+// Issue #120 D-1 の根本原因は「セレクタが壊れたこと」ではなく
+// **spec ファイルの所在がどの config の testDir にも入っていなかったこと**。
+// `e2e/screenshots.spec.ts` は `e2e/` 直下にあり、`playwright.config.ts` の
+// `testDir: './e2e/specs'` から外れていたため、`make e2e` が全 green のまま
+// 壊れた状態がマージされた（PR #86）。
+//
+// クラス名の静的検査ではこの事故は防げない（そのとき壊れたのは入れ子構造で、
+// クラス名は両方とも実装に残っていた）。**ファイルがどのレーンに属するかを
+// 直接数える**ほうが、原因に対応していて誤検知も無い。
+function check10() {
+  const configs = [
+    { file: 'playwright.config.ts', label: '通常レーン + 撮影レーン' },
+    { file: 'e2e/screenshots.playwright.config.ts', label: '撮影レーン（単独実行用）' },
+    { file: 'e2e/packaged.playwright.config.ts', label: 'パッケージ版スモーク' },
+  ];
+  // config は TypeScript なので実行せずにテキストとして読む。
+  // testDir / testMatch の値を機械的に拾えれば十分（この3本は全て文字列リテラル）。
+  const configText = configs
+    .map(({ file }) => {
+      const full = path.join(REPO_ROOT, file);
+      return existsSync(full) ? readFileSync(full, 'utf8') : '';
+    })
+    .join('\n');
+
+  const specPaths = [];
+  const walk = (dir, rel) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      // 生成物は対象外（.gitignore 済みのもの）
+      if (entry.name === 'report' || entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      const relPath = rel === '' ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isDirectory()) walk(full, relPath);
+      else if (entry.name.endsWith('.spec.ts')) specPaths.push(relPath);
+    }
+  };
+  walk(path.join(REPO_ROOT, 'e2e'), '');
+
+  for (const relPath of specPaths) {
+    // どこかの config が、この spec を含むディレクトリか、この spec の
+    // ファイル名そのものを名指ししていれば、いずれかのレーンに入っている。
+    const dir = path.dirname(relPath);
+    const base = path.basename(relPath);
+    const coveredByDir = dir !== '.' && configText.includes(`e2e/${dir}`);
+    const coveredByName = configText.includes(base);
+    if (coveredByDir || coveredByName) {
+      pass(`check10: e2e/${relPath} はいずれかのレーンに入っている`);
+    } else {
+      fail(
+        `check10: e2e/${relPath} がどの playwright config の testDir / testMatch にも入っていない` +
+          `（このファイルは1度も実行されない。config 側に足すか、既存のレーンのディレクトリへ移すこと）`,
+      );
+    }
+  }
+}
+
 // --- 実行 --------------------------------------------------------------------
 check1();
 check2();
@@ -329,6 +387,7 @@ check4();
 checkSpecContents();
 check8();
 check9();
+check10();
 
 console.log('----------------------------------------------');
 console.log(`合計: PASS=${passCount} FAIL=${failCount} WARN=${warnCount}`);

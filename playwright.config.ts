@@ -10,7 +10,43 @@ import { defineConfig } from '@playwright/test';
  * 実行は `make e2e`。
  */
 export default defineConfig({
-  testDir: './e2e/specs',
+  // Issue #120 D-1: **撮影レーンをここに取り込んだ**（第2 project）。
+  //
+  // それまで `e2e/screenshots.spec.ts` は `e2e/` 直下にあり、この config の
+  // `testDir: './e2e/specs'` から外れていた。PR #86 でセレクタが壊れたとき、
+  // 担当は `e2e/specs/*.spec.ts` を全数 grep して7本直したが、
+  // **glob から漏れた撮影レーンだけが壊れたまま `make e2e` 全 green でマージされた。**
+  //
+  // 対策として `.claude/skills/e2e/reference/limitations.md` に
+  // 「セレクタを変えたら `e2e/` 全体を grep する」と書いてあったが、**効かなかった。**
+  // 人が思い出すことに賭けるのをやめ、普段回すコマンドに入れる。
+  //
+  // 「CSS セレクタが実装に存在するかを静的に検査する」案は採らなかった。
+  // **PR #86 で壊れたのは入れ子構造（`.tab-bar__tabs > .tab-bar__tab` の間に
+  // `.tab-bar__tablist` が挿入された）で、クラス名は両方とも実装に残っている。**
+  // 静的検査は PASS を返す = 防ぎたい当の事例を捕まえられない。
+  // 加えて誤検知が最良の照合方法でも 12%（@xterm/xterm 所有のクラスは
+  // このリポジトリの src にも css にも無いので、恒久的な allowlist が要る）。
+  //
+  // コストは実測で +12秒 / 163秒 = **+7%**。
+  projects: [
+    {
+      name: 'specs',
+      testDir: './e2e/specs',
+    },
+    {
+      // 撮影レーン。**`docs/images/` は書き換えない**（出力先を一時ディレクトリへ
+      // 振る。同じコードで2回撮っても13枚中13枚がバイト差になるため、
+      // `make e2e` のたびに作業ツリーが汚れてしまう）。
+      // README 用の画像を実際に更新するのは `make e2e-screenshots` の側。
+      name: 'screenshots',
+      testDir: './e2e',
+      testMatch: 'screenshots.spec.ts',
+      // 撮影は1テストあたりの手数が多く、専用 config は 60 秒を使っている。
+      // project 単位で上書きできるので、specs 側の 30 秒とは独立に保てる。
+      timeout: 60_000,
+    },
+  ],
   // Electron のインスタンスを同時に複数立てると PTY とウィンドウ制御が不安定になる
   workers: 1,
   fullyParallel: false,

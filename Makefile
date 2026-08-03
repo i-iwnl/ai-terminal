@@ -127,13 +127,20 @@ format:
 # E2E テスト（Playwright）
 # ---------------------------------------------------------------------------
 
+# 撮影レーンを make e2e から回すときの画像の捨て先（Issue #120 D-1）。
+# docs/images/ を書き換えないためだけの場所で、中身は使わない
+# （同じコードで2回撮っても13枚中13枚がバイト差になるので、make e2e のたびに
+#  作業ツリーが汚れるのを避ける）。.gitignore 済み。
+SCREENSHOTS_SCRATCH := e2e/.screenshots-out
+
 ## E2E テストを実行する（ウィンドウは表示しない。ビルド済みの out/ を使うため build に依存）
+## 撮影レーン（e2e/screenshots.spec.ts）も含む。docs/images/ は書き換えない
 e2e: build
-	npx playwright test
+	AI_TERMINAL_E2E_IMAGES_DIR=$(SCREENSHOTS_SCRATCH) npx playwright test
 
 ## E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ。マウスを奪われる）
 e2e-visible: build
-	AI_TERMINAL_E2E_SHOW=1 npx playwright test
+	AI_TERMINAL_E2E_SHOW=1 AI_TERMINAL_E2E_IMAGES_DIR=$(SCREENSHOTS_SCRATCH) npx playwright test
 
 ## scenarios.yml と e2e/specs/ の 1:1 対応を検査する（実行前提なし）
 e2e-lint:

@@ -23,7 +23,17 @@ import { launchApp, closeApp, openSettingsWindow, type LaunchedApp } from './fix
 
 // package.json が "type": "module" のため __dirname は使えない
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const IMAGES_DIR = join(REPO_ROOT, 'docs', 'images');
+// 出力先。既定は README が参照する `docs/images/`（`make e2e-screenshots`）。
+//
+// Issue #120 D-1: **`make e2e` からもこの spec を回せるようにするため、
+// 出力先を差し替えられる口を開けた。** 撮影レーンの価値は「画像を作ること」と
+// 「セレクタが実装に追随しているかを確かめること」の2つあり、後者は
+// `make e2e` の側にこそ要る（PR #86 は「回せば落ちるが、回す動機が無かった」事例）。
+// しかし `docs/images/` は**同じコードで2回撮っても13枚中13枚がバイト差**になるため
+// （実測）、`make e2e` のたびに約940KB のバイナリが dirty になるのは受け入れられない。
+// `make e2e` からは一時ディレクトリへ吐かせ、検証だけを取り込む。
+const IMAGES_DIR =
+  process.env.AI_TERMINAL_E2E_IMAGES_DIR ?? join(REPO_ROOT, 'docs', 'images');
 // README に貼る画像の統一横幅。撮影環境が Retina だと screenshot() は
 // devicePixelRatio 分だけ大きいピクセル数になるため、撮影後に縮小する。
 const TARGET_WIDTH = 1200;
@@ -147,7 +157,30 @@ async function annotateAndShoot(
         // 負のインデックスは末尾から数える（-1 = 最後の要素）
         target = candidates[index < 0 ? candidates.length + index : index];
       }
-      if (!target) continue;
+      // Issue #120 D-1: **黙って飛ばさない。**
+      //
+      // 以前はここが `if (!target) continue;` で、セレクタが1件もマッチしなくても
+      // 注釈が抜けた画像を吐いて green のまま通っていた。撮影レーンを回しても
+      // 検証されないセレクタが 12 件あり（`locator()` を通らず、この
+      // `selector` フィールドからしか参照されないもの）、**レーンを回すこと自体が
+      // 担保にならなかった**。README に注釈の無い画像が配布される経路でもある。
+      //
+      // どちらの段で外れたかを分けて報告する。「セレクタが古い」と
+      // 「文言が変わった」は直す場所が違う。
+      if (!target) {
+        const why =
+          candidates.length === 0
+            ? `セレクタが1件もマッチしない`
+            : `${candidates.length}件マッチしたが、${
+                item.text !== undefined
+                  ? `textContent が ${item.exact ? '' : '部分一致で'}"${item.text}" のものが無い`
+                  : `index ${item.index ?? 0} が範囲外`
+              }`;
+        throw new Error(
+          `注釈${item.number}の対象が見つからない: '${item.selector}' — ${why}。` +
+            `実装のセレクタが変わっていないか確認すること（screenshots.spec.ts）`,
+        );
+      }
       const neighbors: Box[] = [target.previousElementSibling, target.nextElementSibling]
         .filter(hasVisibleText)
         .map((el) => el.getBoundingClientRect());
