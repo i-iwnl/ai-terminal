@@ -857,3 +857,53 @@ scenarios:
       `trafficLightPosition`（16,16）から導いた x:16〜76 / y:16〜30 を使う。
       `min-width: 220px` の打ち消し漏れと `border-right` の消し忘れも
       幅0の assert で同時に捕まえる。
+
+  # --- Issue #119 周1: 値を変える前に関門を置く ------------------------------
+  - id: S73
+    title: ウィンドウ上端の2本の帯の高さが、意図した値で固定されている
+    spec: S73-window-top-bars.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周1。ウィンドウ上端には高さの違う帯が2本ある
+      （`.sidebar__drag-region` 40px と `.tab-bar` 36px）。#20 の K-4 が
+      「継ぎ目が折れている」として指摘し、#119 の周5 で揃える予定のもの。
+      **この2つの高さを引く spec が1本も無く、40 を 44 に変えても 36 を 40 に
+      変えてもフル実行が green のまま通る**（S40 / S70 / S71 と同じ穴。
+      `docs/images/` の12枚が静かに変わるだけで、台帳ハーネスは画像の中身を
+      見ない）。ここは characterization で、正しい値を主張するものではない。
+      周5 で揃えるときの期待値の diff がそのままレビュー資料になる。あわせて
+      `--bar-height` トークンが実際に描画へ効いていることも見る。この高さは
+      `.tab-bar` 自身と `.notice-list` の `top` の2箇所で必要で、以前は両方に
+      `36px` がリテラルで書かれていた。**片方だけ動かすと通知バナーが
+      タブバーに被り、キーボードでフォーカス中のタブが完全に隠れる**
+      （WCAG 2.4.11 Focus Not Obscured, AA）。CSS の記述そのものは
+      test/unit/css-tokens.test.ts が見るので、ここでは実行時にトークンを
+      書き換えて描画が追従するかを見る（宣言があっても別の規則に負けて
+      いれば効かない）。
+
+  - id: S74
+    title: 履歴行のタイトルは、右端までクリックが resume に届く
+    spec: S74-history-row-hit-area.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周1。周2（履歴行の幅の回復）の関門。履歴行は行全体が
+      resume のボタン（`.history-item__row`）で、隣に「メモ」「編集」
+      （`.history-item__action`。`opacity: 0`）が並ぶ。周2 では
+      `.history-item__actions` をフローから外して実効幅を回復させるが、
+      **そのとき見えないボタンがタイトルの上に浮く。** `opacity: 0` は
+      ポインタイベントを止めないので、`pointer-events: none` を忘れると
+      **タイトルの右端をクリックしたときに resume ではなく「編集」が発火する。**
+      `.tab-bar__close` は同じ失敗モードを `pointer-events` で潰しており、
+      その規則のコメントに理由が明記されているが、同じ規則が
+      `.history-item__action` には適用されていない。S44 は「小さいボタン
+      自身が 24x24 あるか」と「隣接する当たり判定同士が重ならないか」しか
+      見ず、**大きい要素の内側に死角ができることは検出しない**（PR 19 で
+      タブの中央が死角になった件と同型）。S19 は行の中央しか撃たない。
+      S69 の履歴行版として、タイトルの矩形を左端から右端まで9点撃つ。
+      実測（2026-08-03）は `.history-item__row` 139x77 / `.history-item__actions`
+      88x21 / `.history-item__action::before` 38x24 で、`::before` の下端 200.5 と
+      `.history-item__meta` の上端 201.5 の隙間は 1px しかないので、そこも見る。
+      現状の幅（139 / 88）は characterization として固定してあり、周2 で
+      235px 近くまで回復させる差分がレビュー資料になる。**実際に
+      `position: absolute` だけを入れて `pointer-events` を省いた版で確認した
+      ところ、9点中5点が resume に届かなくなって赤くなる。**

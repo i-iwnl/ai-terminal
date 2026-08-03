@@ -200,6 +200,18 @@
      他のトークンのような実測の余地は無い。 */
   --target-size-min: 24px;
 
+  /* -- ウィンドウ上端の帯 -------------------------------------------------- */
+  /* タブバーの高さ。**この値は2箇所で必要になる**（`.tab-bar` 自身と、その直下に
+     絶対配置する `.notice-list` の `top`）。以前は両方に `36px` がリテラルで
+     書かれており、片方だけ動かすと通知バナーがタブバーに重なって
+     **キーボードでフォーカス中のタブが隠れる**（WCAG 2.4.11 Focus Not Obscured）。
+     Issue #119 の周1で、値を変えずにトークンへ寄せた。
+
+     サイドバー側の帯（`.sidebar__drag-region`）は現在 40px で**揃っていない**。
+     揃えるのは Issue #119 の周5（PR 20）の担当で、この周では値を動かさない。
+     現在の 40 / 36 は e2e/specs/S73-window-top-bars.spec.ts が固定している。 */
+  --bar-height: 36px;
+
   /* -- 角丸と影 ---------------------------------------------------------- */
   --radius-sm: 2px;
   --radius-md: 3px;
@@ -396,7 +408,7 @@ body {
 .tab-bar {
   display: flex;
   align-items: stretch;
-  height: 36px;
+  height: var(--bar-height);
   flex-shrink: 0;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border-subtle);
@@ -1053,12 +1065,17 @@ body {
 /* ---------------------------------------------------------------------- */
 
 /* 複数件を縦に積む入れ物。右上へ移した（従来は画面下部で、ターミナル出力と紛れていた）。
-   タブバー（36px）の直下に置き、設定ボタン等クロームの当たり判定と重ならせない。
+   タブバーの直下に置き、設定ボタン等クロームの当たり判定と重ならせない。
    role は App.tsx 側で「エラーが1件でもあれば alert、無ければ status」に出し分ける
-   （中身が何件・何 severity でも、露出する live region は常にこの1個だけ）。 */
+   （中身が何件・何 severity でも、露出する live region は常にこの1個だけ）。
+
+   **`--bar-height` を使うこと。** 以前はここに `36px` がリテラルで書かれており、
+   `.tab-bar` の高さと二重管理になっていた。タブバーを高くしたときにここが
+   追従しないと、バナーがタブバーに被って**キーボードでフォーカス中のタブが
+   完全に隠れる**（WCAG 2.4.11 Focus Not Obscured, AA）。 */
 .notice-list {
   position: absolute;
-  top: calc(36px + var(--sp-2));
+  top: calc(var(--bar-height) + var(--sp-2));
   right: var(--sp-3);
   z-index: 20;
   display: flex;

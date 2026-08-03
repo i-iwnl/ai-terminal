@@ -208,3 +208,73 @@ describe('CSS と TypeScript の面の値', () => {
     expect(normalizeHex(DEFAULT_THEME.foreground)).toBe(tokens.get('--text-terminal'));
   });
 });
+
+describe('ウィンドウ上端の帯の高さ（Issue #119 周1）', () => {
+  // タブバーの高さは2箇所で必要になる。`.tab-bar` 自身の `height` と、その直下へ
+  // 絶対配置する `.notice-list` の `top`。以前は両方に `36px` がリテラルで
+  // 書かれていた。
+  //
+  // **片方だけ動かすと、通知バナーがタブバーに重なる。** そのとき隠れるのは
+  // 「キーボードでフォーカス中のタブ」なので、WCAG 2.4.11（Focus Not Obscured,
+  // AA）の違反になる。E2E は通知バナーを出すのに実際のユーザー操作から到達できず
+  // （S44 の note が同じ制約を記録している）、この重なりを検出できない。
+  // ここで CSS の記述そのものを見る。
+
+  function ruleBody(selector: string): string {
+    const start = rest.indexOf(`\n${selector} {`);
+    expect(start, `${selector} の規則が見つからない`).toBeGreaterThan(-1);
+    const end = rest.indexOf('\n}', start);
+    return rest.slice(start, end);
+  }
+
+  it('--bar-height が宣言されている', () => {
+    expect(root).toMatch(/--bar-height:\s*\d+px;/);
+  });
+
+  it('.tab-bar の height が --bar-height を参照している', () => {
+    expect(ruleBody('.tab-bar')).toMatch(/height:\s*var\(--bar-height\)/);
+  });
+
+  it('.notice-list の top が --bar-height を参照している（リテラルの複製を作らない）', () => {
+    const body = ruleBody('.notice-list');
+    expect(body).toMatch(/top:\s*calc\(var\(--bar-height\)/);
+    // 「calc の中に --bar-height はあるが、別の場所に 36px も残っている」を防ぐ。
+    expect(body).not.toMatch(/\b36px\b/);
+  });
+
+  // --- 周3（スコープ行）の関門 ------------------------------------------------
+  //
+  // `.task-group__heading` と `.history-list__heading` は宣言が完全に一致している。
+  // 周3 でタスクとメモにスコープ行を足すと3個目・4個目になり、「サイドバーの
+  // 見出しの見た目」の正が4箇所に散る。
+  //
+  // 周3 では共通クラス（`.panel-heading`）へ畳む。**そのとき見た目が変わって
+  // いないことは `make css-substitution-check` では証明できない**（あれはトークンを
+  // 展開したテキストを比較するので、セレクタをまとめると宣言の出現回数が減って
+  // 必ず FAIL する）。畳む前提は「2つの宣言が本当に同一であること」なので、
+  // ここで宣言の中身そのものを突き合わせる。
+  //
+  // `.memo-panel__heading` は `color: var(--text-primary)` と
+  // `margin: 0 0 var(--sp-2)` で別物なので、畳む対象は2個まで。
+  it('サイドバーの見出し2種の宣言が完全に一致している（周3 で畳める前提）', () => {
+    const declarations = (selector: string): string[] =>
+      ruleBody(selector)
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.endsWith(';'))
+        .sort();
+
+    const taskGroup = declarations('.task-group__heading');
+    expect(taskGroup.length, '.task-group__heading の宣言が読めていない').toBeGreaterThan(0);
+    expect(declarations('.history-list__heading')).toEqual(taskGroup);
+  });
+
+  it('.memo-panel__heading は上の2つとは別物のまま（畳む対象に含めない）', () => {
+    // 「同じに見えるから3つとも畳む」を防ぐ。畳むと全体メモ／セッションのメモの
+    // 見出しの色と下余白が変わる。
+    const memo = ruleBody('.memo-panel__heading');
+    expect(memo).toMatch(/color:\s*var\(--text-primary\)/);
+    expect(memo).toMatch(/margin:\s*0 0 var\(--sp-2\)/);
+    expect(ruleBody('.task-group__heading')).toMatch(/color:\s*var\(--text-secondary\)/);
+  });
+});
