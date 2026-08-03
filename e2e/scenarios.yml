@@ -107,6 +107,17 @@ scenarios:
     title: このアプリが起動したタスクが視覚的に区別される
     spec: S15-task-owned.spec.ts
     readme: false
+    note: >-
+      Issue #121 周4。以前は否定側（無関係な固定タスクが owned 扱いにならない
+      こと）しか検証できず、肯定側（このアプリが起動したタスク自体が
+      owned=true になること）はこの隔離ハーネスの構成では検証不能としていた。
+      Issue #120 周5 で setAgentEntries（agents.json の動的差し替え）と、
+      偽 claude が受け取った --session-id を claude-session-id.txt へ書き出す
+      仕組みが入ったことで可能になった。実際に起動した claude セッションの
+      sessionId を agents.json の固定エントリへ差し込み、その行だけが
+      task-item--owned・「このアプリ」バッジ・押せる <button> になることと、
+      もう一方の固定タスクは owned のままにならないことを同じ test() の中で
+      あわせて確認する。
 
   # --- 履歴 / resume --------------------------------------------------------
   - id: S16
@@ -619,7 +630,10 @@ scenarios:
       が同時に可視 + .terminal-pane.is-active で一意に引ける hook）を実測で
       固定する。あわせて同じセットアップで、分割した2ペインが独立した PTY
       であること、Issue #67（.terminal-search が細いペインからはみ出す。
-      この周で修正した）、canSplitPane による分割の拒否が実際に働くこと
+      この周で修正した。**Issue #121 A-1 でこの検査が関門になっていなかった
+      ことが分かり、測る場所・辺・対象の3つとも作り直した** — 分割を刻みきった
+      いちばん細いペインで、コンテナだけでなく全子孫の矩形を、左右とも見る）、
+      canSplitPane による分割の拒否が実際に働くこと
       （閾値のピクセル値は環境依存のため決め打ちしない。繰り返し分割して
       必ず拒否が起きることだけを見る）、Cmd+W の意味変更（ペインが複数なら
       閉じるのはペインだけ、最後の1枚ではタブが閉じて S08 と同じく新しい
@@ -1151,3 +1165,30 @@ scenarios:
       `.sidebar__tabs button` を使うので、要素を変えると全部落ちる。`role` を
       足すだけ。畳んでいるときは開いてから切り替えることも見る（**「何も起きない」で
       終わらせない**。畳んだまま切り替えても画面が1pxも動かず壊れて見える）。
+
+  # --- tmux 経路（Issue #121 A-3 / 周2） --------------------------------------
+  - id: S84
+    title: 偽 tmux でラップした claude タブは検索バーに tmux 注記が出て、シェルタブには出ない
+    spec: S84-tmux-search-hint.spec.ts
+    readme: false
+    note: >-
+      Issue #121 A-3 / 周2。`.claude/skills/e2e/reference/limitations.md` は
+      「E2E では tmux 経路を踏めない」としていたが、これは誤りだった。
+      harness.ts は PATH の先頭に一時 HOME 配下の bin を置いており、
+      `e2e/fixtures/bin/tmux`（偽 tmux。`-- ` 以降をそのまま exec するだけの
+      シム）を置くだけで `config.useTmux: true`（`isTmuxAvailable()` は
+      `which tmux` を見るだけ）の経路を決定的に踏める。harness.ts には
+      `fakeTmux` オプションを足した（既定 false。既存シナリオの PATH には
+      従来どおり claude / gemini の2本しか置かれず、挙動は1つも変わらない）。
+      本題は `SpawnPtyResult.wrappedInTmux` が `useTabs.ts` -> `PaneLeaf` ->
+      `PaneTreeView` -> `TerminalPane` まで届き、検索バーの tmux 注記
+      （`.terminal-search__hint`。同じ周で実装済み）として画面に表示される
+      ところまでを実測すること。シェルタブ（`req.kind === 'shell'` は
+      `maybeWrapWithTmux` が常に素通りする）では出ないことも見る。
+      偽 tmux が書き出したセッション名（`aiterm-<agentSessionId>` の形）を
+      ファイルから読み、「画面の辻褄だけ合わせて実際には tmux を経由していない」
+      実装を見逃さないようにしている。**このシムで担保できないこと**:
+      代替画面バッファへの切り替え、セッションの永続化（アプリ再起動後の
+      再アタッチ）、タブを閉じても claude プロセスが生き残ること、`-A`
+      （attach-or-create）の分岐。偽 tmux は `exec` するだけで、tmux 本来の
+      サーバプロセスを持たないため。詳細は spec 冒頭のコメントを参照。

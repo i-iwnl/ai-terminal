@@ -142,6 +142,11 @@ e2e: build
 e2e-visible: build
 	AI_TERMINAL_E2E_SHOW=1 AI_TERMINAL_E2E_IMAGES_DIR=$(SCREENSHOTS_SCRATCH) npx playwright test
 
+## docs/images/ の中身が実装とずれていないかを画素で検査する
+## （先に make e2e か make e2e-screenshots を実行しておくこと）
+e2e-screenshots-check:
+	node scripts/verify-screenshots.mjs
+
 ## scenarios.yml と e2e/specs/ の 1:1 対応を検査する（実行前提なし）
 e2e-lint:
 	node scripts/lint-e2e.mjs

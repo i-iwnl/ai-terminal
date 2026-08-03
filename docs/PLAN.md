@@ -469,7 +469,7 @@ Phase 0 から Phase 5 までの**コードは一通り実装済み**。`npm run
 - `app.paths()` — Renderer は Node API に触れないため、アプリ起動時の cwd とホームディレクトリを Main から供給する。履歴一覧の探索キーと PTY の初期作業ディレクトリに使う
 
 判明した設計上の注意点:
-- **tmux でラップした場合、内側の `claude` が終了しても `ptyExit` は発火しない**（tmux セッション自体が消えたときのみ）。これは「アプリを落としても作業が生き残る」という tmux 採用の目的そのものによる挙動。タブの終了判定を PTY の exit だけに頼らないこと
+- **tmux でラップした場合も、内側の `claude` が終了すれば `ptyExit` は発火する**（内側の終了 → tmux セッション終了 → クライアント終了、という連鎖を tmux なしと同じく辿るため。2026-08-03、tmux 3.7b で実測）。**罠は逆で、タブを閉じる操作（tmux クライアントの kill）ではサーバ側のセッションと内側の `claude` / `gemini` プロセスが生き残ること。** 詳細と対策は [.claude/skills/terminal/reference/pty-pitfalls.md](.claude/skills/terminal/reference/pty-pitfalls.md) を参照
 - `ai-title` が未生成のセッションでは履歴の `title` が取れない（実データ 328 件で取得率 86%）。UI は `firstPrompt` へフォールバックする
 - Gemini CLI の `--list-sessions` は **JSON ではなくプレーンテキスト**を返す（`-o json` を付けても変わらない）。パースは正規表現ベースの近似で、相対時刻（"5 minutes ago" 等）から epoch を推定している
 

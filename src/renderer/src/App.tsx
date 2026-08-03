@@ -64,6 +64,7 @@ import {
 import { findNextYourTurnTab } from './tabs/tabYourTurn';
 import { previousActiveTab, recordActiveTab, type TabHistory } from './tabs/tabHistory';
 import CloseTabConfirmDialog from './tabs/CloseTabConfirmDialog';
+import { closeTabCopy, summarizeClosingPanes, type CloseTabCopy } from './tabs/closeTabCopy';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
@@ -185,12 +186,15 @@ export default function App(): ReactElement {
   );
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
+  //
+  // **Issue #121 A-3: 文言は「開く時点の内訳」から作って持ち回る。** 表示中に
+  // ペインの状態が変わっても、確認した内容と実行する内容がずれないようにするため。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
     tabId: string;
-    paneCount: number;
+    copy: CloseTabCopy;
   } | null>(null);
   const closeConfirmationRef = useRef(closeConfirmation);
-  const setCloseConfirmation = useCallback((value: { tabId: string; paneCount: number } | null) => {
+  const setCloseConfirmation = useCallback((value: { tabId: string; copy: CloseTabCopy } | null) => {
     closeConfirmationRef.current = value;
     setCloseConfirmationState(value);
   }, []);
@@ -298,9 +302,17 @@ export default function App(): ReactElement {
   const requestCloseTab = useCallback(
     (tabId: string): void => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
-      const paneCount = tab ? flattenPaneTree(tab.layout).length : 1;
-      if (paneCount >= 2) {
-        setCloseConfirmation({ tabId, paneCount });
+      const leaves = tab ? flattenPaneTree(tab.layout) : [];
+      const summary = summarizeClosingPanes(leaves);
+      // **1ペインでも、閉じると回収できなくなるものがあるなら確認する**（Issue #121）。
+      //
+      // tmux でラップされた gemini は、タブを閉じた時点で tmux セッション名を
+      // 二度と再現できず、**アプリからは永久に拾い直せない**（src/main/pty/tmux.ts）。
+      // 実測でも、タブを閉じたあと tmux セッションと中のプロセスが生き残った。
+      // claude は履歴から resume すれば同じセッションに戻れるので、ここでは止めない
+      // （タブを閉じるのは1日に何十回もある操作なので、確認は不可逆なものだけに絞る）。
+      if (leaves.length >= 2 || summary.persistentOrphaned > 0) {
+        setCloseConfirmation({ tabId, copy: closeTabCopy(summary) });
         return;
       }
       void performCloseTab(tabId);
@@ -1020,7 +1032,7 @@ export default function App(): ReactElement {
         // 2つ以上の PTY を一度に閉じるときの確認（Issue #56 PR 8・design-review.md
         // 提案 E'）。position: fixed のオーバーレイなので DOM 上の位置は問わない。
         <CloseTabConfirmDialog
-          paneCount={closeConfirmation.paneCount}
+          copy={closeConfirmation.copy}
           onCancel={() => setCloseConfirmation(null)}
           onConfirm={() => {
             const { tabId } = closeConfirmation;

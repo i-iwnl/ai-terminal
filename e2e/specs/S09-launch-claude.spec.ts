@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
 
 let launched: LaunchedApp;
@@ -45,12 +47,23 @@ test('S09 claude を起動すると session-id が渡る', async () => {
   await expect(activeRows).toContainText(/ARGS:.*--session-id/);
 
   // --session-id の値が UUID 形式であることまで確認する。
-  // .xterm-rows は行ごとに <div> が分かれており、textContent は改行を挿入せず
-  // 連結されるため、行分割ではなく ARGS: ... --session-id <uuid> を
-  // ひと続きの正規表現で直接取り出す。
+  //
+  // **画面ではなくファイルから読む**（Issue #121 B-2）。偽 claude は
+  // 採番された UUID を画面に出さず（撮影のたびに docs/images/ が変わるため）、
+  // `claude-session-id.txt` へ書き出す。画面をパースするより堅い。
+  const sessionId = readFileSync(join(launched.fixturesDir, 'claude-session-id.txt'), 'utf8').trim();
+  expect(
+    sessionId,
+    `偽 claude が受け取った --session-id が UUID 形式ではない: ${sessionId}`,
+  ).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+  // **画面に生の UUID が出ていないこと**（撮影レーンの決定性の関門）。
+  // ここが崩れると docs/images/ が撮るたびに変わり、
+  // 「画像の中身が実装とずれたか」を画素で検出できなくなる。
   const rowsText = (await activeRows.textContent()) ?? '';
-  const match = rowsText.match(
-    /ARGS:.*?--session-id\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-  );
-  expect(match, `ARGS 行から --session-id の UUID を抽出できなかった: ${rowsText}`).not.toBeNull();
+  expect(
+    rowsText,
+    'ターミナルに生のセッション UUID が出ている。撮影レーンが非決定になる',
+  ).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  expect(rowsText, 'マスクした表記が出ているはず').toContain('--session-id <session-id>');
 });

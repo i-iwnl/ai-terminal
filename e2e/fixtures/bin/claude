@@ -60,8 +60,33 @@ if [ "${1:-}" = "--version" ]; then
 fi
 
 # 対話モード: 受け取った引数を出力してから、入力を待ち続ける
+#
+# **--session-id の値は画面に出さない**（Issue #121 B-2）。
+# アプリは起動のたびに randomUUID() で採番するので、そのまま出すと
+# docs/images/ の中身が撮るたびに変わる。実測では13枚中2枚（S09 / S56）が
+# これだけの理由で非決定的だった。**画素で「画像が実装とずれたか」を
+# 検出したいので、非決定性は撮影時に隠すのではなく発生源で断つ。**
+#
+# 実際の値は fixtures ディレクトリへ書き出す。検証したい spec は画面ではなく
+# そちらを読む（画面をパースするより堅い）。
+ARGS_FOR_DISPLAY="$*"
+SESSION_ID=""
+PREV=""
+for ARG in "$@"; do
+  if [ "$PREV" = "--session-id" ]; then
+    SESSION_ID="$ARG"
+  fi
+  PREV="$ARG"
+done
+if [ -n "$SESSION_ID" ]; then
+  if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ]; then
+    printf '%s' "$SESSION_ID" > "${AI_TERMINAL_E2E_FIXTURES}/claude-session-id.txt"
+  fi
+  ARGS_FOR_DISPLAY="${ARGS_FOR_DISPLAY//$SESSION_ID/<session-id>}"
+fi
+
 echo "FAKE CLAUDE READY"
-echo "ARGS: $*"
+echo "ARGS: $ARGS_FOR_DISPLAY"
 printf 'claude> '
 
 while IFS= read -r line; do
