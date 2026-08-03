@@ -108,6 +108,14 @@ export default function App(): ReactElement {
   // 動いていれば設定に関わらず screenReaderMode を有効にする。
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
   const [accessibilitySupport, setAccessibilitySupport] = useState(false);
+  // サイドバーを畳んでいるか（Cmd+Option+S。Issue #20 K-1）。
+  //
+  // **状態はここに置く。** Sidebar.tsx の内側に持たせるとキーボード / メニューから
+  // トグルできない（Sidebar.tsx は自分の中のタブ切り替え以外の状態を持たない）。
+  // 既定は false = 表示したまま。設定（AppConfig）には永続化しない
+  // （「一時的に畳む」操作であり、次回起動時にサイドバーが消えている状態から
+  // 始まるとタスク一覧・履歴の存在自体に気づけなくなる）。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
@@ -441,6 +449,16 @@ export default function App(): ReactElement {
           }
           break;
         }
+        case 'toggle-sidebar':
+          // 畳むとサイドバー（<nav>）は視覚的にも支援技術からも消える
+          // （styles.css の `.sidebar.is-collapsed` が visibility: hidden）。
+          // **「何も起きない」で終わらせない**という既存の規律（U4）に従い、
+          // どちらへ倒れたかを role="status" で告知する（トグルは押した本人にも
+          // 結果が分からない操作になりやすく、サイドバーを見ていない利用者には
+          // 画面上の変化が「ターミナルが少し広がった」だけになる）。
+          setSidebarCollapsed(!sidebarCollapsed);
+          announce(sidebarCollapsed ? 'サイドバーを表示しました' : 'サイドバーを隠しました');
+          break;
         case 'next-tab':
           if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
           break;
@@ -482,7 +500,10 @@ export default function App(): ReactElement {
         }
       }
     },
-    [announce, requestCloseTab, showNotice],
+    // sidebarCollapsed は toggle-sidebar が「いまどちら側か」を読む必要があるため
+    // 依存に含める（runAction は runActionRef 経由でしか呼ばれず、再生成しても
+    // keydown / menu:action のリスナは張り直されない）。
+    [announce, requestCloseTab, showNotice, sidebarCollapsed],
   );
 
   const runActionRef = useRef(runAction);
@@ -635,6 +656,7 @@ export default function App(): ReactElement {
   return (
     <div className="app">
       <Sidebar
+        collapsed={sidebarCollapsed}
         onFocusTaskTab={focusTaskTab}
         canFocusTaskTab={canFocusTaskTab}
         onResumeHistory={resumeHistory}
@@ -642,6 +664,7 @@ export default function App(): ReactElement {
       />
       <main className="main">
         <TabBar
+          sidebarCollapsed={sidebarCollapsed}
           tabs={tabsApi.tabs}
           activeTabId={tabsApi.activeTabId}
           onSelect={tabsApi.setActiveTabId}

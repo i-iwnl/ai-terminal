@@ -302,6 +302,28 @@ body {
   border-right: 1px solid var(--border-subtle);
 }
 
+/* Issue #20 K-1: サイドバーの折りたたみ（Cmd+Option+S）。**既定は開いたまま**で、
+   これは一時的に畳んでターミナルを広げるための状態。
+
+   - `min-width: 220px` を `min-width: 0` で打ち消す。**併記しないと幅が 0 にならない**
+     （`width: 0` だけでは min-width が勝つ）
+   - `border-right` も消す。残すと畳んだ跡に 1px の縦線だけが残る
+   - `visibility: hidden` で支援技術・フォーカス順・当たり判定からも外す
+     （幅0で見えないだけの要素が Tab の停止点として残ると、キーボード操作が
+     「どこにも見えない場所」で止まる）。中身はアンマウントしないので、
+     開き直したときにタブ選択やメモの編集途中はそのまま残る
+   - **`transition` は書かない。** `.terminal-pane__container` の ResizeObserver が
+     遷移の途中で何度も発火し、その回数ぶん `pty.resize`（= SIGWINCH）が
+     実行中の子プロセスへ飛ぶ（design-review.md「触ると波及するもの」）。
+     styles.css には `transition` / `animation` / `@keyframes` が1つも無い */
+.sidebar.is-collapsed {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+  overflow: hidden;
+  visibility: hidden;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .sidebar {
     background: var(--surface-0);
@@ -378,6 +400,36 @@ body {
   flex-shrink: 0;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+/* サイドバーを畳んでいる間だけ出る、macOS の信号機ボタンの逃げ帯（Issue #20 K-1）。
+   TabBar.tsx が `sidebarCollapsed` のときだけこの要素を描画する。
+
+   **幅は紙の計算ではなく AppKit の実測から決めた。** 信号機は DOM に存在しない
+   ネイティブのボタンなので、`getBoundingClientRect()` では測れない。
+   代わりに AppKit へ直接聞いた（このマシンの macOS で、hiddenInset と同じ
+   styleMask の NSWindow を作り standardWindowButton の frame を読んだ）:
+
+     close: 14x14 @ x=9 / miniaturize: 14x14 @ x=32 / zoom: 14x14 @ x=55
+
+   つまりボタンは 14px 角、隣り合う原点の間隔（pitch）は 23px。Electron は
+   `trafficLightPosition` を「close ボタンの左上」として使い、残り2つを同じ
+   pitch で並べ直す（native_window_mac.mm の RedrawTrafficLights）。
+   src/main/index.ts の指定は { x: 16, y: 16 } なので、実際の占有範囲は
+
+     x: 16 〜 16 + 14 + 23 * 2 = 76 /  y: 16 〜 30
+
+   となり、**36px の `.tab-bar` に完全に重なる**（design-review.md が
+   「44px レールは却下。信号機が約 68px を占める」と記録している値は、この
+   実測では 76px。計画書の「約 90px」も概算）。76px + 余白 --sp-2（8px）= 84px。
+
+   この値が実際に効いていることは e2e（S72）が `document.elementFromPoint()` で
+   確認する（信号機の矩形の中にタブが1つも来ていないこと）。紙の上の寸法だけを
+   根拠にしない、というのがこのリポジトリの規律（design-rules.md）。 */
+.tab-bar__traffic-light-gap {
+  width: 84px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 
 .tab-bar__tabs {

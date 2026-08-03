@@ -101,6 +101,17 @@ function closeTabButtonLabel(paneCount: number): string {
 }
 
 export interface TabBarProps {
+  /**
+   * サイドバーを畳んでいるか（Cmd+Option+S。Issue #20 K-1）。
+   *
+   * 畳むとサイドバー（と、その中で信号機ボタンの下敷きになっていた
+   * `.sidebar__drag-region`）が幅0になり、**macOS の信号機ボタンがそのまま
+   * タブバーの上に乗る**。信号機はネイティブのボタンで DOM には存在しないため、
+   * 1枚目のタブは「押しても信号機に吸われる」領域を抱えることになる。
+   * そこで畳んでいる間だけ、タブの手前に信号機ぶんの逃げ帯
+   * （`.tab-bar__traffic-light-gap`）を出す。幅の根拠は styles.css 側のコメント。
+   */
+  sidebarCollapsed: boolean;
   tabs: TabState[];
   activeTabId: string | null;
   onSelect: (id: string) => void;
@@ -116,6 +127,7 @@ export interface TabBarProps {
 }
 
 export default function TabBar({
+  sidebarCollapsed,
   tabs,
   activeTabId,
   onSelect,
@@ -272,6 +284,14 @@ export default function TabBar({
 
   return (
     <div className="tab-bar">
+      {sidebarCollapsed && (
+        // 信号機ボタンの逃げ帯（Issue #20 K-1）。畳んでいる間だけ出す。
+        // `-webkit-app-region: drag` を付けてあるので、`.sidebar__drag-region` を
+        // 失っている間もここからウィンドウを動かせる（タブが増えて
+        // `.tab-bar__drag-region` の実幅が 0 になっても、この帯は残る）。
+        // 見た目は持たない（塗りも線も無い）ので、既定の表示は1pxも変わらない。
+        <div className="tab-bar__traffic-light-gap" />
+      )}
       <div className="tab-bar__tabs">
         <div className="tab-bar__tablist" role="tablist" aria-orientation="horizontal" aria-label="開いているタブ">
           {tabs.map((tab, index) => {
