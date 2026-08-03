@@ -121,6 +121,18 @@ export default function App(): ReactElement {
   // （「一時的に畳む」操作であり、次回起動時にサイドバーが消えている状態から
   // 始まるとタスク一覧・履歴の存在自体に気づけなくなる）。
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // macOS のフルスクリーン中か（Issue #119 周5 / #20 の K-5）。
+  //
+  // フルスクリーンでは macOS が信号機ボタンを隠すため、その下敷きにしている
+  // `.sidebar__drag-region`（36px）を残すと**何も無い帯だけがターミナルの上に
+  // 居座る**。Main から流れてくる状態でクラスを切り替え、帯を畳む。
+  //
+  // **`window.innerHeight` や HTML5 の Fullscreen API では判定できない**
+  // （あれは要素の全画面表示で、macOS のウィンドウのフルスクリーンとは別物）。
+  const [fullScreen, setFullScreen] = useState(false);
+  useEffect(() => {
+    return window.api.app.onFullScreenChanged(setFullScreen);
+  }, []);
   // サイドバーの幅（Issue #119 周4 / #20 の PR 16）。
   //
   // **折りたたみと違い、こちらは AppConfig に永続化する。** 畳むのは「一時的に
@@ -312,6 +324,17 @@ export default function App(): ReactElement {
   useEffect(() => {
     return window.api.config.onChange(setConfig);
   }, []);
+
+  // ウィンドウタイトルをアクティブなタブに同期する（Issue #119 周5 / #20 の K-10）。
+  // `hiddenInset` なので画面上には出ないが、ウィンドウメニュー・Mission Control・
+  // App Exposé には出る。**そこだけが「どのウィンドウがどのプロジェクトか」を
+  // 見分ける手がかり**になる（3つのリポジトリで同じアプリを開いていると、
+  // いまはどれも同じ名前で並ぶ）。
+  useEffect(() => {
+    const tab = tabsApi.tabs.find((t) => t.id === tabsApi.activeTabId);
+    if (!tab) return;
+    window.api.app.setTitle(tabLeaf(tab).title);
+  }, [tabsApi.tabs, tabsApi.activeTabId]);
 
   // サイドバーの幅は「即座に画面へ反映する state」と「永続化された設定」の2箇所に
   // 存在する（ドラッグ中の追従を Main 経由の往復にすると1フレーム遅れる）。
@@ -716,7 +739,7 @@ export default function App(): ReactElement {
   }, [tabsApi.tabs, tabsApi.activeTabId]);
 
   return (
-    <div className="app">
+    <div className={`app${fullScreen ? ' is-fullscreen' : ''}`}>
       {/* 見出し階層の頂点（Issue #119 周3）。本体ウィンドウには <h2> が
           フラットに並ぶだけで <h1> が1つも無く、VoiceOver のローターで
           見出しを辿っても階層が読めなかった。視覚的には出さない

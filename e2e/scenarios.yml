@@ -976,3 +976,60 @@ scenarios:
       2〜5回/日で初日以降ほぼ0なので、`Cmd+英数字` の名前空間は 100手/日級の
       操作＝タブ切替・「あなたの番」へのジャンプのために空けておく）。
       **Electron は未設定の accelerator に `undefined` ではなく `null` を返す。**
+
+  # --- タブバーの状態表現（Issue #119 周5 / #20 の B-3 と Phase 1 積み残し）---
+  - id: S78
+    title: 選択中タブに白い下辺の手がかりがあり、状態スロットが色だけに頼らない
+    spec: S78-tab-state-and-selection.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周5。**#20 の Phase 1 で唯一 3:1 に届かなかった箇所の答え。**
+      `.tab-bar__tab.is-active` は塗りだけで選択を表しており、
+      `--surface-tab-active` はタブバーの面に対し **1.23**（S40 が `wcag: 'fail'` で
+      実測固定）。塗りをどう選んでも届かない（明るくするとタブの文字が読めなくなる）
+      ので構造で解く。白（`--focus-ring`）2px の `box-shadow: inset 0 -2px 0`。
+      **白である理由**: アクセントも `--border-control` も `prefers-contrast: more` の
+      面（#525252）で 2.84 / 1.82 まで落ち、**高コントラストモードの利用者だけが
+      手がかりを失う**。白は 13.58 / 7.81 で1〜3型でも比が動かない。
+      **下辺のみである理由**: フォーカスリングが4辺白なので、選択状態も4辺白にすると
+      フォーカスの有無が区別できなくなる（WCAG 2.4.13）。
+      **`box-shadow: inset` である理由**: `border` は実寸を変えてタブの高さを動かし、
+      外向きの影は `.tab-bar__tabs` の `overflow-x: auto` に端で切られる。
+      **S40 では測れない**（`measureContrast` は単一プロパティを色として解決する
+      実装で `box-shadow` は色以外の成分を持つ）ので、ここで文字列から色を取り出して
+      `src/shared/theme.ts` の `contrastRatio`（S40 と同じ式）で比を計算する。
+      あわせて `.tab-bar__state-slot` も見る。6px のスロットは PR #108 で幅だけ
+      確保されて**空のまま**で、CSS 自身が「配線は別 PR」と書いていた（判定関数も
+      データも既にあり、**唯一の利用者が `Cmd+J` だけ**）。周5 で「あなたの番」を
+      配線し、終了マーク（四角）と**形で**区別できるようにした（丸 / 原則2）。
+      **ドットが「出る」側は E2E では検証できない** — 偽 CLI の固定 `agents.json` の
+      `sessionId` は実タブの `agentSessionId`（アプリが採番した UUID）と一致しない
+      （`Cmd+J` の成功経路も同じ制約で未検証。解くのは #120 の D-2）。ここでは
+      「出ない側」と、幅が常に確保されていること、形が違うことを見る。出る条件は
+      `test/unit/tab-your-turn.test.ts` が固定している（**未知の status は
+      第3の状態で、ドットを出さない** — CLI が新しい値を返し始めた日に
+      全タブが橙になるのを防ぐ）。
+
+  - id: S79
+    title: ウィンドウタイトルがアクティブなタブに追従し、フルスクリーンで帯が畳まれる
+    spec: S79-window-title-and-fullscreen.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周5（#20 の K-5 / K-10）。**`win.setTitle()` の呼び出しも
+      `enter-full-screen` の購読も、リポジトリ内に 0 箇所だった。**
+      タイトルは `titleBarStyle: 'hiddenInset'` で画面上には出ないが、
+      **ウィンドウメニュー・Mission Control・App Exposé には出る**（3つの
+      リポジトリで同じアプリを開くと、どのウィンドウがどのプロジェクトかを
+      見分ける手がかりがそこしかない）。2枚のタブで**名前が違うこと**まで
+      見ないと「たまたま同じ」で通ってしまうので、そこも assert する。
+      フルスクリーン中は macOS が信号機ボタンを隠すので、その下敷きにしている
+      `.sidebar__drag-region`（36px）を残すと**何も無い帯だけがターミナルの上に
+      居座る**。**Renderer からは判定できない**（`window.innerHeight` や HTML5 の
+      Fullscreen API は要素の全画面表示で、macOS のウィンドウのフルスクリーンとは
+      別物）ので Main から `IpcEvent.fullScreenChanged` で流す。
+      **タブバーは畳まない**（畳むとタブの切り替えがマウスから不可能になる）ことも
+      あわせて固定する。**`trafficLightPosition` の再適用は検証できない** —
+      Electron に読み戻す API が無く（`getTrafficLightPosition` は 43 に存在しない。
+      S73 で実際に呼んで確認した）、信号機はネイティブの NSButton で DOM にも
+      現れない。復帰時に `setWindowButtonPosition` を呼んでいることまでが実装の
+      担保で、位置の一致は `test/unit/css-tokens.test.ts` が導出ごと固定している。

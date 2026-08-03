@@ -12,6 +12,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_THEME, SURFACE } from '@shared/defaults';
+import {
+  BAR_HEIGHT_PX,
+  TRAFFIC_LIGHT_SIZE_PX,
+  trafficLightCenterY,
+  trafficLightY,
+} from '@shared/windowChrome';
 
 const CSS = readFileSync(
   resolve(import.meta.dirname, '../../src/renderer/src/styles.css'),
@@ -229,6 +235,34 @@ describe('ウィンドウ上端の帯の高さ（Issue #119 周1）', () => {
 
   it('--bar-height が宣言されている', () => {
     expect(root).toMatch(/--bar-height:\s*\d+px;/);
+  });
+
+  // CSS 変数は Main プロセスから読めないので、帯の高さは styles.css と
+  // src/shared/windowChrome.ts の2箇所に存在する。**構造的に統一できない**
+  // （SURFACE と同じ状況）。機械で突き合わせる。
+  it('CSS の --bar-height と BAR_HEIGHT_PX が一致する', () => {
+    const declared = /--bar-height:\s*(\d+)px;/.exec(root);
+    expect(declared, '--bar-height の宣言が読めていない').not.toBeNull();
+    expect(Number(declared?.[1])).toBe(BAR_HEIGHT_PX);
+  });
+
+  it('.sidebar__drag-region の高さも --bar-height を参照している（段差を作らない）', () => {
+    // 周5 まで 40px のリテラルで、タブバー（36px）と 4px の段差があった
+    // （#20 の K-4「継ぎ目が折れている」）。
+    expect(ruleBody('.sidebar__drag-region')).toMatch(/height:\s*var\(--bar-height\)/);
+  });
+
+  it('信号機の光学中心が帯の中心と一致する', () => {
+    // **これは実行時には観測できない。** 信号機はネイティブの NSButton で
+    // DOM に存在せず、Electron には trafficLightPosition を読み戻す API も無い
+    // （`getTrafficLightPosition` は Electron 43 に存在しない。E2E で実際に
+    // 呼んで確認した）。だから導出を windowChrome.ts に集めてここで固定する。
+    expect(trafficLightCenterY(BAR_HEIGHT_PX)).toBe(BAR_HEIGHT_PX / 2);
+    // `#20` の「44px にすれば光学中心 22 と合う」は二重に誤りだった。
+    // (1) `{ y: 16 }` のときの中心は `16 + 14/2 = 23`（22 ではない）
+    // (2) trafficLightPosition は自由に動かせるので、帯を信号機に合わせる必要が無い
+    expect(16 + TRAFFIC_LIGHT_SIZE_PX / 2).toBe(23);
+    expect(trafficLightY(36)).toBe(11);
   });
 
   it('.tab-bar の height が --bar-height を参照している', () => {

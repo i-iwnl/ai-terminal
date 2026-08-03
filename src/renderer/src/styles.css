@@ -287,23 +287,33 @@ body {
 /* ---------------------------------------------------------------------- */
 
 /* Issue #20 K-7: サイドバーに vibrancy（`vibrancy: 'sidebar'`。src/main/index.ts）。
-   **`.sidebar` 自身はここでは塗らない。** 塗りは `.sidebar__tabs`（トラック）と
-   `.sidebar__content` の2つの子へ移してある（下記）。理由:
+   `.sidebar` 自身は塗らず、塗りを `.sidebar__tabs`（トラック）と
+   `.sidebar__content` の2つの子へ移してある。
 
-   - vibrancy は BrowserWindow 単位（ウィンドウの背後に敷く NSVisualEffectView）
-     で、Renderer 側で「見える」ようにするには、その領域だけ DOM の背景を
-     不透明にしないことが必要（不透明な祖先が1つでもあれば、そこから下は
-     ネイティブの素材ではなく単にその祖先の塗りが見える）
-   - `.sidebar__drag-region`（下記。信号機ボタンの余白）は**元から背景を
-     持っていない**（透明）。`.sidebar` を不透明にしないだけで、この40pxの
-     帯だけが vibrancy を見せる唯一の場所になる
-   - `.sidebar__tabs` と `.sidebar__content` は明示的に不透明な背景を持つ
-     ので、**この2つの内側にはテキストが1つもある領域には vibrancy がかからない**。
-     `e2e/specs/S40-contrast-contract.spec.ts` が実測しているサイドバーの
-     文字コントラストは、透明なウィンドウの向こう側（デスクトップの壁紙や
-     背後のウィンドウ）に依存せず、これまでと同じ値のまま固定できる
-   - `prefers-reduced-transparency` では `.sidebar` 自体を不透明に戻し、
-     ドラッグ領域も含めて完全に静止した塗りへフォールバックする（下記） */
+   **訂正（Issue #119 周5・実機で測定）: vibrancy は一度も見えていない。**
+
+   このコメントは以前「`.sidebar__drag-region` の 40px だけが vibrancy を見せる
+   唯一の場所」と書いていたが、実機の `getComputedStyle` で測ると
+   **不透明な層が2枚**あり、ネイティブの素材には到達しない。
+
+   | 層 | 実測 |
+   |---|---|
+   | `BrowserWindow` の `backgroundColor` | `#1e1e1e`（`src/main/index.ts` が明示。不透明） |
+   | `body` の背景 | `rgb(30, 30, 30)`（`html` に背景が無いのでキャンバスへ伝播する） |
+
+   `.sidebar` / `.sidebar__drag-region` を透明にしても、その下にこの2枚がある。
+   Electron で vibrancy を実際に見せるには `transparent: true` か
+   `backgroundColor: '#00000000'` が要る。
+
+   **それでも `vibrancy: 'sidebar'` と、下の塗りの構造は残す。**
+   透明化は「ライブリサイズ中に macOS が塗る色」（`backgroundColor` のコメント）と
+   `S40-contrast-contract.spec.ts` の前提（サイドバーの文字コントラストが
+   デスクトップの壁紙に依存しない）の両方に影響する変更で、
+   **見た目を良くするために測定済みの保証を崩す取引**になる。やるなら独立した周で。
+
+   下の `prefers-reduced-transparency` の規則も同じ理由で残す（現状は
+   透けていないので実質的に効いていないが、透明化する周が来たときに
+   フォールバックが無い状態から始めないため）。 */
 /* 幅は `--sidebar-width` 経由で受ける（Issue #119 周4 / #20 の PR 16）。
  *
  * **インラインの `style={{ width }}` にしてはいけない。** インラインスタイル
@@ -389,13 +399,36 @@ body {
   }
 }
 
-/* macOS の信号機ボタン（hiddenInset, trafficLightPosition: 16,16）と重ならないための余白。
+/* macOS の信号機ボタン（hiddenInset）と重ならないための余白。
    ここをドラッグ領域にして、ウィンドウをこの帯からドラッグ移動できるようにする。
-   背景は持たない（= vibrancy が見える唯一の領域。上の `.sidebar` のコメント参照）。 */
+
+   **高さは `--bar-height`（タブバーと同じ 36px）。** Issue #119 の周5 まで 40px で、
+   隣の `.tab-bar`（36px）と **4px の段差**があった（#20 の K-4「継ぎ目が折れている」）。
+   36px に揃えたうえで `trafficLightPosition` を `{ x: 16, y: 11 }` にすると、
+   信号機の光学中心（`11 + 14/2 = 18`）・この帯の中心（`36/2 = 18`）・
+   タブバーのテキスト中心（18）が**初めて3つとも一致する**。
+
+   > `#20` は「44px にすれば信号機の光学中心 22 と合う」としていたが、**二重に誤り**。
+   > 信号機の中心は `16 + 14/2 = 23`（22 ではない）で、そもそも
+   > `trafficLightPosition` は自由に動かせるので、帯の高さを信号機に合わせる必要が無い。
+   > **帯を先に決めて信号機をそこへ置く**ほうが、クロームに割くピクセルが減る（原則3）。
+
+   背景は持たない。**ただし vibrancy は見えていない**（`.sidebar` のコメント参照）。 */
 .sidebar__drag-region {
-  height: 40px;
+  height: var(--bar-height);
   flex-shrink: 0;
   -webkit-app-region: drag;
+}
+
+/* フルスクリーン中は macOS が信号機ボタンを隠すので、その下敷きも畳む
+   （Issue #119 周5 / #20 の K-5）。残すと**何も無い帯だけがターミナルの上に
+   居座る**。判定は Main から流れてくる（`IpcEvent.fullScreenChanged`）。
+   HTML5 の Fullscreen API では取れない（あれは要素の全画面表示で別物）。
+
+   タブバー側は畳まない。**タブは全画面でも要る**（畳むとタブの切り替えが
+   マウスから不可能になる）。 */
+.app.is-fullscreen .sidebar__drag-region {
+  height: 0;
 }
 
 /* Issue #20 K-6: 下線タブ（Material Design の語彙）から macOS のセグメンテッド
@@ -528,9 +561,39 @@ body {
   white-space: nowrap;
 }
 
+/* 選択中のタブ（Issue #119 周5。#20 の Phase 1 積み残し P0）。
+ *
+ * **塗りだけでは選択状態を表せない。** `--surface-tab-active` #2e2e2e は
+ * タブバーの面（`--surface-1`）に対し **1.23** で、WCAG 1.4.11（非テキスト 3:1）に
+ * 遠く届かない。`S40-contrast-contract.spec.ts` が `wcag: 'fail'` として実測固定
+ * しており、**塗りをどう選んでも 3:1 には届かない**（明るくするとタブの文字が
+ * 読めなくなる）。構造で解くしかない。
+ *
+ * **色は白（`--focus-ring`）。** アクセントも `--border-control` も
+ * `prefers-contrast: more` の面（#525252）の上では 2.84 / 1.82 まで落ち、
+ * **高コントラストモードの利用者だけが手がかりを失う**（design-rules
+ * 「単一プロパティで複数の状態を表すと…」と同じ型の壊れ方）。白は 13.58 / 7.81 で、
+ * 1型〜3型の色覚シミュレーションでも比が1ミリも動かない。
+ *
+ * **下辺のみ。4辺にしない。** フォーカスリングが `outline: 2px solid var(--focus-ring)`
+ * の4辺白なので、選択状態も4辺白にすると**フォーカスの有無が区別できなくなる**
+ * （WCAG 2.4.13）。面積差で区別できるよう、こちらは下辺2pxに留める。
+ *
+ * **`border-bottom` ではなく `box-shadow: inset`。** (1) `border` は実寸を変えるので
+ * タブの高さが動き、他の spec のクリック位置がずれる、(2) `.tab-bar__tabs` は
+ * `overflow-x: auto` なので外向きの影は端で切られる（design-rules
+ * 「外側に出すリングはスクロール領域の端で切られる」）。
+ *
+ * `border-top` は**プロバイダ色**に使用済みなので使えない（`.tab-bar__tab--claude` 等）。
+ *
+ * > macOS のタブは下線ではなく塗りと角丸で選択を表す、という指摘はレビューで
+ * > 出ており正しい。だが**その塗りが 1.23 で成立していない**以上、
+ * > HIG からの意図的な逸脱として構造を足すほうを採る（サイドバーを本文より
+ * > 明るくしない判断と同じ形で、design-rules に記録済み）。 */
 .tab-bar__tab.is-active {
   background: var(--surface-tab-active);
   color: var(--text-bright);
+  box-shadow: inset 0 -2px 0 var(--focus-ring);
 }
 
 .tab-bar__tab.is-exited {
@@ -568,13 +631,33 @@ body {
   pointer-events: none;
 }
 
-/* 終了したタブの印。将来の「あなたの番」ドット（丸）と形を変えて、
-   色だけに頼らないようにする（原則2）。色は既存の終了バッジ・文字色と
-   同じ --status-exited を使う（対 --surface-1 で 5.49、対
-   --surface-tab-active で 4.47。非テキストの 3:1 はもちろんテキストの
+/* 終了したタブの印。「あなたの番」ドット（丸）と**形を変えて**、
+   色だけに頼らないようにする（原則2）。こちらは角のある四角のまま。
+   色は既存の終了バッジ・文字色と同じ --status-exited を使う（対 --surface-1 で
+   5.49、対 --surface-tab-active で 4.47。非テキストの 3:1 はもちろんテキストの
    4.5:1 も満たすため、装飾要素としての追加検証は不要）。 */
 .tab-bar__state-slot--exited {
   background: var(--status-exited);
+}
+
+/* 「あなたの番」のドット（Issue #119 周5 / #20 の B-3）。
+ *
+ * このスロットは PR #108 で**幅だけ確保されて空のまま**になっていた
+ * （「配線は別 PR」とコメントに書かれていた）。判定関数（tabYourTurn.ts の
+ * `tabHasYourTurn`）もデータ（lib/agentTasksStore.ts）も既にあり、
+ * **唯一の利用者が `Cmd+J` だけ**という状態だった。
+ *
+ * Dock バッジは `scopeAgentsToCwd` に関わらずマシン全体を数えるので
+ * 「3件待っている」と言うのに、**ウィンドウを見てもどのタブか分からない**。
+ * ターミナルを見ている視線の高さに出る唯一の層がここ（#20 の B-3 が
+ * 「追加ピクセルゼロ」として採用した層）。
+ *
+ * **形を丸にして、終了マーク（四角）と色以外でも区別できるようにする**（原則2）。
+ * 色相の違いは手がかりに数えない、という規約に沿って、語も
+ * `tabAccessibleLabel` に入れてある（TabBar.tsx）。 */
+.tab-bar__state-slot--your-turn {
+  background: var(--status-your-turn);
+  border-radius: 50%;
 }
 
 /* タブの選択操作。role="tab" はこの <button> に付け、閉じるボタンとは

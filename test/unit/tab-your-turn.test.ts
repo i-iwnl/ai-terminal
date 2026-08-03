@@ -6,7 +6,11 @@
 
 import { describe, expect, it } from 'vitest';
 import type { PaneLeaf, PaneNode, PaneSplit } from '../../src/renderer/src/tabs/paneTree';
-import { findNextYourTurnTab } from '../../src/renderer/src/tabs/tabYourTurn';
+import {
+  findNextYourTurnTab,
+  tabHasYourTurn,
+  yourTurnSessionIds,
+} from '../../src/renderer/src/tabs/tabYourTurn';
 
 function leaf(overrides: Partial<PaneLeaf> = {}): PaneLeaf {
   return {
@@ -111,5 +115,61 @@ describe('findNextYourTurnTab', () => {
     const tabs = [tab('a', 'session-a'), tab('b', 'session-b')];
     const tasks = [{ sessionId: 'session-b', status: 'idle' }];
     expect(findNextYourTurnTab(tabs, 'gone', tasks, 'forward')).toBe('b');
+  });
+});
+
+describe('tabHasYourTurn（Issue #119 周5: タブバーの状態スロット）', () => {
+  // Cmd+J（findNextYourTurnTab）とタブバーのドットが、**同じ判定**を使うことが
+  // この関数を切り出した理由。片方だけ独自に status を解釈すると、
+  // 「Cmd+J は飛ぶのにドットが出ていない」という食い違いが起きる。
+
+  it('あなたの番のタスクが0件なら false', () => {
+    expect(tabHasYourTurn(leaf({ agentSessionId: 's1' }), yourTurnSessionIds([]))).toBe(false);
+    expect(
+      tabHasYourTurn(
+        leaf({ agentSessionId: 's1' }),
+        yourTurnSessionIds([{ sessionId: 's1', status: 'busy' }]),
+      ),
+    ).toBe(false);
+  });
+
+  it('busy 以外（= あなたの番）なら true', () => {
+    // 状態の意味の正は shared/agent-status.ts の toTaskState。反転させない。
+    const ids = yourTurnSessionIds([{ sessionId: 's1', status: 'idle' }]);
+    expect(tabHasYourTurn(leaf({ agentSessionId: 's1' }), ids)).toBe(true);
+  });
+
+  it('status が未知の値のときはドットを出さない（第3の状態として扱う）', () => {
+    // **`toTaskState` は二値分岐ではない。** `busy` -> working、`idle` -> your-turn、
+    // **それ以外は unknown** で、`countYourTurn` も Dock バッジも unknown を数えない
+    // （「分からないものを人間の番として催促しない」）。
+    //
+    // タブバーのドットも同じ扱いにする。ここで unknown を「あなたの番」に寄せると、
+    // **CLI が新しい status を返し始めた日から全タブに橙のドットが出る**。
+    // タスク一覧（unknown グループ + 生の値を併記）とも食い違う。
+    const ids = yourTurnSessionIds([{ sessionId: 's1', status: 'waiting_for_input' }]);
+    expect(tabHasYourTurn(leaf({ agentSessionId: 's1' }), ids)).toBe(false);
+    // status そのものが無いときも同じ。
+    expect(
+      tabHasYourTurn(leaf({ agentSessionId: 's1' }), yourTurnSessionIds([{ sessionId: 's1' }])),
+    ).toBe(false);
+  });
+
+  it('分割中は、非アクティブなペインで待っていてもタブには印が出る', () => {
+    // タブは畳まれた木の代表なので、中のどれかが待っていれば待っている
+    // （findNextYourTurnTab と同じ考え方）。
+    const split: PaneNode = {
+      kind: 'split',
+      dir: 'row',
+      ratio: 0.5,
+      children: [leaf({ paneId: 'a' }), leaf({ paneId: 'b', agentSessionId: 's2' })],
+    } as PaneSplit;
+    const ids = yourTurnSessionIds([{ sessionId: 's2', status: 'idle' }]);
+    expect(tabHasYourTurn(split, ids)).toBe(true);
+  });
+
+  it('agentSessionId を持たないペイン（シェルタブ）だけなら false', () => {
+    const ids = yourTurnSessionIds([{ sessionId: 's1', status: 'idle' }]);
+    expect(tabHasYourTurn(leaf({ paneId: 'a' }), ids)).toBe(false);
   });
 });

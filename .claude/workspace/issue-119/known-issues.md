@@ -89,10 +89,18 @@ P1（E の前提）
 加えて `createWindow()` は `backgroundColor: SURFACE.base` を**明示している**
 （`transparent: true` は無い）。**不透明な層が2枚重なっている。**
 
-### 原因（未確認）
+### 原因（**2026-08-03 の周5 で確定**）
 
-未検証。**実機で DevTools から `document.body.style.background='transparent'` にして
-左上が変わるか**を見れば1行で決着する。
+実機の `getComputedStyle` で測った結果、**不透明な層が2枚あった。**
+
+| 層 | 実測 |
+|---|---|
+| `BrowserWindow` の `backgroundColor` | `#1e1e1e`（`src/main/index.ts` が明示） |
+| `body` の背景 | `rgb(30, 30, 30)`（`html` に背景が無いのでキャンバスへ伝播する） |
+
+`.sidebar` / `.sidebar__drag-region` は透明（`rgba(0,0,0,0)`）だが、その下に
+この2枚がある。Electron で vibrancy を見せるには `transparent: true` か
+`backgroundColor: '#00000000'` が要る。**vibrancy は一度も見えていない。**
 
 ### 影響範囲
 
@@ -105,19 +113,24 @@ P1（E の前提）
 
 ### 対処方針
 
-- [ ] 周5 の先頭で実機確認する（agent-browser + DevTools）
-- [ ] 見えていないなら、`index.ts` のコメントを訂正し、`prefers-reduced-transparency` の
-      規則を残すか消すかを決める
-- [ ] 見えているなら、透明域は 40px ではなく約 98px（`.sidebar__tabs` の `margin: 8px` の
-      額縁も透明）であることを確認する
+- [x] 周5 で実機確認した（agent-browser）
+- [x] `styles.css` と `src/main/index.ts` の**事実と食い違っていたコメントを訂正した**
+- [x] **透明化には踏み込まない判断をした。** 透明化は
+      「ライブリサイズ中に macOS が塗る色」（`backgroundColor` のコメント）と
+      `S40-contrast-contract.spec.ts` の前提（サイドバーの文字コントラストが
+      デスクトップの壁紙に依存しない）の両方に影響する。**見た目のために
+      測定済みの保証を崩す取引**になるので、やるなら独立した周で
+- [x] `vibrancy: 'sidebar'` の指定と `prefers-reduced-transparency` の規則は**残した**
+      （消すと「検討した結果やらない」のか「知らなかった」のかが分からなくなる。
+      透明化する周が来たときにフォールバックが無い状態から始めないため）
 
 ### 優先度
 
-P1（F-1 の前提）
+P2（F-1 の判断材料としては決着済み。透明化そのものは別の周）
 
 ### ステータス
 
-調査中（この Issue の周5 で確認する）
+**調査完了・対処済み**（透明化は意図的に非目標）
 
 ---
 

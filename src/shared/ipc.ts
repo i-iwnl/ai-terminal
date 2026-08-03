@@ -560,6 +560,8 @@ export const IpcSend = {
    * 見せる）。ペインの木そのものは Renderer だけが持つため、Main は数だけを受け取る。
    */
   menuPaneCount: 'menu:pane-count',
+  /** ウィンドウタイトルの設定（Issue #119 周5 / #20 の K-10） */
+  windowSetTitle: 'window:set-title',
 } as const;
 
 /** Main -> Renderer（push） */
@@ -571,6 +573,16 @@ export const IpcEvent = {
   accessibilitySupportChanged: 'app:accessibility-support-changed',
   focusSession: 'session:focus',
   configChanged: 'config:changed',
+  /**
+   * ウィンドウがフルスクリーンに入った / 出た（Issue #119 周5 / #20 の K-5）。
+   *
+   * フルスクリーン中は macOS が信号機ボタンを隠すので、その下敷きにしている
+   * `.sidebar__drag-region` も畳む必要がある（残すと**何も無い帯だけが
+   * ターミナルの上に居座る**）。Renderer からは `window.isFullScreen` のような
+   * DOM API では取れない（あれは HTML5 の全画面 API で、macOS の
+   * フルスクリーンとは別物）ため、Main から流す。
+   */
+  fullScreenChanged: 'window:full-screen-changed',
 } as const;
 
 /**
@@ -642,6 +654,16 @@ export interface RendererApi {
      * ここだけ IPC を経由しない同期 API になっている。
      */
     pathForFile(file: File): string;
+    /** macOS のフルスクリーンに入った / 出たの購読。購読解除関数を返す */
+    onFullScreenChanged(listener: (fullScreen: boolean) => void): () => void;
+    /**
+     * ウィンドウのタイトルを設定する（Issue #119 周5 / #20 の K-10）。
+     *
+     * `titleBarStyle: 'hiddenInset'` なのでタイトルバーには出ないが、
+     * **ウィンドウメニュー・Mission Control・App Exposé には出る。**
+     * アクティブなタブの名前を流す。
+     */
+    setTitle(title: string): void;
   };
   menu: {
     /** メニューから選ばれた操作の購読。購読解除関数を返す */

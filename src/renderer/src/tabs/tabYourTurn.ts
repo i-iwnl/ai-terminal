@@ -36,6 +36,33 @@ interface JumpableTask {
  * 現在アクティブなタブ自身が「あなたの番」でも、探索は「次」から始まるため
  * そのタブへは戻らない（同じタブへジャンプしても手数の削減にならないため）。
  */
+/**
+ * 「あなたの番」のタスクが持つ sessionId の集合。
+ *
+ * 状態の意味の唯一の正は `src/shared/agent-status.ts` の `toTaskState`
+ * （busy = 作業中、busy 以外 = あなたの番）。**ここで反転させない。**
+ */
+export function yourTurnSessionIds(tasks: readonly JumpableTask[]): Set<string> {
+  return new Set(
+    tasks.filter((task) => toTaskState(task.status) === 'your-turn').map((task) => task.sessionId),
+  );
+}
+
+/**
+ * そのタブが「あなたの番」を含むか（Issue #119 周5。タブバーの状態スロット用）。
+ *
+ * 判定は `findNextYourTurnTab` と同じで、木に含まれる**いずれかの** leaf の
+ * `agentSessionId` が対象集合に入っていればよい。分割後、あなたの番の
+ * エージェントが非アクティブなペインで動いていてもタブには印を出す
+ * （タブは畳まれた木の代表なので、中のどれかが待っていれば待っている）。
+ */
+export function tabHasYourTurn(layout: PaneNode, sessionIds: ReadonlySet<string>): boolean {
+  if (sessionIds.size === 0) return false;
+  return flattenPaneTree(layout).some(
+    (leaf) => leaf.agentSessionId !== undefined && sessionIds.has(leaf.agentSessionId),
+  );
+}
+
 export function findNextYourTurnTab(
   tabs: readonly JumpableTab[],
   activeTabId: string | null,
@@ -44,15 +71,10 @@ export function findNextYourTurnTab(
 ): string | undefined {
   if (tabs.length === 0) return undefined;
 
-  const yourTurnSessionIds = new Set(
-    tasks.filter((task) => toTaskState(task.status) === 'your-turn').map((task) => task.sessionId),
-  );
-  if (yourTurnSessionIds.size === 0) return undefined;
+  const sessionIds = yourTurnSessionIds(tasks);
+  if (sessionIds.size === 0) return undefined;
 
-  const isYourTurnTab = (tab: JumpableTab): boolean =>
-    flattenPaneTree(tab.layout).some(
-      (leaf) => leaf.agentSessionId !== undefined && yourTurnSessionIds.has(leaf.agentSessionId),
-    );
+  const isYourTurnTab = (tab: JumpableTab): boolean => tabHasYourTurn(tab.layout, sessionIds);
 
   const { length } = tabs;
   const startIndex = Math.max(
