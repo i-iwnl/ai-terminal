@@ -732,15 +732,38 @@ export default function App(): ReactElement {
   }, []);
 
   // OS 通知のクリックから「このセッションを前に出せ」が飛んでくる。
-  // 対応するペインが無い場合は何もしない（ウィンドウの前面化は Main 側で済んでいる）。
   // タブ単位ではなくペイン単位で解決する（design-review.md U4。対象ペインが
   // 今のタブに既に見えている場合、タブの前面化だけでは画面が1pxも動かない）。
+  //
+  // Issue #120 C-2（周4）: **対応するペインが無い場合も無言で終わらせない。**
+  // 通知は `claude agents --json` のポーリングから作られ、`ownedByApp` で
+  // 絞っていない（`scopeAgentsToCwd` の既定は false = マシン全体）。つまり
+  // **他のターミナルで起動した claude の完了通知が既定で飛ぶ**。その通知を
+  // 押しても、このアプリには対応する leaf が無いので `findPaneByAgentSessionId`
+  // が undefined を返す。以前はここで黙って抜けており、ユーザーには
+  // 「ウィンドウが前に出ただけで何も起きなかった」ように見えていた。
+  //
+  // 同じ空振りは「他アプリ起動」限定ではない。tmux 永続化が有効なとき
+  // `Cmd+W` でタブを閉じても claude は tmux に残るし、アプリを再起動すれば
+  // 以前このアプリが起動したセッションも leaf を持たない。
+  //
+  // すぐ上の `focusPaneLocation` は「対象ペインが既にアクティブ」のケースに
+  // 同じ形の手当て（通知バナー + role="status"）を持っている。**片側にだけ
+  // 適用されていた設計方針を、見つからない側にも揃える。**
+  // 自動で `--resume` して開くことはしない（issue-24 で「副作用が大きい」と
+  // して却下済み。押しただけで新しい PTY が生えるのは行き過ぎ）。
   useEffect(() => {
     return window.api.session.onFocus((agentSessionId) => {
       const location = findPaneByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
-      if (location) focusPaneLocation(location);
+      if (location) {
+        focusPaneLocation(location);
+        return;
+      }
+      const message = 'このセッションを開いているタブはありません（サイドバーの「タスク」で確認できます）';
+      showNotice(message, 'info');
+      announce(message);
     });
-  }, [focusPaneLocation]);
+  }, [announce, focusPaneLocation, showNotice]);
 
   // 支援技術の起動状態。初期値を取り、以降は変化を購読する。
   // 取得に失敗しても false のまま続行する（設定からは有効にできる）。

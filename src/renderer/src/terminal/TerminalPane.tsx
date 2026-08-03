@@ -8,6 +8,7 @@ import type { DragEvent as ReactDragEvent } from 'react';
 import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import { useTerminal, type TerminalHandle } from './useTerminal';
 import { buildDropInsertion, pathsFromUriList } from '../lib/dropPath';
+import { createFocusEchoGate } from './focusEcho';
 
 export interface TerminalPaneProps {
   ptyId: string;
@@ -123,6 +124,9 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
   // 無条件に0へ戻す。
   const dragCounterRef = useRef(0);
   const [isDropTarget, setIsDropTarget] = useState(false);
+  // プログラム的な focus() のこだまを飲み込む門番（Issue #120 C-1）。
+  // ペインごとに1つ。`useRef` なのでレンダーをまたいで同一性が変わらない。
+  const focusEchoGate = useRef(createFocusEchoGate()).current;
 
   const handle = useTerminal(containerRef, {
     ptyId,
@@ -137,11 +141,18 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
   useImperativeHandle(ref, () => handle, [handle]);
 
   // タブがアクティブになったタイミングでフォーカスとフィットをやり直す。
+  //
+  // Issue #120 C-1: **この `focus()` のこだまを `onActivate` に流さない。**
+  // ここで focus するのは「このペインが既に active だから」なので、
+  // 跳ね返ってくる focus イベントが運ぶ情報は常にゼロ。にもかかわらず、
+  // 負荷下では React 18 の passive effect のフラッシュが遅れ、その間に入った
+  // キーボード由来のアクティブ変更（`Cmd+]`）をこだまが上書きしていた。
+  // 経緯と観測ログは `focusEcho.ts` のコメントが正。
   useEffect(() => {
     if (!active) return;
-    handle.focus();
+    focusEchoGate.run(() => handle.focus());
     handle.fit();
-  }, [active, handle]);
+  }, [active, focusEchoGate, handle]);
 
   // ドラッグ中にブラウザ既定の「そのファイルを開く」挙動へ渡さないことが第一。
   // dropEffect を copy にすると、カーソルが `+` 付きになって落とせることが伝わる。
@@ -213,7 +224,14 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       // 追従させる（Cmd+F / Cmd+W 等のグローバル操作が正しいペインへ向かうため）。
       // xterm 自身のクリック処理が自分の隠し textarea を focus() するので、
       // capture フェーズで拾えば十分（子孫からのバブルも拾える）。
-      onFocusCapture={onActivate}
+      //
+      // Issue #120 C-1: ただし**自分で呼んだ `focus()` のこだまだけは捨てる**。
+      // クリック・ドロップ由来の focus は本物の意思なので通す（門番が閉じるのは
+      // 上の effect の `run()` の内側だけ）。理由は `focusEcho.ts` を参照。
+      onFocusCapture={() => {
+        if (!focusEchoGate.shouldActivate()) return;
+        onActivate?.();
+      }}
     >
       {showHeader && (
         // 通常の flex フローに入れて .terminal-pane__container を実際に押し下げる

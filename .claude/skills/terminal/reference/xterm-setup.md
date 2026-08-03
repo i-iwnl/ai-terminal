@@ -35,3 +35,32 @@
 ## タブ切り替えで Terminal インスタンスを破棄しない
 
 タブを切り替えるとき、非表示になる側の `Terminal` インスタンスを破棄してはいけない。DOM コンテナを `visibility: hidden` 等で隠すだけにし、`term.dispose()` は呼ばない。破棄すると scrollback を含めた表示内容が失われ、タブに戻ったときに空のターミナルになる。
+
+## プログラム的な `focus()` のこだまを、ペイン活性化の入力にしない
+
+分割中のペイン（`TerminalPane.tsx`）は「アクティブになったら `handle.focus()` を呼ぶ」effect と、「フォーカスが入ったらアクティブにする」`onFocusCapture` の**両方**を持つ。この2つは**フィードバックループ**になっていて、負荷下で壊れる。
+
+Issue #120 C-1 の実測（`performance.now()`、CPU を16本のビジーループで埋めた状態、60起動中4件で再現）:
+
+```
+297.90 keydown ]                       ← このとき activeElement は <body>
+298.00 setActivePaneInTab pane=OLD     ← キーボード由来。ここまでは正しい
+302.10 effect-active OLD active=false  ← 分割コミットの passive effect が「今」走る
+305.70 effect-active NEW active=true
+305.80 handle.focus()
+306.40 onFocusCapture NEW
+306.50 setActivePaneInTab pane=NEW     ← こだまが OLD を引き戻して負ける
+```
+
+**原因は「xterm がまだマウント中」ではなく、React 18 の passive effect のフラッシュがスケジューラ経由で遅れること。** DOM のコミット（`is-active` クラス）は同期で入るので、分割は**画面にもテストにも見えている**のに `handle.focus()` だけが後から走る。
+
+**effect が呼ぶ `focus()` は「そのペインが既に active だから」呼ばれている。** つまりそのこだまが運ぶ情報は常にゼロで、捨てても失うものが無い。一方でこだまが遅れて届くと、その間に入った本物の意思（キーボード操作）を上書きする。**情報を持たない信号が、情報を持つ信号に勝てる**のが不具合の本体。
+
+対処は `src/renderer/src/terminal/focusEcho.ts` の `createFocusEchoGate()`。`run()` の内側で起きた focus だけを落とし、**クリック・ドロップ由来の focus は通す**（そちらは本物の意思）。
+
+**待ちを増やすテストでは直らない。** `S61-pane-navigation.spec.ts` は既に DOM の `is-active` を待っており、その待ちが通った**後**に競合が起きている。同型の配線を足すときは、次の2つを分けて考えること。
+
+- **プログラム的 `focus()`** = 状態の結果。状態へ戻してはいけない
+- **ユーザー由来の focus** = 状態への入力。通す
+
+**人工的な遅延（`setTimeout` やメインスレッドの占有）では再現しない。** ビジー待ちは effect のフラッシュも一緒に遅らせるだけで順序が入れ替わらない。再現には**本物の負荷**（スケジューラが割り込まれる状況）が要る。
