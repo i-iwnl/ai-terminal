@@ -83,6 +83,67 @@ make dev-debug   # Main プロセスのデバッガを有効にして起動す�
 
 ---
 
+## コマンド チートシート
+
+**`make` を引数なしで実行すると、この一覧が Makefile から生成されて出る。** 下の表は読みやすさのために目的別に並べ直したもので、**唯一の正は Makefile**（食い違ったら Makefile が正しい）。
+
+### 日常
+
+| コマンド | 何をするか |
+|---|---|
+| `make install` | 依存をインストールする（初回のみ） |
+| `make dev` | アプリを起動する（DevTools が別ウィンドウで開く） |
+| `make dev-quiet` | DevTools を開かずに起動する |
+| `make dev-debug` | Main プロセスのデバッガを有効にして起動する |
+| `make check` | **変更したら必ずこれ。** typecheck + lint + 単体テスト |
+
+### 検証
+
+| コマンド | 何をするか | いつ回すか |
+|---|---|---|
+| `make check` | typecheck + lint + 単体テスト（アプリは起動しない） | 変更のたび |
+| `make typecheck` | 型チェックだけ（main / renderer / test） | 型だけ先に見たいとき |
+| `make lint` | ESLint だけ | 同上 |
+| `make unit` | 単体テストだけ（vitest。純粋関数のみ） | 純粋関数を触ったとき |
+| `make unit-watch` | 単体テストを watch で回す | 純粋関数を書いている間 |
+| `make e2e` | E2E（Playwright + Electron）。**撮影レーンも含む**。ウィンドウは出さない | 振る舞いを変えたとき |
+| `make e2e-visible` | E2E をウィンドウを表示して実行する（**マウスを奪われる**） | 挙動を目で追いたいときだけ |
+| `make e2e-lint` | `scenarios.yml` と `e2e/specs/` の 1:1 対応を検査する（アプリを起動しない） | シナリオを増減したとき |
+| `make e2e-report` | 直近の E2E の HTML レポートを開く | E2E が落ちたとき |
+| `make e2e-packaged` | パッケージ版 `.app` に対するスモーク E2E | 配布物を疑うとき |
+| `make e2e-screenshots-check` | **`docs/images/` の中身が実装とずれていないかを画素で検査する** | `make e2e` の直後 |
+| `make css-substitution-check` | CSS のトークン置換で値が変わっていないことを検証する | トークンへ置換する変更のとき |
+| `make docker-verify` | typecheck + lint + build を Docker の中で実行する | 環境差を疑うとき |
+| `make docker-build` | 検証用の Docker イメージをキャッシュ無しで作り直す | `docker-verify` が古い環境で動いていそうなとき |
+
+**落ちてよい検証が2つある。** `css-substitution-check` は**値や幾何を意図的に変えたとき**、`e2e-screenshots-check` は**画面を意図的に変えたとき**に落ちる。前者は「置換のつもりが値を変えていないか」、後者は「README の画像が古くなっていないか」を見るためのもので、どちらも `make check` にも `make e2e` にも含めていない。落ちたら、その変更が意図どおりかを確認して撮り直す。
+
+### ビルドと配布
+
+| コマンド | 何をするか |
+|---|---|
+| `make build` | 本番ビルドを `out/` に出力する |
+| `make package` | 安定版の `.app` と dmg を `dist/` に生成する（署名は ad-hoc） |
+| `make package-dir` | `.app` だけを生成する（dmg を作らない高速版） |
+| `make install-app` | ビルドして `/Applications` へ入れ替える（**起動中は中止する**。入れ替え前にスモークが走る） |
+| `make e2e-screenshots` | README 用のスクリーンショットを撮り直して `docs/images/` を更新する |
+
+### 困ったとき
+
+| コマンド | 何をするか |
+|---|---|
+| `make rebuild` | `node-pty` を Electron の ABI に合わせて再ビルドする（`posix_spawnp failed` のとき） |
+| `make fix-electron` | Electron 本体のバイナリが入っていないとき（`Error: Electron uninstall`） |
+| `make format` | Prettier で整形する |
+| `make clean` | ビルド成果物を削除する（`node_modules` は消さない） |
+| `make sandbox` | カレントディレクトリだけを見せるコンテナの中で `claude` を起動する（[docs/SANDBOX.md](docs/SANDBOX.md)） |
+| `make sandbox-build` | サンドボックスのイメージを作り直す |
+| `make clean-docker` | 検証用の Docker リソースを削除する（サンドボックスの認証は残す） |
+
+`make` を使わない場合は `npm run dev` / `npm run typecheck` / `npm run lint` / `npm run unit` / `npm run build`。
+
+---
+
 ## 使い方ガイド
 
 以下の画像は E2E テスト（Playwright）の隔離ハーネス上で撮影したもの。**一時 HOME と偽の `claude` / `gemini` CLI を使っており、プロジェクト名・セッション内容・ユーザー名はすべてダミー**。実在のプロジェクトやセッションではない。
@@ -257,8 +318,7 @@ Finder からのファイル・フォルダのドラッグ&ドロップは、カ
 | `Cmd+Shift+C` | 現在の作業ディレクトリで **claude** を新しいタブで起動 | ファイル |
 | `Cmd+Shift+E` | 同様に **gemini** を起動（g-**E**-mini の E） | ファイル |
 | `Cmd+W` | アクティブなペインを閉じる（**意味変更**。タブに残るペインが1枚だけならタブごと閉じ、最後の1枚を閉じたときと同じく新しいシェルが開く） | ファイル |
-| `Cmd+Option+W` | タブごと閉じる（分割していても1手。2本以上の PTY を閉じるときは確認が出る） | ファイル |
-| （キー無し） | タブを閉じる（ラベルに残っているペイン数が出る。2枚以上なら確認ダイアログを挟む） | ファイル |
+| `Cmd+Option+W` | タブごと閉じる（分割していても1手。メニューのラベルに残っているペイン数が出る。**閉じても失われるものがあるときだけ確認ダイアログを挟む**） | ファイル |
 | `Cmd+F` | ターミナル内検索（アクティブなペイン対象） | 編集 |
 | `Cmd+G` | 検索を次のヒットへ進める（検索欄にフォーカスが無くても効く） | 編集 |
 | `Cmd+Shift+G` | 検索を前のヒットへ戻す（同上） | 編集 |
@@ -310,7 +370,7 @@ macOS の「システム設定 > アクセシビリティ > ディスプレイ >
 ```jsonc
 {
   "shell": "/bin/zsh",              // 省略時は $SHELL
-  "fontFamily": "Menlo, monospace",
+  "fontFamily": "ui-monospace, \"SF Mono\", Menlo, monospace",
   "fontSize": 13,
   "pollIntervalMs": 3000,           // タスク一覧の更新間隔
   "useTmux": true,                  // tmux があれば AI CLI をラップする
@@ -327,6 +387,8 @@ macOS の「システム設定 > アクセシビリティ > ディスプレイ >
   },
   "scopeAgentsToCwd": false,        // true にすると現在のディレクトリのタスクだけ表示
   "screenReaderMode": false,        // ターミナルを支援技術から読めるようにする（VoiceOver 検知時は自動で有効）
+  "sidebarWidth": 260,              // サイドバーの幅（220〜420。ドラッグやメニューで変えるとここに保存される）
+  "themeName": "",                  // 配色プリセット名。空文字なら下の theme をそのまま使う
   "theme": {
     "background": "#1e1e1e",
     "foreground": "#d4d4d4",
@@ -342,21 +404,12 @@ macOS の「システム設定 > アクセシビリティ > ディスプレイ >
 
 ## 検証
 
-```bash
-make check           # typecheck + lint + 単体テスト（ホストで実行）
-make unit            # 単体テストのみ（vitest）
-make e2e             # E2E（Playwright で Electron を起動。ウィンドウは表示しない）
-make e2e-visible     # E2E をウィンドウを表示して実行（挙動を目で追いたいときだけ）
-make e2e-packaged    # パッケージ版 .app に対するスモーク E2E（install-app が関門として自動実行）
-make docker-verify   # typecheck + lint + build を Docker コンテナ内で実行
-```
-
-テストは3層に分かれている。
+**コマンドの一覧は上の[コマンド チートシート](#コマンド-チートシート)にまとめてある**（ここでは何を担保しているかだけを書く）。テストは3層に分かれている。
 
 | 層 | 置き場 | 対象 |
 |---|---|---|
 | 単体（vitest） | `test/unit/` | 外部に触れない純粋関数（設定の正規化・メモの更新・Webhook のペイロード・PTY の起動引数・通知音の探索規則・表示整形・ショートカット判定） |
-| E2E（Playwright） | `e2e/specs/` | 実際に Electron を起動して確かめる振る舞い（全39シナリオ） |
+| E2E（Playwright） | `e2e/specs/` | 実際に Electron を起動して確かめる振る舞い（**シナリオの台帳は `e2e/scenarios.yml` が唯一の正**。件数はそこを数える） |
 | パッケージ版スモーク | `e2e/packaged.playwright.config.ts` | `electron-builder --dir` が生成した本物の .app を起動し、asar・`isPackaged: true`・本番の preload 読み込みまで含めて確かめるスモーク4本（S01 / S09 / S12 / S39） |
 
 **`make e2e` はウィンドウを画面に出さずに走る。** 表示したままだとテスト中のキー入力とマウス操作を Electron のウィンドウが奪い、実行中は他の作業ができなくなるため。
@@ -366,6 +419,8 @@ Electron に真のヘッドレスモードは無いので（`BrowserWindow` は�
 **自動テストで担保できない範囲**（実 IME・`vim` / `htop` の描画品質・macOS 通知の発火・通知音が鳴ること・tmux の永続化）は、[.claude/skills/e2e/reference/limitations.md](.claude/skills/e2e/reference/limitations.md) に代替手段とセットで一覧してある。
 
 挙動を目で追いたいときだけ `make e2e-visible` を使う。`make e2e-screenshots`（README 用の画像撮影）も非表示のまま動く。
+
+**この README に載っている画像が古くなっていないかは `make e2e-screenshots-check` が画素で検査する。** 撮り立ての画像とコミット済みの画像を突き合わせ、実装とずれていれば落ちる。以前は「ファイルが存在するか」しか見ておらず、しかも警告どまりだったため、**中身が実装と食い違ったまま配布され続ける**ことがあった。
 
 `make docker-verify` はマシン依存を排除した再現確認用。`node_modules` は named volume でホストと隔離してあるので、macOS 側のネイティブモジュールを壊すことはない。
 
@@ -401,12 +456,26 @@ src/
   renderer/      React の UI
     terminal/    xterm.js
     sidebar/     タスク / 履歴 / メモ
-    tabs/        タブバーとタブ状態
+    tabs/        タブバーとタブ状態、ペイン分割の木
     settings/    設定ウィンドウ（本体とは別の BrowserWindow）
-  shared/ipc.ts  IPC 契約。チャンネル名と型の単一の正
+    lib/         画面から独立した純粋関数（ショートカット判定・通知の積み方・パスのエスケープ）
+    styles.css   デザイントークン（:root）と全体のスタイル。色・サイズの値はここが唯一の正
+  shared/        Main と Renderer が共有する型・既定値
+    ipc.ts       IPC 契約。チャンネル名と型の単一の正
+    defaults.ts  設定の既定値
+    themes.ts    配色プリセット
 
-test/unit/       単体テスト（vitest）
+test/unit/       単体テスト（vitest）。外部に触れない純粋関数だけを対象にする
 e2e/             E2E（Playwright + Electron）
+  specs/         シナリオごとの spec
+  scenarios.yml  シナリオの台帳（唯一の正）
+  fixtures/      隔離ハーネス（一時 HOME・偽 CLI）
+scripts/         検査と補修のスクリプト
+  lint-e2e.mjs             台帳と spec の 1:1 対応を検査する（make e2e-lint）
+  verify-screenshots.mjs   docs/images/ の中身を画素で検査する（make e2e-screenshots-check）
+  verify-css-substitution.mjs  CSS のトークン置換で値が変わっていないか（make css-substitution-check）
+  fix-node-pty.mjs         node-pty の spawn-helper の実行権限を復元する（postinstall）
+docs/images/     README の使い方ガイドの画像（make e2e-screenshots で生成）
 ```
 
 **Renderer は OS を直接触らない。** PTY 起動もファイル読み込みも Main プロセス側で行い、`contextIsolation` を維持している。
@@ -451,7 +520,7 @@ node scripts/fix-node-pty.mjs
 
 設定ウィンドウの「テスト送信」を押すと結果がその場に出る。よくある原因:
 
-- URL 欄の左のチェックボックスが入っていない（URL を入れただけでは送らない）
+- URL 欄の上にあるチェックボックスが入っていない（URL を入れただけでは送らない）
 - Webhook URL が失効している（`HTTP 404: no_service` などが表示される）
 - 社内ネットワークのプロキシで外向き HTTPS が塞がれている
 
