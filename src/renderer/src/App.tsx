@@ -573,6 +573,37 @@ export default function App(): ReactElement {
           announce(`サイドバーの幅 ${next} ピクセル`);
           break;
         }
+        case 'adjust-font-size': {
+          // ターミナルの文字サイズ（Issue #120 周1）。
+          //
+          // **Electron の zoom（Renderer 全体の拡大率）とは別物。** menu.ts 側で
+          // zoom の `role` を外してあるので、同じキーが2系統から発火することはない。
+          //
+          // 範囲は設定ウィンドウの数値入力（min 6 / max 48）と同じ。
+          // 値の正は `coerceConfig` で、そこでも同じ範囲に丸められる。
+          const next =
+            action.adjustment === 'reset'
+              ? DEFAULT_CONFIG.fontSize
+              : Math.min(
+                  48,
+                  Math.max(6, config.fontSize + (action.adjustment === 'increase' ? 1 : -1)),
+                );
+          if (next === config.fontSize) {
+            // 端に達している。**「何も起きない」で終わらせない**（U4）。
+            announce(`文字サイズは ${config.fontSize} で、これ以上変えられません`);
+            break;
+          }
+          // **フォントサイズを変えると全ペインが再 fit され pty.resize が走る**
+          // （非表示タブも visibility: hidden でレイアウトを持つため
+          // clientWidth === 0 のガードを通過する）。連打されうるキーなので、
+          // 実際に飛ぶ回数は resizeGate.ts の shouldSendResize（cols/rows が
+          // 変わった回だけ通す）が抑える。ここでは間引かない
+          // （1回のキー入力で1段階変わることが期待どおりの挙動なので、
+          // デバウンスすると「押したのに変わらない」に見える）。
+          void window.api.config.set({ fontSize: next }).catch(() => undefined);
+          announce(`文字サイズ ${next}`);
+          break;
+        }
         case 'next-tab':
           if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
           break;
@@ -617,7 +648,15 @@ export default function App(): ReactElement {
     // sidebarCollapsed は toggle-sidebar が「いまどちら側か」を読む必要があるため
     // 依存に含める（runAction は runActionRef 経由でしか呼ばれず、再生成しても
     // keydown / menu:action のリスナは張り直されない）。
-    [announce, commitSidebarWidth, requestCloseTab, showNotice, sidebarCollapsed, sidebarWidth],
+    [
+      announce,
+      commitSidebarWidth,
+      config.fontSize,
+      requestCloseTab,
+      showNotice,
+      sidebarCollapsed,
+      sidebarWidth,
+    ],
   );
 
   const runActionRef = useRef(runAction);

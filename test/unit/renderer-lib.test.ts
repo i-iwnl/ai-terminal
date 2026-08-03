@@ -169,7 +169,9 @@ describe('matchShortcut', () => {
   // Cmd+Option+英字 は今までどおり null のまま素通しする。
   it('割り当ての無い Cmd+Alt+英字 は null のまま素通しする', () => {
     expect(matchShortcut(keyEvent({ key: 't', code: 'KeyT', metaKey: true, altKey: true }))).toBeNull();
-    expect(matchShortcut(keyEvent({ key: 'w', code: 'KeyW', metaKey: true, altKey: true }))).toBeNull();
+    // **KeyW は Issue #120 周1 で `close-tab` に割り当てた**ので、
+    // 「割り当ての無い」例としては使えなくなった（下の専用テストが固定する）。
+    expect(matchShortcut(keyEvent({ key: 'q', code: 'KeyQ', metaKey: true, altKey: true }))).toBeNull();
   });
 
   // Issue #20 K-1: サイドバーの表示/非表示（Cmd+Option+S）。
@@ -321,8 +323,13 @@ describe('matchShortcut', () => {
   });
 
   it('Cmd+0 はタブ切り替えに割り当てない', () => {
-    // 添字が -1 になるため 1〜9 のみを受け付ける
-    expect(matchShortcut(keyEvent({ key: '0', metaKey: true }))).toBeNull();
+    // 添字が -1 になるため、タブ切替は 1〜9 のみを受け付ける。
+    // **Issue #120 周1 で Cmd+0 自体は「文字サイズを既定に戻す」になった**ので、
+    // null ではなくなっている（`/^[1-9]$/` を `[0-9]` に広げていないことの確認は
+    // こちらが本体で、下の専用テストが index の側から固定する）。
+    expect(matchShortcut(keyEvent({ key: '0', metaKey: true }))).not.toMatchObject({
+      type: 'switch-tab',
+    });
   });
 
   // Issue #56 PR 8（design-review.md 提案 I）: ペインの最大化トグル。
@@ -460,5 +467,78 @@ describe('basename', () => {
 
   it('undefined は「(不明)」にする', () => {
     expect(basename(undefined)).toBe('(不明)');
+  });
+});
+
+describe('matchShortcut: Issue #120 周1 で決めたキー', () => {
+  // ## Cmd+E は「残す」判断をした
+  //
+  // macOS 全域で Cmd+E は「選択部分を検索に使う」（Use Selection for Find）で、
+  // このアプリは Cmd+F / Cmd+G / Cmd+Shift+G を既に macOS 標準に揃えている。
+  // それでも残したのは、**壊れ方の重さが #62 と違う**から。
+  //
+  // - #62（Cmd+Shift+G が gemini 起動）: **本物の gemini が1本余計に起動する。**
+  //   ユーザーは見つけて kill しなければならず、自分では元に戻せない
+  // - Cmd+E: タブが切り替わるだけで、**トグルなのでもう一度押せば戻る**
+  //
+  // この判断が変わるときは、ここのテストごと書き換えること。
+  it('Cmd+E は直前のタブへ戻る（macOS 標準へは返さない判断）', () => {
+    expect(matchShortcut(keyEvent({ key: 'e', metaKey: true }))).toEqual({
+      type: 'last-active-tab',
+    });
+    // Shift 付きは gemini の起動（Shift の有無で別の組み合わせ）。
+    expect(matchShortcut(keyEvent({ key: 'e', metaKey: true, shiftKey: true }))).toEqual({
+      type: 'new-gemini-tab',
+    });
+  });
+
+  // ## フォントサイズ
+  it('Cmd+= / Cmd+- / Cmd+0 がターミナルの文字サイズを動かす', () => {
+    expect(matchShortcut(keyEvent({ key: '=', metaKey: true }))).toEqual({
+      type: 'adjust-font-size',
+      adjustment: 'increase',
+    });
+    expect(matchShortcut(keyEvent({ key: '-', metaKey: true }))).toEqual({
+      type: 'adjust-font-size',
+      adjustment: 'decrease',
+    });
+    expect(matchShortcut(keyEvent({ key: '0', metaKey: true }))).toEqual({
+      type: 'adjust-font-size',
+      adjustment: 'reset',
+    });
+  });
+
+  it('Cmd+0 を足してもタブ切替の index が壊れていない', () => {
+    // **`/^[1-9]$/` を `[0-9]` に広げてはいけない。** Cmd+1 が index 0 の
+    // 約束なので、0 を含めると index が -1 になる。
+    expect(matchShortcut(keyEvent({ key: '1', metaKey: true }))).toEqual({
+      type: 'switch-tab',
+      index: 0,
+    });
+    expect(matchShortcut(keyEvent({ key: '9', metaKey: true }))).toEqual({
+      type: 'switch-tab',
+      index: 8,
+    });
+    // 0 は switch-tab に落ちない。
+    expect(matchShortcut(keyEvent({ key: '0', metaKey: true }))).not.toMatchObject({
+      type: 'switch-tab',
+    });
+  });
+
+  // ## 分割中のタブを1手で閉じる
+  it('Cmd+Option+W がタブを閉じ、Cmd+W はペインのまま', () => {
+    // **`e.code` で判定する。** macOS では Option を押しながらの英字キーは
+    // 合成後の文字が `e.key` に入りうる（Option+w は `∑`）。
+    // Cmd+Option+S と同じ理由。
+    expect(matchShortcut(keyEvent({ key: '∑', code: 'KeyW', metaKey: true, altKey: true }))).toEqual(
+      { type: 'close-tab' },
+    );
+    // Option 無しは従来どおりペインを閉じる（残るペインが1枚ならタブごと閉じる）。
+    expect(matchShortcut(keyEvent({ key: 'w', metaKey: true }))).toEqual({ type: 'close-pane' });
+    // Shift も付いていたら未定義のまま素通しする（Cmd+Shift+W は macOS 全域で
+    // 「ウィンドウを閉じる」なので奪わない）。
+    expect(
+      matchShortcut(keyEvent({ key: 'w', code: 'KeyW', metaKey: true, altKey: true, shiftKey: true })),
+    ).toBeNull();
   });
 });

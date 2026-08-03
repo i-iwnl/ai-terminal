@@ -130,6 +130,15 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
     // `Cmd+Shift+[` を `.code` で判定しているのとまったく同じ理由
     // （物理キーの位置は修飾キーとレイアウトに影響されない）。
     if (e.code === 'KeyS') return { type: 'toggle-sidebar' };
+    // タブそのものを閉じる（Issue #120 周1）。
+    //
+    // `Cmd+W` は `close-pane`（下）で、**残るペインが1枚ならタブごと閉じる**。
+    // つまり分割していないタブでは macOS 標準どおりに振る舞う。だが
+    // **分割中のタブを閉じるにはペインの枚数ぶん押す必要があった**（他ターミナルの
+    // 筋肉記憶では `Cmd+W` 一発でタブが消えるので、「閉じたつもりが半分残る」）。
+    // `Cmd+Option+W` を足して1手で閉じられるようにする。
+    // 2つ以上の PTY を一度に閉じるので、App.tsx 側の確認ダイアログを必ず通る。
+    if (e.code === 'KeyW') return { type: 'close-tab' };
     // Cmd+Option+矢印: ペイン間移動（Issue #56 PR 8。design-review.md 提案 B'）。
     switch (e.key) {
       case 'ArrowUp':
@@ -186,9 +195,10 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
 
   if (key === 't') return { type: 'new-shell-tab' };
   // Cmd+W は「ペインを閉じる」（意味変更。design-review.md「確定している仕様」）。
-  // タブそのものを閉じる操作（close-tab）はメニュー専用になり、キーは持たない
-  // （Cmd+Shift+W は macOS 全域で「ウィンドウを閉じる」と学習されているため
-  // 新設しない）。
+  // **残るペインが1枚ならタブごと閉じる**ので、分割していないタブでは
+  // macOS 標準どおりに振る舞う。分割中のタブを1手で閉じるキーは
+  // `Cmd+Option+W`（上の altKey 分岐。Issue #120 周1 で追加）。
+  // `Cmd+Shift+W` は macOS 全域で「ウィンドウを閉じる」と学習されているので使わない。
   if (key === 'w') return { type: 'close-pane' };
   // 右に分割。
   if (key === 'd') return { type: 'split-pane', dir: 'row' };
@@ -199,6 +209,22 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   // Cmd+, は macOS で「アプリの環境設定」の標準ショートカット
   if (key === ',') return { type: 'toggle-settings' };
   if (/^[1-9]$/.test(e.key)) return { type: 'switch-tab', index: Number(e.key) - 1 };
+  // ターミナルのフォントサイズ（Issue #120 周1）。
+  //
+  // **`0` はここで拾う。上のタブ切替の `/^[1-9]$/` を `[0-9]` に広げてはいけない**
+  // （`Cmd+1` が index 0 の約束なので、`0` を入れると index が -1 になる）。
+  //
+  // `Cmd+=` は macOS では Shift 無しで `=`、Shift 付きで `+` が来る。
+  // どちらも「拡大」として受ける（Shift 付きは上の e.shiftKey 分岐より前には
+  // 来ないので、ここでは `=` だけを見る。`+` は shift 分岐側で拾う）。
+  //
+  // **Electron の `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` とは別物。**
+  // あちらは Renderer 全体（サイドバーもタブバーも）の拡大率で、`config.json` に
+  // 保存されない。同じキーが2系統から発火しないよう、menu.ts 側で
+  // アクセラレータを潰してある。
+  if (key === '=') return { type: 'adjust-font-size', adjustment: 'increase' };
+  if (key === '-') return { type: 'adjust-font-size', adjustment: 'decrease' };
+  if (key === '0') return { type: 'adjust-font-size', adjustment: 'reset' };
   // 次/前のペイン（Issue #56 PR 8。design-review.md 提案 B'）。
   // Cmd+Option+矢印 を「併設」する第一のキー。2ペインでは「どっちの方向か」の
   // 判断も要らないため、こちらを主に使う想定（40〜80回/日で最も効く）。
@@ -209,6 +235,20 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   if (key === 'j') return { type: 'jump-your-turn-tab', direction: 'forward' };
   // 直前のタブへ戻る（Cmd+E。Issue #20 J）。Cmd+Shift+E は上で gemini の起動に
   // 割り当て済みだが、Shift の有無で別の組み合わせなので衝突しない。
+  //
+  // **macOS 標準（Use Selection for Find）とは衝突している。残す判断をした**
+  // （Issue #120 周1）。上の Cmd+Shift+G の自戒コメントと同じ型の衝突だが、
+  // **壊れ方の重さが違う。**
+  //
+  // - #62（`Cmd+Shift+G` が gemini 起動）: 押すと**本物の gemini が1本余計に起動する**。
+  //   ユーザーはそれを見つけて kill しなければならず、自分では元に戻せない
+  // - `Cmd+E`: タブが切り替わるだけで、**これはトグルなのでもう一度押せば戻る**
+  //   （README「2回押すと直近2枚をトグル」）。誤爆が自己修復する
+  //
+  // 返すなら `last-active-tab` をどこかへ動かすことになるが、代替の
+  // `Cmd+Shift+英数字` はどれも語呂が無く覚えられない。**覚えられないキーは
+  // 使われないので、機能を残したことにならない。** 失うもの（1日80〜120回の操作）が
+  // 得るもの（自己修復する誤爆の解消）より大きいと判断した。
   if (key === 'e') return { type: 'last-active-tab' };
 
   return null;

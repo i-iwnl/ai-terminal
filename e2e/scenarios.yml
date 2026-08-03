@@ -1059,3 +1059,41 @@ scenarios:
       **`S21-config.spec.ts` は無傷** — `themeName` 未設定なら保存済みの `theme`
       （4色）が勝つ設計で、逆にすると config.json に手で書いた設定が黙って
       無視される。
+
+  # --- Issue #120 周1: キーボードの決着 --------------------------------------
+  - id: S81
+    title: Cmd+= / Cmd+- でターミナルの文字サイズだけが変わり、設定に保存される
+    spec: S81-font-size-shortcut.spec.ts
+    readme: false
+    note: >-
+      Issue #120 の周1。文字サイズの変更手段は設定ウィンドウの往復だけだった。
+      **`Cmd+-` / `Cmd+0` は「何も起きない」のではなく、別のものが動いていた** —
+      `menu.ts` の `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` は `actionItem()` を
+      通らないため `registerAccelerator: false` が付かず、menu.ts が謳う
+      「キーを実際に拾うのは matchShortcut 1箇所」という原則の**唯一の例外**だった。
+      押すと Renderer 全体（サイドバーもタブバーも）の拡大率が変わり、
+      `config.json` にも保存されないので次回起動で戻る。周1 で zoom の `role` を
+      外し、同じキーを `AppConfig.fontSize` に割り当てた。ここでは
+      (1) キーで xterm の文字サイズが変わる (2) **サイドバーは変わらない**
+      （zoom との決定的な違い）(3) `config.json` に保存される (4) `Cmd+0` で
+      既定に戻る、を見る。**「同じキーが2系統から発火しない」ことは S36 が
+      `role` の不在で固定する**（そちらは小文字で比較する。**Electron は
+      `MenuItem.role` を正規化した小文字で返すため、`toggleDevTools` のような
+      キャメルケースで比べていた既存の2件は一度も機能していなかった**）。
+      `Cmd+1` がタブ切替のままであることも見る（`/^[1-9]$/` を `[0-9]` へ
+      広げると index が -1 になって壊れる）。
+
+  - id: S82
+    title: Cmd+Option+W は分割中のタブも1手で閉じる
+    spec: S82-close-tab-shortcut.spec.ts
+    readme: false
+    note: >-
+      Issue #120 の周1。`Cmd+W` は `close-pane` で、**残るペインが1枚なら
+      タブごと閉じる**ので分割していないタブでは macOS 標準どおりに振る舞うが、
+      **分割中のタブを閉じるにはペインの枚数ぶん押す必要があった**（他ターミナルの
+      筋肉記憶では `Cmd+W` 一発でタブが消えるので「閉じたつもりが半分残る」）。
+      メニューの「タブを閉じる」はキーを持っていなかった。`Cmd+Shift+W` は
+      macOS 全域で「ウィンドウを閉じる」と学習されているので使わない。
+      **判定は `e.code`**（macOS では Option を押しながらの英字キーは合成後の
+      文字が `e.key` に入りうる。Option+w -> `∑`。`Cmd+Option+S` と同じ理由）。
+      2本の PTY を一度に閉じるので既存の確認ダイアログを通ることも見る。

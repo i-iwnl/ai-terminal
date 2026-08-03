@@ -538,7 +538,17 @@ export type AppAction =
    * （`accelerator` は持たない。幅調整は頻度が低く、`Cmd+英数字` の名前空間は
    * 100手/日級の操作のために空けておく）。
    */
-  | { type: 'adjust-sidebar-width'; adjustment: 'wider' | 'narrower' | 'reset' };
+  | { type: 'adjust-sidebar-width'; adjustment: 'wider' | 'narrower' | 'reset' }
+  /**
+   * ターミナルのフォントサイズ（Issue #120 周1）。
+   *
+   * **Electron の `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` とは別物。**
+   * あちらは Renderer 全体（サイドバー・タブバーを含む）の拡大率で、
+   * `config.json` にも保存されない。こちらは `AppConfig.fontSize` を動かし、
+   * **xterm の文字だけ**を変える。同じキーが2系統から発火しないよう、
+   * `menu.ts` 側で zoom のアクセラレータを潰してある。
+   */
+  | { type: 'adjust-font-size'; adjustment: 'increase' | 'decrease' | 'reset' };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義
