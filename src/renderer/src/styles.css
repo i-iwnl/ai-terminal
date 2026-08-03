@@ -1228,6 +1228,55 @@ body {
 /* サイドバー共通パーツ */
 /* ---------------------------------------------------------------------- */
 
+/* 支援技術にだけ届く要素（見出し階層の h1 など）。
+   `App.tsx` の STATUS_REGION_STYLE と同じ隠し方（`display: none` や
+   `visibility: hidden` はアクセシビリティツリーからも消えるので使えない）。 */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 各パネル最上部に常設する「いまどの範囲を見ているか」の行（Issue #20 I-2）。
+ *
+ * 3つのパネルはスコープが全く違うのに同じ見た目で並んでいる:
+ *
+ * | パネル | 何の集合か | 範囲 |
+ * |---|---|---|
+ * | タスク | 動いている claude プロセス | **既定はマシン全体**（他アプリ起動分も含む） |
+ * | 履歴 | 終わったセッションのファイル | アクティブなペインの cwd（`cd` に追従する） |
+ * | メモ | このアプリが保存した走り書き | アプリのデータディレクトリ |
+ *
+ * 初見のユーザーは「3つとも、このアプリで開いたもののリスト」だと推測する。
+ * とくにタスクに他プロジェクトのセッションが混ざるのは、説明が無いと
+ * 「なぜ知らない名前が出るのか」で止まる。Dock バッジ（`updateDockBadge` は
+ * `scopeAgentsToCwd` に関わらずマシン全体を数える）が「3」なのに一覧が1件、
+ * という食い違いの説明にもなる。
+ *
+ * **`.task-group__heading` とは意図的に見た目を変えてある。** あちらはパネル内の
+ * 区切り（`あなたの番 2件`）で、こちらはパネル全体の範囲。同じ見た目にすると、
+ * タスクパネルでは「同じ体裁の見出しが3つ縦に並び、1つ目だけ意味が違う」状態になる。
+ * 区別の手がかりは (1) 大文字化とトラッキングを使わない、(2) 下線で本文と切る、の2つ。
+ * なお `text-transform: uppercase` は日本語には効かないので、
+ * **大文字化の有無は英字が混じるときだけの差**になる（`このフォルダの Claude` の
+ * `Claude` の部分）。主な手がかりは下線のほう。
+ *
+ * **0件でも消さない。** 空状態でスコープが見えることが一番重要（#20 I-2）。 */
+.panel-scope {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  border-bottom: 1px solid var(--border-row);
+}
+
 .panel-message {
   padding: var(--sp-3);
   color: var(--text-tertiary);
@@ -1446,6 +1495,9 @@ button.task-item__row:hover {
   margin-top: var(--sp-3);
 }
 
+/* パネル内の**区切り**（`あなたの番 2件` / `作業中 3件`）。
+   パネル全体の**範囲**を言う `.panel-scope` とは意図的に見た目を変えてある
+   （下の `.panel-scope` のコメント参照）。 */
 .task-group__heading {
   margin: 0;
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
@@ -1494,18 +1546,12 @@ button.task-item__row:hover {
   border-radius: var(--radius-md);
 }
 
-.history-list__heading {
-  margin: 0;
-  padding: var(--sp-2) var(--sp-3) var(--sp-1);
-  color: var(--text-secondary);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
-}
-
 /* Issue #20 I-3: 「すべてのフォルダを見る」で絞り込みを外したあいだ、
-   ずっと分かるようにする（原則2: 色だけに頼らない。語で常設する）。 */
+   ずっと分かるようにする（原則2: 色だけに頼らない。語で常設する）。
+
+   **Issue #119 周3 で「すべてのフォルダを表示中」という語を落とした。**
+   すぐ上の `.panel-scope` が同じことを言っており、同じ内容が縦に2回並んでいた。
+   ここに残すのは「戻す」操作だけ。 */
 .history-list__scope-note {
   display: flex;
   justify-content: space-between;

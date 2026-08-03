@@ -50,9 +50,16 @@ test('S65 履歴が0件のとき実パスと「すべてのフォルダを見る
 
     // workDir（3件）+ otherWorkDir（1件）= 4件が横断して見えること。
     await expect(items).toHaveCount(4, { timeout: 15_000 });
+    // 「いまどの範囲を見ているか」を言うのはスコープ行（`.panel-scope`）の役目。
+    // Issue #119 周3 より前は `.history-list__scope-note` にも
+    // 「すべてのフォルダを表示中」があり、**同じ内容が縦に2回並んでいた**
+    // （#117 が見出しを足したときに、ここを畳み忘れた）。いまは戻す操作だけが残る。
+    await expect(window.locator('.history-list .panel-scope')).toHaveText(
+      'すべてのフォルダの Claude',
+    );
     await expect(window.locator('.history-list__scope-note')).toBeVisible();
     await expect(window.locator('.history-list__scope-note')).toContainText(
-      'すべてのフォルダを表示中',
+      '現在のフォルダのみに戻す',
     );
 
     // 「現在のフォルダのみに戻す」で元のスコープに戻ること。

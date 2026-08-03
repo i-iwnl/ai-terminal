@@ -35,6 +35,11 @@ export interface SidebarProps {
   onResumeHistory: (entry: SessionHistoryEntry) => void;
   /** タスク一覧の空状態にある「起動」ボタン用（Issue #20 I-3） */
   onLaunchClaude: () => void;
+  /**
+   * タスク一覧を起動フォルダに絞り込んでいるか（`AppConfig.scopeAgentsToCwd`）。
+   * TaskList のスコープ行の文言にだけ使う（Issue #20 I-2）。
+   */
+  scopeAgentsToCwd: boolean;
 }
 
 export default function Sidebar({
@@ -43,6 +48,7 @@ export default function Sidebar({
   canFocusTaskTab,
   onResumeHistory,
   onLaunchClaude,
+  scopeAgentsToCwd,
 }: SidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('tasks');
   const [memoTarget, setMemoTarget] = useState<MemoTarget | null>(null);
@@ -77,6 +83,7 @@ export default function Sidebar({
             onFocusTab={onFocusTaskTab}
             canFocus={canFocusTaskTab}
             onLaunchClaude={onLaunchClaude}
+            scopedToCwd={scopeAgentsToCwd}
           />
         )}
         {tab === 'history' && <HistoryList onResume={onResumeHistory} onOpenMemo={openMemo} />}

@@ -242,21 +242,33 @@ describe('ウィンドウ上端の帯の高さ（Issue #119 周1）', () => {
     expect(body).not.toMatch(/\b36px\b/);
   });
 
-  // --- 周3（スコープ行）の関門 ------------------------------------------------
+});
+
+describe('パネルの「範囲」と「区切り」の見た目（Issue #119 周3）', () => {
+  // サイドバーの3パネルには2種類の見出しがある。
   //
-  // `.task-group__heading` と `.history-list__heading` は宣言が完全に一致している。
-  // 周3 でタスクとメモにスコープ行を足すと3個目・4個目になり、「サイドバーの
-  // 見出しの見た目」の正が4箇所に散る。
+  // - `.panel-scope` … パネル全体の**範囲**（`このマシン全体の Claude` 等）。1パネルに1つ
+  // - `.task-group__heading` … パネル内の**区切り**（`あなたの番 2件`）。1パネルに n 個
   //
-  // 周3 では共通クラス（`.panel-heading`）へ畳む。**そのとき見た目が変わって
-  // いないことは `make css-substitution-check` では証明できない**（あれはトークンを
-  // 展開したテキストを比較するので、セレクタをまとめると宣言の出現回数が減って
-  // 必ず FAIL する）。畳む前提は「2つの宣言が本当に同一であること」なので、
-  // ここで宣言の中身そのものを突き合わせる。
+  // 周3 より前は、この2つが**宣言レベルで完全に一致していた**
+  // （`.history-list__heading` と `.task-group__heading`）。履歴パネルには
+  // グループ見出しが無かったので問題にならなかったが、タスクパネルは両方を持つ。
+  // 同じ見た目のまま範囲の行を足すと、**同じ体裁の見出しが3つ縦に並び、
+  // 1つ目だけ意味が違う**状態になる。
   //
-  // `.memo-panel__heading` は `color: var(--text-primary)` と
-  // `margin: 0 0 var(--sp-2)` で別物なので、畳む対象は2個まで。
-  it('サイドバーの見出し2種の宣言が完全に一致している（周3 で畳める前提）', () => {
+  // 区別の手がかりは (1) 大文字化とトラッキングの有無、(2) 下線の有無 の2つ。
+  // **`text-transform: uppercase` は日本語には効かない**ので、(1) が効くのは
+  // 英字が混じるときだけ（`このフォルダの Claude` の `Claude`）。
+  // したがって主な手がかりは (2) の下線で、そこが消えると区別が無くなる。
+
+  function ruleBody(selector: string): string {
+    const start = rest.indexOf(`\n${selector} {`);
+    expect(start, `${selector} の規則が見つからない`).toBeGreaterThan(-1);
+    const end = rest.indexOf('\n}', start);
+    return rest.slice(start, end);
+  }
+
+  it('.panel-scope と .task-group__heading の宣言が同一ではない', () => {
     const declarations = (selector: string): string[] =>
       ruleBody(selector)
         .split('\n')
@@ -264,17 +276,35 @@ describe('ウィンドウ上端の帯の高さ（Issue #119 周1）', () => {
         .filter((line) => line.endsWith(';'))
         .sort();
 
-    const taskGroup = declarations('.task-group__heading');
-    expect(taskGroup.length, '.task-group__heading の宣言が読めていない').toBeGreaterThan(0);
-    expect(declarations('.history-list__heading')).toEqual(taskGroup);
+    const scope = declarations('.panel-scope');
+    expect(scope.length, '.panel-scope の宣言が読めていない').toBeGreaterThan(0);
+    expect(declarations('.task-group__heading')).not.toEqual(scope);
   });
 
-  it('.memo-panel__heading は上の2つとは別物のまま（畳む対象に含めない）', () => {
-    // 「同じに見えるから3つとも畳む」を防ぐ。畳むと全体メモ／セッションのメモの
+  it('.panel-scope は下線を持ち、大文字化とトラッキングを持たない', () => {
+    const scope = ruleBody('.panel-scope');
+    // 日本語では uppercase が効かないので、下線が主な区別の手がかりになる。
+    expect(scope).toMatch(/border-bottom:\s*1px solid/);
+    expect(scope).not.toMatch(/text-transform/);
+    expect(scope).not.toMatch(/letter-spacing/);
+  });
+
+  it('.task-group__heading は大文字化とトラッキングを持ち、下線を持たない', () => {
+    const group = ruleBody('.task-group__heading');
+    expect(group).toMatch(/text-transform:\s*uppercase/);
+    expect(group).toMatch(/letter-spacing:\s*var\(--tracking-wide\)/);
+    // グループの区切りに線を引かない理由は styles.css のコメントに書いてある
+    // （サイドバーの面の上では --border-subtle が 1.31 で見えないため、
+    // 「線は引いてある」と誤解したまま余白だけで区切られる状態になる）。
+    expect(group).not.toMatch(/border/);
+  });
+
+  it('.memo-panel__heading はどちらとも別物のまま', () => {
+    // 「同じに見えるから畳む」を防ぐ。畳むと全体メモ／セッションのメモの
     // 見出しの色と下余白が変わる。
     const memo = ruleBody('.memo-panel__heading');
     expect(memo).toMatch(/color:\s*var\(--text-primary\)/);
     expect(memo).toMatch(/margin:\s*0 0 var\(--sp-2\)/);
-    expect(ruleBody('.task-group__heading')).toMatch(/color:\s*var\(--text-secondary\)/);
+    expect(ruleBody('.panel-scope')).toMatch(/color:\s*var\(--text-secondary\)/);
   });
 });

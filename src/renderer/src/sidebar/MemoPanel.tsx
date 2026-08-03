@@ -186,16 +186,22 @@ export default function MemoPanel({ target, onSelectTarget, onGoToHistory }: Mem
 
   return (
     <div className="memo-panel">
+      {/* Issue #20 I-2 / #119 周3: 3パネルで同じ位置に「範囲」を出す。
+          メモはフォルダにもマシンにも紐づかず、このアプリのデータディレクトリに
+          保存される（全体メモは複数プロジェクトで同じ1枚を共有する）。
+          その事実は下の placeholder でも言うが、位置を揃えることに意味がある
+          （1枚だけ空けると、読み手に「ここは範囲が無いのか、書き忘れか」を推測させる）。 */}
+      <h2 className="panel-scope">このアプリのメモ</h2>
       {error && (
         <div className="panel-message panel-message--error">メモの保存に失敗しました: {error}</div>
       )}
 
       <section className="memo-panel__section">
-        <h2 className="memo-panel__heading">全体メモ</h2>
+        <h3 className="memo-panel__heading">全体メモ</h3>
         <textarea
           className="memo-panel__textarea"
           aria-label="全体メモ"
-          placeholder="どのセッションにも属さない走り書き"
+          placeholder="どのフォルダ・どのセッションにも属さない走り書き（常に1枚）"
           value={globalDraft}
           onChange={(e) => {
             setGlobalDraft(e.target.value);
@@ -206,7 +212,7 @@ export default function MemoPanel({ target, onSelectTarget, onGoToHistory }: Mem
       </section>
 
       <section className="memo-panel__section">
-        <h2 className="memo-panel__heading">セッションのメモ</h2>
+        <h3 className="memo-panel__heading">セッションのメモ</h3>
 
         {target ? (
           <div className="memo-panel__target">

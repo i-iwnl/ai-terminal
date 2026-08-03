@@ -38,9 +38,20 @@ export interface TaskListProps {
   canFocus: (agentSessionId: string) => boolean;
   /** 空状態の「起動」ボタン用（Issue #20 I-3）。Cmd+Shift+C と同じ操作 */
   onLaunchClaude: () => void;
+  /**
+   * 一覧を「このアプリを起動したフォルダ」に絞り込んでいるか（`AppConfig.scopeAgentsToCwd`）。
+   * **スコープ行の文言にしか使わない**（絞り込みそのものは Main の poller が行う）。
+   * 既定は false = マシン全体で、その事実がこれまで画面のどこにも出ていなかった。
+   */
+  scopedToCwd: boolean;
 }
 
-export default function TaskList({ onFocusTab, canFocus, onLaunchClaude }: TaskListProps) {
+export default function TaskList({
+  onFocusTab,
+  canFocus,
+  onLaunchClaude,
+  scopedToCwd,
+}: TaskListProps) {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [errorKind, setErrorKind] = useState<AgentTasksEvent['errorKind']>(undefined);
@@ -224,13 +235,20 @@ export default function TaskList({ onFocusTab, canFocus, onLaunchClaude }: TaskL
 
   return (
     <div className="task-list">
+      {/* Issue #20 I-2 / #119 周3: いまどの範囲を見ているかを常設する。
+          **0件でも消さない**（空状態でスコープが見えることが一番重要）。
+          既定（scopeAgentsToCwd: false）はマシン全体で、他アプリから起動した
+          claude も混ざる。その事実がこれまで画面のどこにも出ていなかった。 */}
+      <h2 className="panel-scope">
+        {scopedToCwd ? 'このフォルダの Claude' : 'このマシン全体の Claude'}
+      </h2>
       {errorKind === 'not-found' ? (
         // Issue #20 I-3: 「claude が PATH に無い」専用の空状態パネル。
         // 赤字の生エラー文一行ではなく、見出し + 手順 + 再確認ボタンにする。
         // notFoundLoud が false のとき（自動ポーリングでの2回目以降の再検知）は
         // panel-empty--loud を外し、静かな見た目のまま情報だけ残す。
         <div className={`panel-message panel-empty${notFoundLoud ? ' panel-empty--loud' : ''}`}>
-          <h2 className="panel-empty__heading">Claude CLI が見つかりません</h2>
+          <h3 className="panel-empty__heading">Claude CLI が見つかりません</h3>
           <p className="panel-empty__body">
             <code>claude</code> コマンドが PATH 上に見つかりません。ターミナルで{' '}
             <code>which claude</code> を実行し、インストール済みか・PATH が通っているかを確認してください。
@@ -256,9 +274,9 @@ export default function TaskList({ onFocusTab, canFocus, onLaunchClaude }: TaskL
       )}
       {groups.map((group) => (
         <div className="task-group" key={group.state}>
-          <h2 className="task-group__heading">
+          <h3 className="task-group__heading">
             {formatGroupHeading(group.state, group.tasks.length)}
-          </h2>
+          </h3>
           <ul>{group.tasks.map((task) => renderTask(task))}</ul>
         </div>
       ))}

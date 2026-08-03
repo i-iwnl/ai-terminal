@@ -24,13 +24,14 @@
 // 行は増やさない（既存の <h2> のテキストだけを入れ替える）。要素そのものは
 // 残す（廃すと履歴パネルの見出しが0個になり、VoiceOver の rotor から消える）。
 //
-// 同じ周で「すべてのフォルダのとき各行の meta に basename(entry.cwd) を出す」案も
-// 検討したが、**取り下げた**。実測すると `.history-item__row` の幅は 139px しかなく
-// （`.history-item__actions` が opacity: 0 のまま 88px + gap 8px を常時予約している）、
-// フォルダ名を足すと meta が 163px になって単語の途中で折り返し、行が 57px から
-// 73.5px へ伸びる。これは同じ案の初版で「235px の幅に対し 292px で折り返す」ことを
-// 理由に取り下げたスコープ行と同じ型の破綻で、片方だけ通す理由が無い。
-// 切り詰め規則と actions の幅予約は別の作業（Issue #20 I-7 系）で扱う。
+// 同じ周で検討して**取り下げた**「すべてのフォルダのとき各行の meta に
+// basename(entry.cwd) を出す」案は、Issue #119 の周2・周3 で入れた。
+// 取り下げの理由だった2つが両方とも解消したため:
+//   - `.history-item__row` の実効幅 139px -> **235px**（周2 で
+//     `.history-item__actions` をフローから外した）
+//   - meta に切り詰め規則が無く単語の途中で折り返す -> 周2 で
+//     `min-width: 0` + `text-overflow: ellipsis` を入れた（相対時刻だけ
+//     `flex-shrink: 0` なので、溢れたときに削られるのはフォルダ名とブランチ名）
 //
 // ただしこの行には resume 用の <button> の他に「メモ」「編集」という
 // **別の**インタラクティブ要素がある。<button> の中に <button> は入れ子にできない
@@ -48,7 +49,7 @@ import {
   type MouseEvent,
 } from 'react';
 import type { HistoryProvider, SessionHistoryEntry } from '@shared/ipc';
-import { formatRelativeTime, sessionDisplayTitle } from '../lib/format';
+import { basename, formatRelativeTime, sessionDisplayTitle } from '../lib/format';
 import { getSharedCwd, isSharedCwdResolved, resolveSharedCwd, subscribeSharedCwd } from '../lib/cwd';
 import type { MemoTarget } from './MemoPanel';
 
@@ -177,6 +178,10 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
     <>
       <div className="history-item__meta">
         <span>{formatRelativeTime(entry.updatedAt)}</span>
+        {/* Issue #20 I-2 / #119 周3: フォルダを横断しているときだけ、どのフォルダの
+            セッションかを出す。絞り込み中は全行が同じ値になるので出さない
+            （情報量ゼロの列を1つ増やすだけになる）。 */}
+        {showingAllFolders && entry.cwd !== undefined && <span>{basename(entry.cwd)}</span>}
         {entry.gitBranch && <span>{entry.gitBranch}</span>}
       </div>
       {entry.parseError && (
@@ -284,9 +289,15 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
   return (
     <div className="history-list">
       {/* 見出しは「何のパネルか」（タブに既に書いてある）ではなく「いまどの範囲を
-          見ているか」を言う。設定の「このフォルダのものだけ表示する」と語を揃えてある。 */}
-      <h2 className="history-list__heading">
-        {showingAllFolders ? 'すべてのフォルダ' : 'このフォルダ'}
+          見ているか」を言う。設定の「このフォルダのものだけ表示する」と語を揃えてある。
+
+          Issue #119 周3: **プロバイダも入れた。** すぐ下のツールバーに
+          Claude / Gemini のトグルが見えているのに、見出しは範囲しか言っていなかった。
+          3パネルで語の形（`この/すべての + 範囲 + の + 対象`）を揃えるため、
+          クラスも `.panel-scope` に寄せてある（タスク・メモと同じ見た目）。 */}
+      <h2 className="panel-scope">
+        {showingAllFolders ? 'すべてのフォルダ' : 'このフォルダ'}の{' '}
+        {provider === 'claude' ? 'Claude' : 'Gemini'}
       </h2>
       <div className="history-list__toolbar">
         <div className="history-list__providers">
@@ -319,12 +330,12 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
         </button>
       </div>
 
-      {/* すべてのフォルダを見ている間は常に分かるようにする（原則2: 状態を色だけに頼らない）。
-          スコープ行の常設は I-2 の担当（別 PR）だが、ここは自分で切り替えた結果を
-          戻す手段が無いと迷子になるため、この PR の範囲として最小限に用意する。 */}
+      {/* 自分で切り替えた結果を戻す手段。
+          Issue #119 周3: **「すべてのフォルダを表示中」という語を落とした。**
+          すぐ上のスコープ行（`.panel-scope`）が同じことを言っており、
+          同じ内容が縦に2回並んでいた（#117 が見出しを足したときに、ここを畳み忘れた）。 */}
       {showingAllFolders && (
         <div className="history-list__scope-note">
-          <span>すべてのフォルダを表示中</span>
           <button type="button" onClick={() => setAllFolders(false)}>
             現在のフォルダのみに戻す
           </button>

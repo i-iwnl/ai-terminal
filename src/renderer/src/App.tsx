@@ -655,12 +655,19 @@ export default function App(): ReactElement {
 
   return (
     <div className="app">
+      {/* 見出し階層の頂点（Issue #119 周3）。本体ウィンドウには <h2> が
+          フラットに並ぶだけで <h1> が1つも無く、VoiceOver のローターで
+          見出しを辿っても階層が読めなかった。視覚的には出さない
+          （タイトルバーは titleBarStyle: 'hiddenInset' で見えないため、
+          画面に文字を増やす理由が無い）。 */}
+      <h1 className="visually-hidden">ai-terminal</h1>
       <Sidebar
         collapsed={sidebarCollapsed}
         onFocusTaskTab={focusTaskTab}
         canFocusTaskTab={canFocusTaskTab}
         onResumeHistory={resumeHistory}
         onLaunchClaude={launchClaude}
+        scopeAgentsToCwd={config.scopeAgentsToCwd}
       />
       <main className="main">
         <TabBar
