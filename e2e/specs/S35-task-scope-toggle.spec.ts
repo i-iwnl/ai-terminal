@@ -34,7 +34,7 @@ test('S35 設定パネルで絞り込みを切り替えると、次のポーリ�
   // config:set の往復が返ってから再描画される制御コンポーネントなので、
   // クリック直後の状態を見に行く check() は「状態が変わらなかった」と判定して落ちる。
   const scopeBox = dialog
-    .locator('label', { hasText: 'タスク一覧を現在のディレクトリに絞り込む' })
+    .locator('label', { hasText: 'このフォルダのものだけ表示する' })
     .locator('input[type="checkbox"]');
   await expect(scopeBox).not.toBeChecked();
   await scopeBox.click();
@@ -51,7 +51,7 @@ test('S35 設定パネルで絞り込みを切り替えると、次のポーリ�
     window.locator('button[aria-label="設定を開く"]').click(),
   );
   const reopened = settings
-    .locator('label', { hasText: 'タスク一覧を現在のディレクトリに絞り込む' })
+    .locator('label', { hasText: 'このフォルダのものだけ表示する' })
     .locator('input[type="checkbox"]');
   // 開き直しても設定が残っていること（保存されている確認も兼ねる）
   await expect(reopened).toBeChecked();
