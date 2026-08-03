@@ -19,6 +19,19 @@
 // （動かないボタンを画面に置かない）。解析エラーは赤字2行から灰色1行へ、
 // 詳細はツールチップへ移した（打つ手が無い情報を「要対応」の色で出さない）。
 //
+// Issue #20 PR 13-a': パネルの見出しを `履歴`（タブと同じ語の繰り返し）から
+// スコープを表す語（`このフォルダ` / `すべてのフォルダ`）に差し替える。
+// 行は増やさない（既存の <h2> のテキストだけを入れ替える）。要素そのものは
+// 残す（廃すと履歴パネルの見出しが0個になり、VoiceOver の rotor から消える）。
+//
+// 同じ周で「すべてのフォルダのとき各行の meta に basename(entry.cwd) を出す」案も
+// 検討したが、**取り下げた**。実測すると `.history-item__row` の幅は 139px しかなく
+// （`.history-item__actions` が opacity: 0 のまま 88px + gap 8px を常時予約している）、
+// フォルダ名を足すと meta が 163px になって単語の途中で折り返し、行が 57px から
+// 73.5px へ伸びる。これは同じ案の初版で「235px の幅に対し 292px で折り返す」ことを
+// 理由に取り下げたスコープ行と同じ型の破綻で、片方だけ通す理由が無い。
+// 切り詰め規則と actions の幅予約は別の作業（Issue #20 I-7 系）で扱う。
+//
 // ただしこの行には resume 用の <button> の他に「メモ」「編集」という
 // **別の**インタラクティブ要素がある。<button> の中に <button> は入れ子にできない
 // （HTML の内容モデル上、<button> はインタラクティブコンテンツの子孫を許さない）ため、
@@ -54,6 +67,13 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
   // Issue #20 I-3「すべてのフォルダを見る」。既定は現在のフォルダに絞り込む false。
   // gemini は cwd 単位の横断に対応していない（reader.ts 参照）ため、gemini では常に false 扱いにする。
   const [allFolders, setAllFolders] = useState(false);
+
+  // 「いま絞り込みを外して見ているか」の唯一の判定。見出しとスコープ注記の
+  // 2箇所で食い違わせないため、ここに集約する。
+  // なお下の load はこれを使わない。load の依存配列をこの1値にすると、
+  // provider を claude -> gemini に切り替えても（どちらも false のままなので）
+  // load が再生成されず、gemini の一覧を読み直さなくなるため。
+  const showingAllFolders = provider === 'claude' && allFolders;
 
   const load = useCallback(() => {
     if (!isSharedCwdResolved()) return;
@@ -263,7 +283,11 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
 
   return (
     <div className="history-list">
-      <h2 className="history-list__heading">履歴</h2>
+      {/* 見出しは「何のパネルか」（タブに既に書いてある）ではなく「いまどの範囲を
+          見ているか」を言う。設定の「このフォルダのものだけ表示する」と語を揃えてある。 */}
+      <h2 className="history-list__heading">
+        {showingAllFolders ? 'すべてのフォルダ' : 'このフォルダ'}
+      </h2>
       <div className="history-list__toolbar">
         <div className="history-list__providers">
           <button
@@ -298,7 +322,7 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
       {/* すべてのフォルダを見ている間は常に分かるようにする（原則2: 状態を色だけに頼らない）。
           スコープ行の常設は I-2 の担当（別 PR）だが、ここは自分で切り替えた結果を
           戻す手段が無いと迷子になるため、この PR の範囲として最小限に用意する。 */}
-      {provider === 'claude' && allFolders && (
+      {showingAllFolders && (
         <div className="history-list__scope-note">
           <span>すべてのフォルダを表示中</span>
           <button type="button" onClick={() => setAllFolders(false)}>
