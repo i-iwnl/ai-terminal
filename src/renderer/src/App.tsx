@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react';
 import type { AgentTask, AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
+import { resolveTheme } from '@shared/themes';
 import Sidebar from './sidebar/Sidebar';
 import {
   SIDEBAR_DEFAULT_WIDTH_PX,
@@ -346,6 +355,16 @@ export default function App(): ReactElement {
     setSidebarWidth(clampSidebarWidth(config.sidebarWidth));
   }, [config.sidebarWidth]);
 
+  // 実際に適用する配色。**プリセットが選ばれていればそちらが勝つ**が、
+  // 未設定・custom・未知の名前では保存済みの `theme`（4色）をそのまま使う
+  // （`src/shared/themes.ts` の `resolveTheme` が唯一の正）。
+  // この順序で `S21-config.spec.ts`（config.json に theme を直接書いて反映を見る）が
+  // 無傷のまま残る。
+  const activeTheme = useMemo(
+    () => resolveTheme({ themeName: config.themeName, theme: config.theme }),
+    [config.themeName, config.theme],
+  );
+
   // クロームの面（サイドバー・行のホバー・浮いた面）を theme.background から
   // 機械的に導出し、CSS 変数へ流し込む（Issue #20 の G「テーマ（方向を逆にする）」）。
   // xterm 側の ITheme は既存の別 effect（useTerminal.ts の options.theme -> term.options）
@@ -358,18 +377,28 @@ export default function App(): ReactElement {
   // クロームの文字色は静的なままなので、導出した面が明るくなりすぎると
   // 静的な文字色との contrast が壊れる（例: 明るい背景を設定すると surface-3
   // が白に寄り、その上の文字がほぼ読めなくなる）。chromeSafeToApply が false の
-  // ときは setProperty を呼ばず、:root の静的な値をそのまま生かす
-  // （「壊れた配色を出すより、追従しないほうがまし」。既知の制限として記録済み。
-  // 文字色まで含めたパレット化は PR 18 の範囲）。
+  // ときは :root の静的な値へ戻す（「壊れた配色を出すより、追従しないほうがまし」）。
+  //
+  // **`return` するだけにしてはいけない（Issue #119 周6 で修正）。**
+  // 以前は早期 return しており、そのコメントは「:root の静的な値をそのまま生かす」と
+  // 書いていたが、それは**一度もインライン適用が起きていない場合にしか成立しない**。
+  // 安全なテーマ A -> 危険なテーマ B と切り替えると、A のインライン値が
+  // `document.documentElement.style` に残り続け、クロームは A の面のままになる。
+  // テーマ切替が設定ウィンドウからのワンクリック操作になった以上、
+  // この経路は日常的に通る。**必ず removeProperty で消す。**
   useEffect(() => {
-    const { chrome, chromeSafeToApply } = terminalThemeFrom(config.theme);
-    if (!chromeSafeToApply) return;
     const root = document.documentElement.style;
+    const SURFACE_VARS = ['--surface-0', '--surface-1', '--surface-2', '--surface-3'] as const;
+    const { chrome, chromeSafeToApply } = terminalThemeFrom(activeTheme);
+    if (!chromeSafeToApply) {
+      for (const name of SURFACE_VARS) root.removeProperty(name);
+      return;
+    }
     root.setProperty('--surface-0', chrome.surface0);
     root.setProperty('--surface-1', chrome.surface1);
     root.setProperty('--surface-2', chrome.surface2);
     root.setProperty('--surface-3', chrome.surface3);
-  }, [config.theme]);
+  }, [activeTheme]);
 
   // 起動時に共有 cwd（アプリを起動したディレクトリ）を解決してから、最初のシェルタブを1枚開く。
   // resolveSharedCwd() は失敗しても home ないし undefined へ確定させて解決するので、
@@ -789,7 +818,7 @@ export default function App(): ReactElement {
               maximizedPaneId={tab.maximized ? tab.activePaneId : undefined}
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
-              theme={config.theme}
+              theme={activeTheme}
               // screenReaderMode を有効にしてよいかの設定側の判断（アクティブな
               // タブ・アクティブなペインへの絞り込みは PaneTreeView 側が担う）。
               // xterm は screenReaderMode 有効時に aria-live="assertive" の live

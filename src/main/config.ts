@@ -81,6 +81,9 @@ export function coerceConfig(raw: unknown): AppConfig {
     // 上下限をもう1箇所に書き写さない（二重管理を作らない）。
     sidebarWidth: num('sidebarWidth', DEFAULT_CONFIG.sidebarWidth),
     screenReaderMode: bool('screenReaderMode', DEFAULT_CONFIG.screenReaderMode),
+    // 未知の名前でも落とさない（鉄則5）。プリセットに無ければ
+    // themes.ts の resolveTheme が保存済みの theme へ縮退する。
+    themeName: str('themeName', DEFAULT_CONFIG.themeName),
     theme: {
       background: themeStr('background'),
       foreground: themeStr('foreground'),

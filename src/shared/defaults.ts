@@ -70,5 +70,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   sidebarWidth: 260,
   // 既定で有効にしない理由は描画コスト。VoiceOver を検知したときは設定に関わらず有効になる。
   screenReaderMode: false,
+  // 空文字 = 未設定。保存済みの theme（すぐ下）が勝つ。
+  // 既定を 'default' にしないのは、既に config.json へ手で theme を書いている
+  // 利用者の設定を、アプリを更新しただけで黙って上書きしないため。
+  themeName: '',
   theme: DEFAULT_THEME,
 };

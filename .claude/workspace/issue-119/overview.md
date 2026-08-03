@@ -25,8 +25,8 @@
 | カテゴリ | 対象 |
 |---|---|
 | 対象トラック | main（BrowserWindow・config）+ renderer（React UI）の2トラック |
-| ブランチ | 未作成 |
-| 関連 PR | 未作成 |
+| ブランチ | `feat/issue-119-p1-guards` |
+| 関連 PR | 未作成（コミット 6 本） |
 
 ---
 
@@ -62,55 +62,55 @@
 
 ### 周2: A（履歴行の幅回復）— **完了 2026-08-03**
 
-- [ ] `.history-item__action` に `pointer-events: none`、hover / focus で `auto` を入れた。**周1 の elementFromPoint assert が green になった**
-- [ ] `.history-item__actions` をフローから外し、`.history-item__row` の実効幅が 235px 近くまで回復した（`getBoundingClientRect()` で実測）
-- [ ] `.history-item__meta` に `min-width: 0` + `text-overflow: ellipsis` を入れた
-- [ ] **「見た目を変えない」と名乗っていない。** `.history-item__title` の省略位置が動くので S16 / S18 / S19 を撮り直した
+- [x] `.history-item__action` に `pointer-events: none`、hover / focus で `auto` を入れた。**周1 の elementFromPoint assert が green になった**
+- [x] `.history-item__actions` をフローから外し、`.history-item__row` の実効幅が 235px 近くまで回復した（`getBoundingClientRect()` で実測）
+- [x] `.history-item__meta` に `min-width: 0` + `text-overflow: ellipsis` を入れた
+- [x] **「見た目を変えない」と名乗っていない。** `.history-item__title` の省略位置が動くので S16 / S18 / S19 を撮り直した
 
 ### 周3: B（スコープ行）+ C（改名しない結論）— **完了 2026-08-03**
 
-- [ ] 本体ウィンドウに `<h1>`（視覚的非表示）が1つあり、既存の `<h2>` の階層が整理された
-- [ ] タスク / メモの最上部にスコープ行が常設され、**0 件のときも消えない**
-- [ ] 履歴の `history-list__heading` と `history-list__scope-note` が同じことを2回言っていない
-- [ ] 履歴行の meta に、`allFolders` のときフォルダ名が出る（周2 の ellipsis があるので折り返さない）
-- [ ] C の結論（改名しない）と、**#115 で出荷済みの設定の節名「動作中の AI」との整合**をこの Issue に書き戻した
-- [ ] スコープ行の文字列を固定する spec が green（S70 / S71 と同じ characterization の形）
+- [x] 本体ウィンドウに `<h1>`（視覚的非表示）が1つあり、既存の `<h2>` の階層が整理された
+- [x] タスク / メモの最上部にスコープ行が常設され、**0 件のときも消えない**
+- [x] 履歴の `history-list__heading` と `history-list__scope-note` が同じことを2回言っていない
+- [x] 履歴行の meta に、`allFolders` のときフォルダ名が出る（周2 の ellipsis があるので折り返さない）
+- [x] C の結論（改名しない）と、**#115 で出荷済みの設定の節名「動作中の AI」との整合**をこの Issue に書き戻した
+- [x] スコープ行の文字列を固定する spec が green（S70 / S71 と同じ characterization の形）
 
 ### 周4: D（サイドバー幅）— **完了 2026-08-03**
 
-- [ ] `clampSidebarWidth()` が `test/unit/` にあり、**下限が信号機の実測右端（x=76）より上**であることを固定している
-- [ ] ハンドルは `PaneSplitterHandle.tsx` と同じゴースト方式で、**ドラッグ中に `pty.resize` が0回**であることを実測した
-- [ ] 幅は `--sidebar-width` カスタムプロパティ経由。**`Opt+Cmd+S` で畳めることを S72 が引き続き green で示している**
-- [ ] 「表示」メニューに `サイドバーを広げる` / `狭める` / `既定の幅に戻す` の3項目があり、`accelerator` を持たない
-- [ ] `AppConfig.sidebarWidth` が永続化され、`configSet` は `mouseup` で1回だけ呼ばれる
-- [ ] `DEFAULT_CONFIG.sidebarWidth` を `src/shared/defaults.ts` に足した（E2E ハーネスが読む）
+- [x] `clampSidebarWidth()` が `test/unit/` にあり、**下限が信号機の実測右端（x=76）より上**であることを固定している
+- [x] ハンドルは `PaneSplitterHandle.tsx` と同じゴースト方式で、**ドラッグ中に `pty.resize` が0回**であることを実測した
+- [x] 幅は `--sidebar-width` カスタムプロパティ経由。**`Opt+Cmd+S` で畳めることを S72 が引き続き green で示している**
+- [x] 「表示」メニューに `サイドバーを広げる` / `狭める` / `既定の幅に戻す` の3項目があり、`accelerator` を持たない
+- [x] `AppConfig.sidebarWidth` が永続化され、`configSet` は `mouseup` で1回だけ呼ばれる
+- [x] `DEFAULT_CONFIG.sidebarWidth` を `src/shared/defaults.ts` に足した（E2E ハーネスが読む）
 
-### 周5: F（ウィンドウ）+ G（選択中タブ）+ state slot
+### 周5: F（ウィンドウ）+ G（選択中タブ）+ state slot — **完了 2026-08-03**
 
-- [ ] **vibrancy が実機で見えているかを確認し、結果を記録した**（`body` が不透明なので一度も見えていない疑いがある）
-- [ ] `.sidebar__drag-region` と `.tab-bar` の高さが揃い、`trafficLightPosition` が光学中心と一致した（周1 の characterization spec の diff がレビュー資料）
-- [ ] フルスクリーンでドラッグ帯が畳まれ、復帰時に `trafficLightPosition` が再適用される
-- [ ] ウィンドウの位置・サイズ・フルスクリーンが復元される。**`config.json` ではなく `window-state.json`**（`memo/store.ts` / `history/titles.ts` と同じ形）
-- [ ] `win.setTitle()` がアクティブタブに同期する
-- [ ] `.tab-bar__tab.is-active` に白 2px の `box-shadow: inset 0 -2px 0`。**S40 の `選択中タブの塗り（対タブバー）` 1.23 の隣に、線の値が pass として記録された**
-- [ ] `.tab-bar__state-slot` に「あなたの番」のドット（丸）が配線され、`tabAccessibleLabel` に語が入った
-- [ ] `docs/images/` 12枚を撮り直した。**1枚ずつ「この画面にこの変更が波及するはずがあるか」を言えた**
+- [x] **vibrancy が実機で見えているかを確認し、結果を記録した**（`body` が不透明なので一度も見えていない疑いがある）
+- [x] `.sidebar__drag-region` と `.tab-bar` の高さが揃い、`trafficLightPosition` が光学中心と一致した（周1 の characterization spec の diff がレビュー資料）
+- [x] フルスクリーンでドラッグ帯が畳まれ、復帰時に `trafficLightPosition` が再適用される
+- [x] ウィンドウの位置・サイズ・フルスクリーンが復元される。**`config.json` ではなく `window-state.json`**（`memo/store.ts` / `history/titles.ts` と同じ形）
+- [x] `win.setTitle()` がアクティブタブに同期する
+- [x] `.tab-bar__tab.is-active` に白 2px の `box-shadow: inset 0 -2px 0`。**S40 の `選択中タブの塗り（対タブバー）` 1.23 の隣に、線の値が pass として記録された**
+- [x] `.tab-bar__state-slot` に「あなたの番」のドット（丸）が配線され、`tabAccessibleLabel` に語が入った
+- [x] `docs/images/` 12枚を撮り直した。**1枚ずつ「この画面にこの変更が波及するはずがあるか」を言えた**
 
-### 周6: E（テーマ切替 UI）
+### 周6: E（テーマ切替 UI）— **完了 2026-08-03**
 
-- [ ] `src/shared/themes.ts` に `THEME_PRESETS` があり、**`chromeSafeToApply === true` を単体テストが関門にしている**（Nord / Dracula / One Dark / Gruvbox Dark は全滅するので候補から外れる）
-- [ ] `AppConfig.themeName` を足し、`themeName: 'custom'` の番人値を最初から型に入れた
-- [ ] **`S21-config.spec.ts` が無傷**（`themeName` 未設定なら保存済み `theme` が勝つ設計）
-- [ ] `App.tsx` の `chromeSafeToApply === false` で `removeProperty` を呼ぶ else 節がある（**現状は前回のインライン値が残り続けるバグ**）
-- [ ] 設定の「外観」節にテーマ選択があり、`S70-settings-labels-contract.spec.ts` の記録を更新した
-- [ ] `chromeSafeToApply === false` のとき、その旨が画面と `announce()` に出る
+- [x] `src/shared/themes.ts` に `THEME_PRESETS` があり、**`chromeSafeToApply === true` を単体テストが関門にしている**（Nord / Dracula / One Dark / Gruvbox Dark は全滅するので候補から外れる）
+- [x] `AppConfig.themeName` を足し、`themeName: 'custom'` の番人値を最初から型に入れた
+- [x] **`S21-config.spec.ts` が無傷**（`themeName` 未設定なら保存済み `theme` が勝つ設計）
+- [x] `App.tsx` の `chromeSafeToApply === false` で `removeProperty` を呼ぶ else 節がある（**現状は前回のインライン値が残り続けるバグ**）
+- [x] 設定の「外観」節にテーマ選択があり、`S70-settings-labels-contract.spec.ts` の記録を更新した
+- [x] `chromeSafeToApply === false` のとき、その旨が画面と `announce()` に出る
 
 ### 全周共通
 
-- [ ] `make check` が通る
-- [ ] **`make e2e` は P1 の最後に1回**。ただし `make e2e-lint` は毎周、`make e2e-screenshots` はセレクタを変えた周ごとに回す
-- [ ] `README.md` を更新した（サイドバー幅のメニュー・テーマ切替・タブの状態ドット）
-- [ ] 耐久性のある規約を `.claude/skills/design-review/reference/design-rules.md` に反映した
+- [x] `make check` が通る
+- [x] **`make e2e` は P1 の最後に1回**。ただし `make e2e-lint` は毎周、`make e2e-screenshots` はセレクタを変えた周ごとに回す
+- [x] `README.md` を更新した（サイドバー幅のメニュー・テーマ切替・タブの状態ドット）
+- [x] 耐久性のある規約を `.claude/skills/design-review/reference/design-rules.md` に反映した
 
 ---
 
@@ -119,14 +119,17 @@
 | 項目 | 状態 |
 |---|---|
 | 設計 | **完了**（5ペルソナレビュー実施済み。裁定は `architecture.md`） |
-| 実装 | **進行中**（周1〜4 完了 / 周5・6 が残り） |
-| 検証 | 各周で `make check` + 名指しの spec + agent-browser。**`make e2e` は P1 の最後に1回** |
+| 実装 | **完了**（周1〜6 すべて） |
+| 検証 | **完了**。`make check` 440 tests PASS / `make e2e` **76 passed / 2 flaky**（#17 の既知の起動 timeout）/ `make e2e-lint` PASS=560 FAIL=0 |
 
 ---
 
 ## 4. 直近の次アクション
 
+**この Issue の実装は完了した。** 残っているのはユーザーの確認と、
+#120（P2）/ #121（P3）への引き継ぎだけ。
+
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | 周5（F: ウィンドウ + G: 選択中タブ + state slot） | **先頭で vibrancy の生死を実機確認する**（known-issues の 3）。画像12枚の撮り直しはここ1回にまとめる |
-| P1 | 周6（E: テーマ切替 UI） | `chromeSafeToApply === false` の `removeProperty` 漏れ（known-issues の 2）を同じ周で直す |
+| **P0** | ユーザーに P2 へ移ってよいか確認する | ルール「各 P が終わったタイミングで一度確認を取る」 |
+| P1 | #120（P2）へ着手する | この周で見つけて回した2件（`Cmd+W` / 通知の無言 no-op）も含む |

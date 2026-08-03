@@ -1033,3 +1033,29 @@ scenarios:
       S73 で実際に呼んで確認した）、信号機はネイティブの NSButton で DOM にも
       現れない。復帰時に `setWindowButtonPosition` を呼んでいることまでが実装の
       担保で、位置の一致は `test/unit/css-tokens.test.ts` が導出ごと固定している。
+
+  # --- 配色プリセット（Issue #119 周6 / #20 の PR 18） -----------------------
+  - id: S80
+    title: 配色プリセットを選ぶと、ターミナルとクロームが一緒に変わる
+    spec: S80-theme-preset.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周6。`src/shared/theme.ts` の「`theme.background` から
+      クロームの面を導出する」仕組みは PR #101 で入っていたが、**切り替える UI が
+      無かった**ので、テーマを変える手段は `config.json` の直接編集だけだった。
+      ここで見るのは「**ターミナルとクロームが一緒に変わる**」こと。片方だけ変わる
+      半適用がこの機能の主な故障モードで、プリセットに閉じた理由そのもの
+      （`useTerminal.ts` は `chromeSafeToApply` を見ずに `term.options.theme` を
+      無条件に適用する一方、`App.tsx` はクロームの面の適用を見送るため、
+      任意の色を選べると「端末だけ明るくなりクロームが暗いまま残る」）。
+      プリセットの安全性は `test/unit/themes.test.ts` が関門にしている
+      （**Nord / Dracula / One Dark / Gruvbox Dark は実測で全滅**した。
+      背景が明るめで、面を導出すると `--text-tertiary` が 4.5:1 を割る）。
+      **`.xterm-viewport` では背景を取れない**（`rgb(0,0,0)` を返す）。xterm は
+      ITheme の background を `.xterm-scrollable-element` のインラインスタイルに
+      書くので、S21 と同じ要素を見る。既定へ戻したときに**インライン値が残らない**
+      ことも見る（周6 で直したバグ。以前は `chromeSafeToApply` が false のときに
+      `return` するだけで、前のテーマの面が `documentElement.style` に残り続けた）。
+      **`S21-config.spec.ts` は無傷** — `themeName` 未設定なら保存済みの `theme`
+      （4色）が勝つ設計で、逆にすると config.json に手で書いた設定が黙って
+      無視される。

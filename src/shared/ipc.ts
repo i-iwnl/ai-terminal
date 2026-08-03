@@ -338,7 +338,24 @@ export interface AppConfig {
    * 更新する）。VoiceOver の起動が検知できたときは、この値に関わらず有効にする。
    */
   screenReaderMode: boolean;
-  /** xterm のテーマ色 */
+  /**
+   * 選んだ配色プリセットの識別子（`src/shared/themes.ts` の `THEME_PRESETS`）。
+   *
+   * **空文字は「未設定」で、そのときは下の `theme`（4色）が勝つ。**
+   * 既に `config.json` を手で書いている利用者の設定を、UI を足したことで
+   * 黙って無視しないため。`'custom'` はプリセットから外れた状態を表す
+   * 番人値で、**型に最初から入れてある**（あとから足すと `coerceConfig` を
+   * 2回触ることになる）。
+   *
+   * 適用の優先順位は `themes.ts` の `resolveTheme` が唯一の正。
+   */
+  themeName: string;
+  /**
+   * xterm のテーマ色。
+   *
+   * `themeName` が有効なプリセットを指しているときは、そちらが優先される
+   * （この4色は「プリセットを使っていないとき」と「custom」のための保存場所）。
+   */
   theme: TerminalTheme;
 }
 
