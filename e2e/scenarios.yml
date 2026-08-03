@@ -831,3 +831,29 @@ scenarios:
       basename(entry.cwd) を出す」案は取り下げた（`.history-item__row` の実測幅は
       139px しかなく、meta が 163px になって折り返し、行が 57px から 73.5px へ
       伸びるため）。
+
+  # --- サイドバーの折りたたみ（Issue #20 PR 15） ----------------------------
+  - id: S72
+    title: Cmd+Option+S でサイドバーを畳み、信号機の下にタブが入らない
+    spec: S72-sidebar-collapse.spec.ts
+    readme: false
+    note: >-
+      Issue #20 K-1。**既定は開いたまま（260px）**で、トグルだけを足す
+      （既定を 0px にする案は画像13枚と既存 spec の起点を全部作り直すことに
+      なるため別 Issue）。前提として `shortcuts.ts` の `Cmd+Option+英字` の
+      解禁が要る。二重に塞がっていた（`passesModifierGate` の
+      `altKey && !isArrowKey` と、`matchShortcut` の altKey 分岐の
+      `default: return null`）ので、**どちらか片方を戻すだけでこの spec は
+      赤くなる**。判定は `.key` ではなく `.code`（macOS では Option+s の
+      `.key` が `ß` になりうる。S67 が `Cmd+Shift+]` を BracketRight で
+      送っているのと同じ理由。`.key` 側は test/unit/renderer-lib.test.ts が
+      `ß` のケースで固定している）。あわせて、畳んだときに
+      `.sidebar__drag-region`（信号機の下敷き）が消えることで**信号機ボタンが
+      36px の `.tab-bar` にそのまま乗る**ため、逃げ帯
+      （`.tab-bar__traffic-light-gap`、実測 84px）にタブが潜り込んでいないことを
+      S69 と同じ `document.elementFromPoint()` で確認する。信号機はネイティブの
+      ボタンで DOM に存在せず `boundingBox()` では測れないので、矩形は AppKit の
+      standardWindowButton の実測（14x14 / pitch 23）と Electron の
+      `trafficLightPosition`（16,16）から導いた x:16〜76 / y:16〜30 を使う。
+      `min-width: 220px` の打ち消し漏れと `border-right` の消し忘れも
+      幅0の assert で同時に捕まえる。

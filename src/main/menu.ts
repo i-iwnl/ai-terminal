@@ -75,6 +75,14 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
   const appName = app.getName();
 
   const viewSubmenu: MenuItemConstructorOptions[] = [
+    // サイドバーの表示/非表示（Issue #20 K-1）。macOS の作法どおり「表示」メニューの
+    // 先頭に置く（Finder / Xcode / Mail のサイドバー切り替えと同じ位置）。
+    // **ラベルは状態で切り替えない。** 切り替えるには Renderer の開閉状態を Main へ
+    // 送り返す配線（menu:pane-count と同型の IPC）が要るが、この操作は状態を
+    // 画面で直接確認できる（サイドバーが在るか無いか）ため、ラベルを動かす価値より
+    // 経路が1本増える負債のほうが大きいと判断した。
+    actionItem(win, 'サイドバーの表示を切り替え', 'Cmd+Option+S', { type: 'toggle-sidebar' }),
+    { type: 'separator' },
     actionItem(win, '画面を消去', 'Cmd+K', { type: 'clear-terminal' }),
     { type: 'separator' },
     // ペインの最大化トグル（Issue #56 PR 8・design-review.md 提案 I）。

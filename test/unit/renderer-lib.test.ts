@@ -125,9 +125,18 @@ describe('passesModifierGate', () => {
     ).toBe(true);
   });
 
-  it('矢印キー以外は Cmd+Option でもガードを通さない', () => {
+  // Issue #20 PR 15（サイドバーの折りたたみ = Cmd+Option+S）でここが変わった。
+  // それまでは「矢印キー以外は Cmd+Option でもガードを通さない」ことを固定していたが、
+  // その制限は **metaKey 必須のガードと重複していただけ** だった
+  // （dead key の合成が起きるのは Command が押されていないときだけ）。
+  // **ガードを元に戻すと、このケースがここで赤くなる。**
+  it('Cmd+Option+英字 はガードを通す（PR 15 でここが変わった）', () => {
+    expect(passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 's' })).toBe(
+      true,
+    );
+    // 割り当ての無い英字でもガード自体は通す（何を割り当てるかは matchShortcut の担当）。
     expect(passesModifierGate({ metaKey: true, ctrlKey: false, altKey: true, key: 't' })).toBe(
-      false,
+      true,
     );
   });
 
@@ -156,11 +165,34 @@ describe('matchShortcut', () => {
     expect(matchShortcut(keyEvent({ key: 't', metaKey: true, ctrlKey: true }))).toBeNull();
   });
 
-  // Option+英数字キーは macOS で特殊文字の合成に使われる（例: Option+e はアクセント記号の
-  // dead key）ため、矢印キー以外は altKey が付いていたら今までどおり無条件で対象外にする。
-  it('矢印キー以外は Cmd+Alt でも対象外にする', () => {
-    expect(matchShortcut(keyEvent({ key: 't', metaKey: true, altKey: true }))).toBeNull();
-    expect(matchShortcut(keyEvent({ key: 'w', metaKey: true, altKey: true }))).toBeNull();
+  // ガードは通すようになった（上の passesModifierGate 参照）が、割り当てが無い
+  // Cmd+Option+英字 は今までどおり null のまま素通しする。
+  it('割り当ての無い Cmd+Alt+英字 は null のまま素通しする', () => {
+    expect(matchShortcut(keyEvent({ key: 't', code: 'KeyT', metaKey: true, altKey: true }))).toBeNull();
+    expect(matchShortcut(keyEvent({ key: 'w', code: 'KeyW', metaKey: true, altKey: true }))).toBeNull();
+  });
+
+  // Issue #20 K-1: サイドバーの表示/非表示（Cmd+Option+S）。
+  //
+  // **判定は `.code`。** macOS では Option を押しながらの英字キーは合成後の文字が
+  // `.key` に入りうる（Option+s -> `ß`）。実機でその形になっても拾えることを、
+  // `key` に `ß` を入れたケースで固定する（`.key` 判定に書き換えると赤くなる）。
+  it('Cmd+Option+S はサイドバーの表示切り替えに割り当たる', () => {
+    expect(matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true, altKey: true }))).toEqual(
+      { type: 'toggle-sidebar' },
+    );
+    expect(
+      matchShortcut(keyEvent({ key: 'ß', code: 'KeyS', metaKey: true, altKey: true })),
+    ).toEqual({ type: 'toggle-sidebar' });
+  });
+
+  // Option 無しの Cmd+S は未定義のまま（保存の標準キーなので、将来別の意味を
+  // 割り当てるとしてもここではない）。Shift 付きも未定義。
+  it('Cmd+S / Cmd+Shift+Option+S は未定義のまま null を返す', () => {
+    expect(matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true }))).toBeNull();
+    expect(
+      matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true, altKey: true, shiftKey: true })),
+    ).toBeNull();
   });
 
   // Issue #56 PR 8: ペイン間移動に Cmd+Option+矢印 を割り当てた。矢印キーだけは

@@ -2,19 +2,27 @@
 //
 // Cmd（metaKey）系の組み合わせだけを対象にする。Ctrl+C など端末本来のキー入力とは
 // 絶対に衝突しない設計にするため、ctrlKey が同時に押されている場合は無条件で無視する。
-// altKey も原則同様に無視するが、**矢印キー（ArrowUp/Down/Left/Right）だけは例外**にする。
+// altKey は **metaKey が同時に押されている場合に限って** 許可する。
 //
 // 理由: macOS では Option+英数字キーは特殊文字の入力に使われる（例: Option+e は
-// アクセント記号を合成する dead key、Option+u はウムラウトの合成キー）ため、
-// Option 付きの英数字キーをショートカットとして横取りすると文字入力そのものを壊す。
-// 一方、矢印キーは Option と組み合わせても文字を生成しない純粋なナビゲーションキーで、
-// `Option+←/→` は Terminal.app / iTerm2 / シェルの readline / 一般的な Cocoa の
-// テキスト編集コンテキストで「単語単位のカーソル移動」として広く使われている
-// 既存の慣習でもある。この慣習と衝突しないよう、`matchShortcut` は `metaKey` が
-// 付いていない `Option+矢印` には一切反応しない（後述のガードを参照）。
-// `Cmd+Option+矢印` は Issue #56（ターミナル分割表示）でペイン間移動に使う計画があり、
-// そのための地ならしとしてここでガードだけを緩めておく（実際に何の操作を割り当てるかは
-// 後続 PR の担当。このファイルでは AppAction を増やさない）。
+// アクセント記号を合成する dead key、Option+u はウムラウトの合成キー、Option+s は ß）
+// ため、Option 付きの英数字キーをショートカットとして横取りすると文字入力そのものを壊す。
+// **ただしこの合成が起きるのは Command が押されていないときだけ**で、
+// `Cmd+Option+英字` はどのキーボードレイアウトでも文字を生成しない
+// （macOS のキーバインドとしても `Cmd+Option+*` はアプリのコマンド専用の帯域）。
+// したがって「metaKey が必須」というこのファイルの大前提が、そのまま dead key を
+// 壊さない保証になっている。かつては矢印キーだけを例外にしていたが、
+// **その制限は metaKey 必須のガードと重複していただけ**なので Issue #20 PR 15
+// （サイドバーの折りたたみ = `Cmd+Option+S`）で外した。
+//
+// 一方、`Option+←/→`（Cmd 無し）は Terminal.app / iTerm2 / シェルの readline /
+// 一般的な Cocoa のテキスト編集コンテキストで「単語単位のカーソル移動」として
+// 広く使われている慣習で、ここは今までどおり一切横取りしない
+// （`passesModifierGate` が metaKey を必須にしているため自動的にそうなる）。
+//
+// **Option を押しながらの英字キーは `e.key` で判定してはいけない。** macOS では
+// `e.key` に合成後の文字（Option+s なら `ß`）が入りうるため、`Cmd+Shift+]` /
+// `Cmd+Shift+[` と同じ理由で **物理キーの位置を表す `e.code`** で判定する。
 //
 // **キーを実際に拾うのはここ1箇所。** メニュー（src/main/menu.ts）は同じキーを
 // 表示するだけで登録しない（registerAccelerator: false）。両方が登録すると二重発火する。
@@ -82,17 +90,6 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * altKey が同時に押されていても許可する例外キー。
- *
- * 矢印キーは Option と組み合わせても文字を生成しないため、Option+英数字キー
- * （特殊文字の合成に使われる）と違って安全にショートカットへ回せる。
- * 冒頭コメント参照。
- */
-function isArrowKey(key: string): boolean {
-  return key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight';
-}
-
-/**
  * このキーイベントの修飾キーの組み合わせが、アプリのショートカットとして
  * 扱ってよい形かを判定する（`matchShortcut` の入口ガード）。
  *
@@ -106,27 +103,34 @@ function isArrowKey(key: string): boolean {
  *
  * - metaKey が無ければ常に false（Cmd 無しのキーは触らない）
  * - ctrlKey が同時なら常に false（Ctrl+C 等、端末本来の入力と衝突しない）
- * - altKey が同時なら、矢印キー以外は false（Option+英数字は特殊文字の合成に使われる。
- *   矢印キーは文字を生成しないため例外にする。冒頭コメント参照）
+ * - altKey は metaKey が必須である以上そのまま許可してよい（`Cmd+Option+*` は
+ *   dead key の合成を起こさない。冒頭コメント参照）。Issue #20 PR 15 まで
+ *   「矢印キー以外は false」という追加の制限があったが、metaKey 必須の条件と
+ *   重複しており、`Cmd+Option+英字` を1つも割り当てられない副作用だけがあった
  */
 export function passesModifierGate(
   e: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'altKey' | 'key'>,
 ): boolean {
   if (!e.metaKey || e.ctrlKey) return false;
-  if (e.altKey && !isArrowKey(e.key)) return false;
   return true;
 }
 
 export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
   if (!passesModifierGate(e)) return null;
 
-  // Cmd+Option+矢印: ペイン間移動（Issue #56 PR 8。design-review.md 提案 B'）。
-  // `passesModifierGate` は矢印キーに限って altKey を許可している（PR 1 で
-  // 地ならし済み）ので、altKey が付いている時点でキーは必ず4方向のいずれか
-  // （ガードを通過した以上、他のキーではここへ来ない）。shiftKey が同時に
-  // 付いた組み合わせ（Cmd+Shift+Option+矢印）は未定義のまま素通しする。
+  // Cmd+Option+* の割り当て。shiftKey が同時に付いた組み合わせ
+  // （Cmd+Shift+Option+*）は未定義のまま素通しする。
   if (e.altKey) {
     if (e.shiftKey) return null;
+    // サイドバーの表示/非表示（Cmd+Option+S。Issue #20 K-1）。
+    //
+    // **`e.key` ではなく `e.code` で判定する。** macOS では Option を押しながらの
+    // 英字キーは合成後の文字（Option+s なら `ß`）が `e.key` に入りうるため、
+    // `key.toLowerCase() === 's'` では拾えないことがある。`Cmd+Shift+]` /
+    // `Cmd+Shift+[` を `.code` で判定しているのとまったく同じ理由
+    // （物理キーの位置は修飾キーとレイアウトに影響されない）。
+    if (e.code === 'KeyS') return { type: 'toggle-sidebar' };
+    // Cmd+Option+矢印: ペイン間移動（Issue #56 PR 8。design-review.md 提案 B'）。
     switch (e.key) {
       case 'ArrowUp':
         return { type: 'move-pane-focus', direction: 'up' };

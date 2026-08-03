@@ -19,6 +19,17 @@ import MemoPanel, { type MemoTarget } from './MemoPanel';
 type SidebarTab = 'tasks' | 'history' | 'memo';
 
 export interface SidebarProps {
+  /**
+   * 畳んでいるか（Cmd+Option+S。Issue #20 K-1）。**状態そのものは App.tsx が持つ**
+   * （ここに置くとキーボード / メニューからトグルできない）。ここは受け取った値を
+   * クラス名に反映するだけで、幅を 0 にする・支援技術から外すのは
+   * styles.css の `.sidebar.is-collapsed` の仕事。
+   *
+   * 中身をアンマウントしないのは、タブ選択・メモの編集途中・履歴の絞り込み状態が
+   * 畳むたびに失われるのを避けるため（TaskList / HistoryList / MemoPanel は
+   * それぞれ自前の state を持つ）。
+   */
+  collapsed: boolean;
   onFocusTaskTab: (agentSessionId: string) => void;
   canFocusTaskTab: (agentSessionId: string) => boolean;
   onResumeHistory: (entry: SessionHistoryEntry) => void;
@@ -27,6 +38,7 @@ export interface SidebarProps {
 }
 
 export default function Sidebar({
+  collapsed,
   onFocusTaskTab,
   canFocusTaskTab,
   onResumeHistory,
@@ -46,7 +58,7 @@ export default function Sidebar({
   const goToHistory = (): void => setTab('history');
 
   return (
-    <nav className="sidebar" aria-label="サイドバー">
+    <nav className={`sidebar${collapsed ? ' is-collapsed' : ''}`} aria-label="サイドバー">
       <div className="sidebar__drag-region" />
       <div className="sidebar__tabs">
         <button className={tab === 'tasks' ? 'is-active' : ''} onClick={() => setTab('tasks')}>

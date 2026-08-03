@@ -491,7 +491,18 @@ export type AppAction =
    * 衝突を避けてある（`shortcuts.ts` 参照）。
    */
   | { type: 'next-tab' }
-  | { type: 'previous-tab' };
+  | { type: 'previous-tab' }
+  /**
+   * サイドバー（タスク / 履歴 / メモ）の表示をトグルする（`Cmd+Option+S`。
+   * Issue #20 K-1）。**既定は表示したまま**で、この操作は「一時的に畳んで
+   * ターミナルを広げる」ための逃げ道（design-review.md の原則3「ターミナルが
+   * 主役」）。既定を 0px にする案は、画像13枚と既存 spec の起点をすべて
+   * 作り直すことになるため別 Issue に切ってある。
+   *
+   * 状態は Renderer（App.tsx）だけが持つ。Main はこの操作を知らない
+   * （`toggle-maximize-pane` と同じく、レイアウトだけで完結する）。
+   */
+  | { type: 'toggle-sidebar' };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義
