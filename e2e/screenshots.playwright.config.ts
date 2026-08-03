@@ -16,6 +16,12 @@ export default defineConfig({
   testMatch: 'screenshots.spec.ts',
   workers: 1,
   fullyParallel: false,
+  // Issue #121 B-3: **ここに retries が無かった（= 0）。**
+  // 起動 flake（`firstWindow: Timeout`）が1回起きると**画像が1枚欠けたまま**
+  // 終わり、`make e2e-screenshots-check` が「撮影されていない」と誤って報告する。
+  // ルートの playwright.config.ts は同じ理由で以前から retries: 1 を持っていた。
+  // 撮影は1枚ごとにアプリを起動し直すぶん取りこぼしの影響が大きいので揃える。
+  retries: 1,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   reporter: [['list']],

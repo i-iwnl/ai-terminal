@@ -303,8 +303,16 @@ export default function App(): ReactElement {
     (tabId: string): void => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
       const leaves = tab ? flattenPaneTree(tab.layout) : [];
-      if (leaves.length >= 2) {
-        setCloseConfirmation({ tabId, copy: closeTabCopy(summarizeClosingPanes(leaves)) });
+      const summary = summarizeClosingPanes(leaves);
+      // **1ペインでも、閉じると回収できなくなるものがあるなら確認する**（Issue #121）。
+      //
+      // tmux でラップされた gemini は、タブを閉じた時点で tmux セッション名を
+      // 二度と再現できず、**アプリからは永久に拾い直せない**（src/main/pty/tmux.ts）。
+      // 実測でも、タブを閉じたあと tmux セッションと中のプロセスが生き残った。
+      // claude は履歴から resume すれば同じセッションに戻れるので、ここでは止めない
+      // （タブを閉じるのは1日に何十回もある操作なので、確認は不可逆なものだけに絞る）。
+      if (leaves.length >= 2 || summary.persistentOrphaned > 0) {
+        setCloseConfirmation({ tabId, copy: closeTabCopy(summary) });
         return;
       }
       void performCloseTab(tabId);
