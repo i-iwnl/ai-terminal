@@ -33,6 +33,8 @@ function escapeRegExp(value: string): string {
  *   混ざらない）。同一タブに複数の ptyId が同時に存在するのは分割で初めて起きる状態。
  * - **Issue #67**（`.terminal-search` が細いペインからはみ出す）。分割で常態化すると
  *   分かっていた問題で、この周で修正した（styles.css の max-width / min-width）。
+ *   **Issue #121 A-1 で、この検査が関門になっていなかったことが分かり作り直した**
+ *   （測る場所も、測る辺も、測る対象も違っていた。詳細は該当箇所のコメント）。
  * - **分割の拒否が実際に働くこと。** `canSplitPane`（実セル寸法ベース）が画面の
  *   端に達したら拒否し、理由が通知バナーに出ること。閾値のピクセル値は環境
  *   （フォントのレンダリング）に依存するため、ここでは決め打ちしない
@@ -84,24 +86,6 @@ test('S56 Cmd+D で分割でき、2つの xterm-screen が同時に見え、拒�
   await expect(activeScreen).toContainText('SPLIT-PANE-MARKER', { timeout: 10_000 });
   await expect(inactiveScreen).not.toContainText('SPLIT-PANE-MARKER');
 
-  // --- Issue #67: 細いペインで検索バーがはみ出さないこと ---------------------
-  // 分割直後の is-active ペインは全幅の半分程度に狭まっている。
-  await window.keyboard.press('Meta+f');
-  const search = window.locator('.terminal-search');
-  await expect(search).toBeVisible();
-  await expect
-    .poll(async () => {
-      const searchBox = await search.boundingBox();
-      const paneBox = await activePane.boundingBox();
-      if (!searchBox || !paneBox) return null;
-      // 1px の丸め誤差を許容する。
-      return searchBox.x + searchBox.width <= paneBox.x + paneBox.width + 1;
-    })
-    .toBe(true);
-  // 検索バーを閉じて後続の操作に影響しないようにする。
-  await window.keyboard.press('Meta+f');
-  await expect(search).toBeHidden();
-
   // --- 分割の拒否: 画面の端に達するまで繰り返し分割し、必ず拒否が起きることを見る ---
   // 閾値のピクセル値はフォントのレンダリング環境に依存するため決め打ちしない
   // （design-review.md の教訓）。毎回 Cmd+D を押し、ペイン数が増えたか
@@ -134,6 +118,91 @@ test('S56 Cmd+D で分割でき、2つの xterm-screen が同時に見え、拒�
   expect(succeededAgain, '画面の端に達する前に、少なくとも1回は分割が成功しているはず').toBe(true);
   expect(rejected, '画面の端まで分割を繰り返したら、必ずどこかで拒否されるはず').toBe(true);
   await expect(errorNotice).toContainText('分割できません');
+
+  // --- Issue #67 / #121 A-1: 細いペインで検索バーがはみ出さないこと -----------
+  //
+  // **この検査は、分割を刻みきった「いちばん細いペイン」で行う。**
+  //
+  // 以前の検査は**2つの意味で関門になっていなかった**（Issue #121 周1 で実測）。
+  //
+  // 1. **測る場所。** 「1回分割した直後」に置いていたが、そのペインは
+  //    検索バーの実寸より広い。**その幅では `max-width` の有無で結果が変わらない。**
+  // 2. **測る辺。** `searchBox.x + width <= paneBox.x + paneBox.width` =
+  //    **右端**を見ていた。しかし `.terminal-search` は `right: var(--sp-2)` で
+  //    ペインの右端に固定されているので、**右端は構造上けっして越えない。**
+  //    幅が余ると伸びるのは**左**で、はみ出すのも左。
+  //
+  // 実測（`max-width` を外した状態）: ペイン 234.25px / 検索バー 252.5px。
+  // 右端のはみ出しは 0 のまま、**左へ 26.25px はみ出していた。**
+  // つまり `styles.css` の `max-width` をまるごと消しても S56 は green だった。
+  //
+  // いまは**ペインの矩形に収まっているか**を左右とも見る。上のループは
+  // 「これ以上分割できない」と拒否されるまで刻んでいるので、この時点の
+  // is-active ペインがアプリの許す最小幅にいちばん近い。
+  await window.keyboard.press('Meta+f');
+  const search = window.locator('.terminal-search');
+  await expect(search).toBeVisible();
+
+  // **コンテナではなく、中身まで含めて測る。** `min-width: 0` を外すと
+  // コンテナ自身は `max-width` に収まったまま、**入力欄が縮まないぶん
+  // ボタンが箱の外へあふれる**（実測: コンテナ右端 1192 に対し
+  // 閉じるボタンの右端 1218.25 = ペイン右端 1200 を 18px 越える）。
+  // コンテナの矩形だけを見る検査は、この壊れ方に一度も赤くならない。
+  const measure = async (): Promise<{
+    left: number;
+    right: number;
+    paneWidth: number;
+  } | null> =>
+    window.evaluate(() => {
+      const searchEl = document.querySelector('.terminal-search');
+      const paneEl = document.querySelector('.terminal-pane.is-active');
+      if (!searchEl || !paneEl) return null;
+      const pane = paneEl.getBoundingClientRect();
+      const rects = [searchEl, ...Array.from(searchEl.querySelectorAll('*'))].map((el) =>
+        el.getBoundingClientRect(),
+      );
+      return {
+        // 正なら、その向きへはみ出している量（px）。
+        left: Math.round(pane.left - Math.min(...rects.map((r) => r.left))),
+        right: Math.round(Math.max(...rects.map((r) => r.right)) - pane.right),
+        paneWidth: Math.round(pane.width),
+      };
+    });
+
+  // レイアウトが落ち着くまで poll する。1px の丸め誤差を許容する。
+  await expect
+    .poll(
+      async () => {
+        const m = await measure();
+        return m === null ? null : Math.max(m.left, m.right);
+      },
+      {
+        message:
+          '検索バー（中身を含む）がペインからはみ出している量（px）。' +
+          'styles.css の .terminal-search の max-width（左へあふれる）と ' +
+          'input の min-width: 0（ボタンが右へあふれる）を確認すること',
+      },
+    )
+    .toBeLessThanOrEqual(1);
+
+  const m = await measure();
+  if (m === null) throw new Error('検索バーまたはペインの矩形を取得できなかった');
+  expect(m.left, '検索バーがペインの左へはみ出している（max-width が効いていない）').toBeLessThanOrEqual(1);
+  expect(m.right, '検索バーの中身がペインの右へはみ出している（min-width: 0 が効いていない）').toBeLessThanOrEqual(1);
+
+  // **測った条件そのものを固定する。** ペインが検索バーの自然幅より広ければ、
+  // `max-width` が無くてもはみ出さない = 上の assert は何も守らない。
+  // 関門が穴だったのはまさにこれが確かめられていなかったからなので、
+  // 前提のほうも assert に格上げする（実測の自然幅は 252.5px）。
+  expect(
+    m.paneWidth,
+    `このペインは ${m.paneWidth}px。検索バーの自然幅（実測 252.5px）より広いと ` +
+      'max-width の有無で結果が変わらず、上の assert が関門にならない',
+  ).toBeLessThan(252);
+
+  // 検索バーを閉じて後続の操作に影響しないようにする。
+  await window.keyboard.press('Meta+f');
+  await expect(search).toBeHidden();
 
   // --- Cmd+W: ペインを1枚ずつ閉じ、最後の1枚で「タブを閉じる」に落ちる ---------
   const paneCountBeforeClosing = await panes.count();
