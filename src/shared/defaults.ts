@@ -65,7 +65,14 @@ export const DEFAULT_CONFIG: AppConfig = {
   slack: DEFAULT_WEBHOOK,
   discord: DEFAULT_WEBHOOK,
   scopeAgentsToCwd: false,
+  // サイドバーの既定幅。`sidebarWidth.ts` の SIDEBAR_DEFAULT_WIDTH_PX と
+  // 同じ値でなければならない（test/unit/sidebar-width.test.ts が突き合わせる）。
+  sidebarWidth: 260,
   // 既定で有効にしない理由は描画コスト。VoiceOver を検知したときは設定に関わらず有効になる。
   screenReaderMode: false,
+  // 空文字 = 未設定。保存済みの theme（すぐ下）が勝つ。
+  // 既定を 'default' にしないのは、既に config.json へ手で theme を書いている
+  // 利用者の設定を、アプリを更新しただけで黙って上書きしないため。
+  themeName: '',
   theme: DEFAULT_THEME,
 };

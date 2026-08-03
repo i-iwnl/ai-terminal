@@ -84,6 +84,13 @@ import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './roving
 import { tabButtonId, tabPanelId } from './tabAriaIds';
 import { tabLeaf, type TabState } from './tabPane';
 import { providerLabel } from './tabProvider';
+// 「あなたの番」の判定は tabYourTurn.ts が唯一の正（Cmd+J と同じ関数を使う。
+// ここで独自に status を解釈すると、状態の意味が2箇所に散る）。
+import { tabHasYourTurn, yourTurnSessionIds } from './tabYourTurn';
+// タスク一覧の購読は共有ハブに委ねる（TaskList / App.tsx と同じスナップショットを
+// 見る必要がある。lib/agentTasksStore.ts 参照）。ここで window.api.agents を
+// 直接叩くと、ポーリングの購読者が1つ増える。
+import { subscribeAgentTasks } from '../lib/agentTasksStore';
 
 /**
  * タブバーの x ボタンのラベル（Issue #56 PR 8・design-review.md 提案 E'）。
@@ -140,6 +147,15 @@ export default function TabBar({
 }: TabBarProps) {
   // 「+ ▾」分割ボタンのドロップダウンメニュー開閉状態（Issue #20 I-1）。
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  // 「あなたの番」のセッション id（Issue #119 周5 / #20 の B-3）。
+  //
+  // `.tab-bar__state-slot` は PR #108 で幅だけ確保されて**空のまま**だった。
+  // Dock バッジが「3件待っている」と言うのに、ウィンドウを見てもどのタブか
+  // 分からない状態を直す。ターミナルを見ている視線の高さに出る唯一の層。
+  const [yourTurnIds, setYourTurnIds] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    return subscribeAgentTasks((e) => setYourTurnIds(yourTurnSessionIds(e.tasks)));
+  }, []);
   const newMenuRef = useRef<HTMLDivElement | null>(null);
   const newButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstMenuItemRef = useRef<HTMLButtonElement | null>(null);
@@ -309,7 +325,15 @@ export default function TabBar({
             // 可視テキスト（タブタイトル）を先頭に含める（WCAG 2.5.3 Label in
             // Name）。aria-label を使うとボタンの子要素のテキストは無視される
             // ため、タイトル・プロバイダ・終了状態のすべてをここで組み立て直す。
-            const tabAccessibleLabel = [leaf.title, provider, leaf.exit ? '終了' : undefined]
+            // 「あなたの番」はドット（丸）だけでなく**語でも伝える**（原則2:
+            // 色相の違いは手がかりに数えない）。終了マーク（四角）とは形も違う。
+            const isYourTurn = tabHasYourTurn(tab.layout, yourTurnIds);
+            const tabAccessibleLabel = [
+              leaf.title,
+              provider,
+              isYourTurn ? 'あなたの番' : undefined,
+              leaf.exit ? '終了' : undefined,
+            ]
               .filter((part): part is string => part !== undefined && part !== '')
               .join('、');
             return (
@@ -321,13 +345,21 @@ export default function TabBar({
               >
                 {/* 先頭の固定幅スロット。状態専用（Issue #20 C）。プロバイダの区別は
                     タブ自体の色相に譲り、ここでは「あなたの番／通常／終了」だけを表す。
-                    「あなたの番」ドットの配線は別 PR（タスク一覧の購読を TabBar 側にも
-                    持ち込む必要があり、この PR の見積もりを超えるため見送った。詳細は
-                    このタブの実装 PR の報告を参照）。ここでは終了マークのみ実装する。
-                    装飾要素なので aria-hidden にする（「終了」は下の末尾バッジが
-                    テキストとして既に伝えている）。 */}
+                    **Issue #119 の周5 で「あなたの番」を配線した**（PR #108 で幅だけ
+                    確保されて空のままだった）。終了（四角）とあなたの番（丸）は
+                    形が違うので、色に頼らずに区別できる（原則2）。
+                    **終了を優先する**（プロセスが終わっているタブに「あなたの番」の
+                    ドットを出しても、押した先で入力できない）。
+                    装飾要素なので aria-hidden にする。語のほうは
+                    tabAccessibleLabel が持つ（「終了」は末尾バッジも伝えている）。 */}
                 <span
-                  className={`tab-bar__state-slot${leaf.exit ? ' tab-bar__state-slot--exited' : ''}`}
+                  className={`tab-bar__state-slot${
+                    leaf.exit
+                      ? ' tab-bar__state-slot--exited'
+                      : isYourTurn
+                        ? ' tab-bar__state-slot--your-turn'
+                        : ''
+                  }`}
                   aria-hidden="true"
                 />
                 <button

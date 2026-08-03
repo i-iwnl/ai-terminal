@@ -1,8 +1,22 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react';
 import type { AgentTask, AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
+import { resolveTheme } from '@shared/themes';
 import Sidebar from './sidebar/Sidebar';
+import {
+  SIDEBAR_DEFAULT_WIDTH_PX,
+  clampSidebarWidth,
+  stepSidebarWidth,
+} from './sidebar/sidebarWidth';
 import TabBar from './tabs/TabBar';
 import PaneTreeView from './tabs/PaneTreeView';
 import type { TerminalHandle } from './terminal/useTerminal';
@@ -116,6 +130,32 @@ export default function App(): ReactElement {
   // （「一時的に畳む」操作であり、次回起動時にサイドバーが消えている状態から
   // 始まるとタスク一覧・履歴の存在自体に気づけなくなる）。
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // macOS のフルスクリーン中か（Issue #119 周5 / #20 の K-5）。
+  //
+  // フルスクリーンでは macOS が信号機ボタンを隠すため、その下敷きにしている
+  // `.sidebar__drag-region`（36px）を残すと**何も無い帯だけがターミナルの上に
+  // 居座る**。Main から流れてくる状態でクラスを切り替え、帯を畳む。
+  //
+  // **`window.innerHeight` や HTML5 の Fullscreen API では判定できない**
+  // （あれは要素の全画面表示で、macOS のウィンドウのフルスクリーンとは別物）。
+  const [fullScreen, setFullScreen] = useState(false);
+  useEffect(() => {
+    return window.api.app.onFullScreenChanged(setFullScreen);
+  }, []);
+  // サイドバーの幅（Issue #119 周4 / #20 の PR 16）。
+  //
+  // **折りたたみと違い、こちらは AppConfig に永続化する。** 畳むのは「一時的に
+  // どける」操作なので次回起動へ持ち越さないが、幅は「自分が決めた作業環境」で、
+  // 畳んで開き直したときに戻らないと毎回やり直しになる。
+  //
+  // 実際の書き込みは `commitSidebarWidth`（mouseup とメニュー操作のときだけ）。
+  // **ドラッグ中は呼ばない。** `configSet` は全ウィンドウへブロードキャストされ、
+  // その先で `coerceConfig` が毎回新しい `theme` を組み立てるため、
+  // 全ペインの `term.options.theme` 再代入まで連鎖する。
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH_PX);
+  // メニュー項目「サイドバーを広げる / 狭める」が、動かした対象へ `.focus()` して
+  // フォーカスリングを見せるための参照（PaneSplitterHandle と同じ形）。
+  const sidebarResizeHandleRef = useRef<HTMLDivElement | null>(null);
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
@@ -190,6 +230,18 @@ export default function App(): ReactElement {
   // 比率を動かした**その対象**へ `.focus()` するために引く（レビュー指摘。
   // ペインが3枚以上あるとスプリッタが複数本になり、フォーカスリングが出て
   // 初めてどちらが動いたかが画面から分かる）。
+  /**
+   * 幅を確定して永続化する。ドラッグの mouseup とメニュー操作からのみ呼ぶ。
+   * `clampSidebarWidth` を必ず通す（ドラッグ側でも通しているが、
+   * メニュー経路や将来の呼び出し元が範囲外を渡す余地を残さない）。
+   */
+  const commitSidebarWidth = useCallback((next: number) => {
+    const width = clampSidebarWidth(next);
+    setSidebarWidth(width);
+    // 失敗しても画面上の幅は変わったままにする（次回起動で戻るだけ）。
+    void window.api.config.set({ sidebarWidth: width }).catch(() => undefined);
+  }, []);
+
   const splitterRefsRef = useRef(new Map<string, HTMLDivElement>());
   const registerSplitterElement = useCallback((key: string, el: HTMLDivElement | null) => {
     if (el) splitterRefsRef.current.set(key, el);
@@ -282,6 +334,37 @@ export default function App(): ReactElement {
     return window.api.config.onChange(setConfig);
   }, []);
 
+  // ウィンドウタイトルをアクティブなタブに同期する（Issue #119 周5 / #20 の K-10）。
+  // `hiddenInset` なので画面上には出ないが、ウィンドウメニュー・Mission Control・
+  // App Exposé には出る。**そこだけが「どのウィンドウがどのプロジェクトか」を
+  // 見分ける手がかり**になる（3つのリポジトリで同じアプリを開いていると、
+  // いまはどれも同じ名前で並ぶ）。
+  useEffect(() => {
+    const tab = tabsApi.tabs.find((t) => t.id === tabsApi.activeTabId);
+    if (!tab) return;
+    window.api.app.setTitle(tabLeaf(tab).title);
+  }, [tabsApi.tabs, tabsApi.activeTabId]);
+
+  // サイドバーの幅は「即座に画面へ反映する state」と「永続化された設定」の2箇所に
+  // 存在する（ドラッグ中の追従を Main 経由の往復にすると1フレーム遅れる）。
+  // 設定側が動いたら state を合わせる。**初回読み込みもこの経路を通る**
+  // （config は FALLBACK_CONFIG で始まり、get() の解決で置き換わる）。
+  // commitSidebarWidth は両方を同時に更新するので、この effect は同じ値で
+  // 上書きするだけになり、ドラッグ結果を打ち消さない。
+  useEffect(() => {
+    setSidebarWidth(clampSidebarWidth(config.sidebarWidth));
+  }, [config.sidebarWidth]);
+
+  // 実際に適用する配色。**プリセットが選ばれていればそちらが勝つ**が、
+  // 未設定・custom・未知の名前では保存済みの `theme`（4色）をそのまま使う
+  // （`src/shared/themes.ts` の `resolveTheme` が唯一の正）。
+  // この順序で `S21-config.spec.ts`（config.json に theme を直接書いて反映を見る）が
+  // 無傷のまま残る。
+  const activeTheme = useMemo(
+    () => resolveTheme({ themeName: config.themeName, theme: config.theme }),
+    [config.themeName, config.theme],
+  );
+
   // クロームの面（サイドバー・行のホバー・浮いた面）を theme.background から
   // 機械的に導出し、CSS 変数へ流し込む（Issue #20 の G「テーマ（方向を逆にする）」）。
   // xterm 側の ITheme は既存の別 effect（useTerminal.ts の options.theme -> term.options）
@@ -294,18 +377,28 @@ export default function App(): ReactElement {
   // クロームの文字色は静的なままなので、導出した面が明るくなりすぎると
   // 静的な文字色との contrast が壊れる（例: 明るい背景を設定すると surface-3
   // が白に寄り、その上の文字がほぼ読めなくなる）。chromeSafeToApply が false の
-  // ときは setProperty を呼ばず、:root の静的な値をそのまま生かす
-  // （「壊れた配色を出すより、追従しないほうがまし」。既知の制限として記録済み。
-  // 文字色まで含めたパレット化は PR 18 の範囲）。
+  // ときは :root の静的な値へ戻す（「壊れた配色を出すより、追従しないほうがまし」）。
+  //
+  // **`return` するだけにしてはいけない（Issue #119 周6 で修正）。**
+  // 以前は早期 return しており、そのコメントは「:root の静的な値をそのまま生かす」と
+  // 書いていたが、それは**一度もインライン適用が起きていない場合にしか成立しない**。
+  // 安全なテーマ A -> 危険なテーマ B と切り替えると、A のインライン値が
+  // `document.documentElement.style` に残り続け、クロームは A の面のままになる。
+  // テーマ切替が設定ウィンドウからのワンクリック操作になった以上、
+  // この経路は日常的に通る。**必ず removeProperty で消す。**
   useEffect(() => {
-    const { chrome, chromeSafeToApply } = terminalThemeFrom(config.theme);
-    if (!chromeSafeToApply) return;
     const root = document.documentElement.style;
+    const SURFACE_VARS = ['--surface-0', '--surface-1', '--surface-2', '--surface-3'] as const;
+    const { chrome, chromeSafeToApply } = terminalThemeFrom(activeTheme);
+    if (!chromeSafeToApply) {
+      for (const name of SURFACE_VARS) root.removeProperty(name);
+      return;
+    }
     root.setProperty('--surface-0', chrome.surface0);
     root.setProperty('--surface-1', chrome.surface1);
     root.setProperty('--surface-2', chrome.surface2);
     root.setProperty('--surface-3', chrome.surface3);
-  }, [config.theme]);
+  }, [activeTheme]);
 
   // 起動時に共有 cwd（アプリを起動したディレクトリ）を解決してから、最初のシェルタブを1枚開く。
   // resolveSharedCwd() は失敗しても home ないし undefined へ確定させて解決するので、
@@ -459,6 +552,27 @@ export default function App(): ReactElement {
           setSidebarCollapsed(!sidebarCollapsed);
           announce(sidebarCollapsed ? 'サイドバーを表示しました' : 'サイドバーを隠しました');
           break;
+        case 'adjust-sidebar-width': {
+          // メニュー項目「サイドバーを広げる / 狭める / 幅を既定に戻す」。
+          // **ドラッグのキーボード代替**（WCAG 2.5.7）。ドラッグを一切経由せず
+          // 同じ純粋関数（clampSidebarWidth / stepSidebarWidth）を通す。
+          if (sidebarCollapsed) {
+            // 畳んでいる状態で幅だけ変えても画面は何も変わらない。
+            // 「何も起きない」で終わらせない（U4）。
+            showNotice('サイドバーが畳まれています（Cmd+Option+S で表示）', 'info');
+            announce('サイドバーが畳まれています');
+            break;
+          }
+          const next =
+            action.adjustment === 'reset'
+              ? SIDEBAR_DEFAULT_WIDTH_PX
+              : stepSidebarWidth(sidebarWidth, action.adjustment);
+          commitSidebarWidth(next);
+          // 動かした対象へ .focus() してリングを見せる（PaneSplitterHandle と同じ）。
+          sidebarResizeHandleRef.current?.focus();
+          announce(`サイドバーの幅 ${next} ピクセル`);
+          break;
+        }
         case 'next-tab':
           if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
           break;
@@ -503,7 +617,7 @@ export default function App(): ReactElement {
     // sidebarCollapsed は toggle-sidebar が「いまどちら側か」を読む必要があるため
     // 依存に含める（runAction は runActionRef 経由でしか呼ばれず、再生成しても
     // keydown / menu:action のリスナは張り直されない）。
-    [announce, requestCloseTab, showNotice, sidebarCollapsed],
+    [announce, commitSidebarWidth, requestCloseTab, showNotice, sidebarCollapsed, sidebarWidth],
   );
 
   const runActionRef = useRef(runAction);
@@ -654,13 +768,25 @@ export default function App(): ReactElement {
   }, [tabsApi.tabs, tabsApi.activeTabId]);
 
   return (
-    <div className="app">
+    <div className={`app${fullScreen ? ' is-fullscreen' : ''}`}>
+      {/* 見出し階層の頂点（Issue #119 周3）。本体ウィンドウには <h2> が
+          フラットに並ぶだけで <h1> が1つも無く、VoiceOver のローターで
+          見出しを辿っても階層が読めなかった。視覚的には出さない
+          （タイトルバーは titleBarStyle: 'hiddenInset' で見えないため、
+          画面に文字を増やす理由が無い）。 */}
+      <h1 className="visually-hidden">ai-terminal</h1>
       <Sidebar
         collapsed={sidebarCollapsed}
         onFocusTaskTab={focusTaskTab}
         canFocusTaskTab={canFocusTaskTab}
         onResumeHistory={resumeHistory}
         onLaunchClaude={launchClaude}
+        scopeAgentsToCwd={config.scopeAgentsToCwd}
+        width={sidebarWidth}
+        onCommitWidth={commitSidebarWidth}
+        registerResizeHandleRef={(el) => {
+          sidebarResizeHandleRef.current = el;
+        }}
       />
       <main className="main">
         <TabBar
@@ -692,7 +818,7 @@ export default function App(): ReactElement {
               maximizedPaneId={tab.maximized ? tab.activePaneId : undefined}
               fontFamily={config.fontFamily}
               fontSize={config.fontSize}
-              theme={config.theme}
+              theme={activeTheme}
               // screenReaderMode を有効にしてよいかの設定側の判断（アクティブな
               // タブ・アクティブなペインへの絞り込みは PaneTreeView 側が担う）。
               // xterm は screenReaderMode 有効時に aria-live="assertive" の live

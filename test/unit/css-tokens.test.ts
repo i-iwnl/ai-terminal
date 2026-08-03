@@ -12,6 +12,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_THEME, SURFACE } from '@shared/defaults';
+import {
+  BAR_HEIGHT_PX,
+  TRAFFIC_LIGHT_SIZE_PX,
+  trafficLightCenterY,
+  trafficLightY,
+} from '@shared/windowChrome';
 
 const CSS = readFileSync(
   resolve(import.meta.dirname, '../../src/renderer/src/styles.css'),
@@ -206,5 +212,133 @@ describe('CSS と TypeScript の面の値', () => {
     const tokens = colorTokens();
     expect(normalizeHex(DEFAULT_THEME.background)).toBe(tokens.get('--surface-1'));
     expect(normalizeHex(DEFAULT_THEME.foreground)).toBe(tokens.get('--text-terminal'));
+  });
+});
+
+describe('ウィンドウ上端の帯の高さ（Issue #119 周1）', () => {
+  // タブバーの高さは2箇所で必要になる。`.tab-bar` 自身の `height` と、その直下へ
+  // 絶対配置する `.notice-list` の `top`。以前は両方に `36px` がリテラルで
+  // 書かれていた。
+  //
+  // **片方だけ動かすと、通知バナーがタブバーに重なる。** そのとき隠れるのは
+  // 「キーボードでフォーカス中のタブ」なので、WCAG 2.4.11（Focus Not Obscured,
+  // AA）の違反になる。E2E は通知バナーを出すのに実際のユーザー操作から到達できず
+  // （S44 の note が同じ制約を記録している）、この重なりを検出できない。
+  // ここで CSS の記述そのものを見る。
+
+  function ruleBody(selector: string): string {
+    const start = rest.indexOf(`\n${selector} {`);
+    expect(start, `${selector} の規則が見つからない`).toBeGreaterThan(-1);
+    const end = rest.indexOf('\n}', start);
+    return rest.slice(start, end);
+  }
+
+  it('--bar-height が宣言されている', () => {
+    expect(root).toMatch(/--bar-height:\s*\d+px;/);
+  });
+
+  // CSS 変数は Main プロセスから読めないので、帯の高さは styles.css と
+  // src/shared/windowChrome.ts の2箇所に存在する。**構造的に統一できない**
+  // （SURFACE と同じ状況）。機械で突き合わせる。
+  it('CSS の --bar-height と BAR_HEIGHT_PX が一致する', () => {
+    const declared = /--bar-height:\s*(\d+)px;/.exec(root);
+    expect(declared, '--bar-height の宣言が読めていない').not.toBeNull();
+    expect(Number(declared?.[1])).toBe(BAR_HEIGHT_PX);
+  });
+
+  it('.sidebar__drag-region の高さも --bar-height を参照している（段差を作らない）', () => {
+    // 周5 まで 40px のリテラルで、タブバー（36px）と 4px の段差があった
+    // （#20 の K-4「継ぎ目が折れている」）。
+    expect(ruleBody('.sidebar__drag-region')).toMatch(/height:\s*var\(--bar-height\)/);
+  });
+
+  it('信号機の光学中心が帯の中心と一致する', () => {
+    // **これは実行時には観測できない。** 信号機はネイティブの NSButton で
+    // DOM に存在せず、Electron には trafficLightPosition を読み戻す API も無い
+    // （`getTrafficLightPosition` は Electron 43 に存在しない。E2E で実際に
+    // 呼んで確認した）。だから導出を windowChrome.ts に集めてここで固定する。
+    expect(trafficLightCenterY(BAR_HEIGHT_PX)).toBe(BAR_HEIGHT_PX / 2);
+    // `#20` の「44px にすれば光学中心 22 と合う」は二重に誤りだった。
+    // (1) `{ y: 16 }` のときの中心は `16 + 14/2 = 23`（22 ではない）
+    // (2) trafficLightPosition は自由に動かせるので、帯を信号機に合わせる必要が無い
+    expect(16 + TRAFFIC_LIGHT_SIZE_PX / 2).toBe(23);
+    expect(trafficLightY(36)).toBe(11);
+  });
+
+  it('.tab-bar の height が --bar-height を参照している', () => {
+    expect(ruleBody('.tab-bar')).toMatch(/height:\s*var\(--bar-height\)/);
+  });
+
+  it('.notice-list の top が --bar-height を参照している（リテラルの複製を作らない）', () => {
+    const body = ruleBody('.notice-list');
+    expect(body).toMatch(/top:\s*calc\(var\(--bar-height\)/);
+    // 「calc の中に --bar-height はあるが、別の場所に 36px も残っている」を防ぐ。
+    expect(body).not.toMatch(/\b36px\b/);
+  });
+
+});
+
+describe('パネルの「範囲」と「区切り」の見た目（Issue #119 周3）', () => {
+  // サイドバーの3パネルには2種類の見出しがある。
+  //
+  // - `.panel-scope` … パネル全体の**範囲**（`このマシン全体の Claude` 等）。1パネルに1つ
+  // - `.task-group__heading` … パネル内の**区切り**（`あなたの番 2件`）。1パネルに n 個
+  //
+  // 周3 より前は、この2つが**宣言レベルで完全に一致していた**
+  // （`.history-list__heading` と `.task-group__heading`）。履歴パネルには
+  // グループ見出しが無かったので問題にならなかったが、タスクパネルは両方を持つ。
+  // 同じ見た目のまま範囲の行を足すと、**同じ体裁の見出しが3つ縦に並び、
+  // 1つ目だけ意味が違う**状態になる。
+  //
+  // 区別の手がかりは (1) 大文字化とトラッキングの有無、(2) 下線の有無 の2つ。
+  // **`text-transform: uppercase` は日本語には効かない**ので、(1) が効くのは
+  // 英字が混じるときだけ（`このフォルダの Claude` の `Claude`）。
+  // したがって主な手がかりは (2) の下線で、そこが消えると区別が無くなる。
+
+  function ruleBody(selector: string): string {
+    const start = rest.indexOf(`\n${selector} {`);
+    expect(start, `${selector} の規則が見つからない`).toBeGreaterThan(-1);
+    const end = rest.indexOf('\n}', start);
+    return rest.slice(start, end);
+  }
+
+  it('.panel-scope と .task-group__heading の宣言が同一ではない', () => {
+    const declarations = (selector: string): string[] =>
+      ruleBody(selector)
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.endsWith(';'))
+        .sort();
+
+    const scope = declarations('.panel-scope');
+    expect(scope.length, '.panel-scope の宣言が読めていない').toBeGreaterThan(0);
+    expect(declarations('.task-group__heading')).not.toEqual(scope);
+  });
+
+  it('.panel-scope は下線を持ち、大文字化とトラッキングを持たない', () => {
+    const scope = ruleBody('.panel-scope');
+    // 日本語では uppercase が効かないので、下線が主な区別の手がかりになる。
+    expect(scope).toMatch(/border-bottom:\s*1px solid/);
+    expect(scope).not.toMatch(/text-transform/);
+    expect(scope).not.toMatch(/letter-spacing/);
+  });
+
+  it('.task-group__heading は大文字化とトラッキングを持ち、下線を持たない', () => {
+    const group = ruleBody('.task-group__heading');
+    expect(group).toMatch(/text-transform:\s*uppercase/);
+    expect(group).toMatch(/letter-spacing:\s*var\(--tracking-wide\)/);
+    // グループの区切りに線を引かない理由は styles.css のコメントに書いてある
+    // （サイドバーの面の上では --border-subtle が 1.31 で見えないため、
+    // 「線は引いてある」と誤解したまま余白だけで区切られる状態になる）。
+    expect(group).not.toMatch(/border/);
+  });
+
+  it('.memo-panel__heading はどちらとも別物のまま', () => {
+    // 「同じに見えるから畳む」を防ぐ。畳むと全体メモ／セッションのメモの
+    // 見出しの色と下余白が変わる。
+    const memo = ruleBody('.memo-panel__heading');
+    expect(memo).toMatch(/color:\s*var\(--text-primary\)/);
+    expect(memo).toMatch(/margin:\s*0 0 var\(--sp-2\)/);
+    expect(ruleBody('.panel-scope')).toMatch(/color:\s*var\(--text-secondary\)/);
   });
 });

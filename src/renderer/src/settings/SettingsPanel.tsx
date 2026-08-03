@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import type { AppConfig, SoundOption, WebhookConfig, WebhookTarget } from '@shared/ipc';
+import { THEME_NAME_CUSTOM, THEME_NAME_UNSET, THEME_PRESETS } from '@shared/themes';
 
 export interface SettingsPanelProps {
   config: AppConfig;
@@ -50,6 +51,19 @@ function webhookPatch(target: WebhookTarget, next: WebhookConfig): Partial<AppCo
 }
 
 export default function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps) {
+  // `themeName` が未設定（既存の config.json を手で書いていた利用者）でも、
+  // 保存済みの4色がたまたま既定と同じなら「既定（ダーク）」を選択済みに見せる。
+  // **違っていれば「カスタム」**（勝手に既定へ寄せて、その人の設定を
+  // 選び直しただけで失わせない）。
+  const savedMatchesDefault =
+    JSON.stringify(config.theme) ===
+    JSON.stringify(THEME_PRESETS.find((p) => p.id === 'default')?.theme);
+  const selectedThemeId =
+    config.themeName !== THEME_NAME_UNSET
+      ? config.themeName
+      : savedMatchesDefault
+        ? 'default'
+        : THEME_NAME_CUSTOM;
   const [sounds, setSounds] = useState<SoundOption[]>([]);
   const [testStatus, setTestStatus] = useState<Record<WebhookTarget, TestStatus>>({
     slack: IDLE,
@@ -161,6 +175,35 @@ export default function SettingsPanel({ config, onChange, onClose }: SettingsPan
               「ターミナルの設定」で、それらは別の節にある）。 */}
           <section className="settings__section">
             <h2 className="settings__heading">外観</h2>
+            {/* 配色プリセット（Issue #119 周6 / #20 の PR 18）。
+                **自由な色入力にはしない。** `chromeSafeToApply` が false になる
+                背景を選べてしまい、そのとき起きるのは「何も起きない」ではなく
+                「端末だけ色が変わり、クロームが暗いまま残る半適用」になる
+                （src/shared/themes.ts の冒頭参照）。プリセットが安全であることは
+                test/unit/themes.test.ts が関門にしている。 */}
+            <label className="settings__row">
+              <span className="settings__label">配色</span>
+              <select
+                className="settings__select"
+                value={selectedThemeId}
+                onChange={(e) => onChange({ themeName: e.target.value })}
+              >
+                {/* config.json を手で編集して4色を決めている状態。
+                    **選択肢として残す**（プリセットを一度選んだあとに戻る道が
+                    無いと、手で書いた設定が二度と使えなくなる）。 */}
+                {selectedThemeId === THEME_NAME_CUSTOM && (
+                  <option value={THEME_NAME_CUSTOM}>カスタム（config.json の設定）</option>
+                )}
+                {THEME_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="settings__note">
+              ターミナルの配色を変えると、サイドバーとタブバーの色も自動で合わせます。
+            </p>
             <label className="settings__row">
               <span className="settings__label">フォント</span>
               <input

@@ -321,6 +321,16 @@ export interface AppConfig {
   /** サイドバーを現在のディレクトリに絞り込むか（false ならマシン全体） */
   scopeAgentsToCwd: boolean;
   /**
+   * サイドバーの幅（CSS px）。ドラッグでの変更を跨いで保存する。
+   *
+   * **折りたたみ（`Opt+Cmd+S`）の状態は意図的に保存しない**（README 参照。
+   * 畳んだ状態を覚えると、サイドバーの存在自体に気づけなくなる）。
+   * 幅を保存するのは、畳んで開き直したときに「自分が決めた幅」へ戻るのが
+   * 期待どおりだから。範囲の判定は
+   * `src/renderer/src/sidebar/sidebarWidth.ts` の `clampSidebarWidth` が正。
+   */
+  sidebarWidth: number;
+  /**
    * xterm の screenReaderMode。ターミナルの内容を支援技術から読める DOM として
    * 露出させる。既定 false。
    *
@@ -328,7 +338,24 @@ export interface AppConfig {
    * 更新する）。VoiceOver の起動が検知できたときは、この値に関わらず有効にする。
    */
   screenReaderMode: boolean;
-  /** xterm のテーマ色 */
+  /**
+   * 選んだ配色プリセットの識別子（`src/shared/themes.ts` の `THEME_PRESETS`）。
+   *
+   * **空文字は「未設定」で、そのときは下の `theme`（4色）が勝つ。**
+   * 既に `config.json` を手で書いている利用者の設定を、UI を足したことで
+   * 黙って無視しないため。`'custom'` はプリセットから外れた状態を表す
+   * 番人値で、**型に最初から入れてある**（あとから足すと `coerceConfig` を
+   * 2回触ることになる）。
+   *
+   * 適用の優先順位は `themes.ts` の `resolveTheme` が唯一の正。
+   */
+  themeName: string;
+  /**
+   * xterm のテーマ色。
+   *
+   * `themeName` が有効なプリセットを指しているときは、そちらが優先される
+   * （この4色は「プリセットを使っていないとき」と「custom」のための保存場所）。
+   */
   theme: TerminalTheme;
 }
 
@@ -502,7 +529,16 @@ export type AppAction =
    * 状態は Renderer（App.tsx）だけが持つ。Main はこの操作を知らない
    * （`toggle-maximize-pane` と同じく、レイアウトだけで完結する）。
    */
-  | { type: 'toggle-sidebar' };
+  | { type: 'toggle-sidebar' }
+  /**
+   * サイドバーの幅の増減（Issue #119 周4 / #20 の PR 16）。
+   *
+   * **ドラッグのキーボード代替**（WCAG 2.5.7 Dragging Movements）。
+   * `adjust-split-ratio` と同じく、メニュー項目からのみ届く
+   * （`accelerator` は持たない。幅調整は頻度が低く、`Cmd+英数字` の名前空間は
+   * 100手/日級の操作のために空けておく）。
+   */
+  | { type: 'adjust-sidebar-width'; adjustment: 'wider' | 'narrower' | 'reset' };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義
@@ -541,6 +577,8 @@ export const IpcSend = {
    * 見せる）。ペインの木そのものは Renderer だけが持つため、Main は数だけを受け取る。
    */
   menuPaneCount: 'menu:pane-count',
+  /** ウィンドウタイトルの設定（Issue #119 周5 / #20 の K-10） */
+  windowSetTitle: 'window:set-title',
 } as const;
 
 /** Main -> Renderer（push） */
@@ -552,6 +590,16 @@ export const IpcEvent = {
   accessibilitySupportChanged: 'app:accessibility-support-changed',
   focusSession: 'session:focus',
   configChanged: 'config:changed',
+  /**
+   * ウィンドウがフルスクリーンに入った / 出た（Issue #119 周5 / #20 の K-5）。
+   *
+   * フルスクリーン中は macOS が信号機ボタンを隠すので、その下敷きにしている
+   * `.sidebar__drag-region` も畳む必要がある（残すと**何も無い帯だけが
+   * ターミナルの上に居座る**）。Renderer からは `window.isFullScreen` のような
+   * DOM API では取れない（あれは HTML5 の全画面 API で、macOS の
+   * フルスクリーンとは別物）ため、Main から流す。
+   */
+  fullScreenChanged: 'window:full-screen-changed',
 } as const;
 
 /**
@@ -623,6 +671,16 @@ export interface RendererApi {
      * ここだけ IPC を経由しない同期 API になっている。
      */
     pathForFile(file: File): string;
+    /** macOS のフルスクリーンに入った / 出たの購読。購読解除関数を返す */
+    onFullScreenChanged(listener: (fullScreen: boolean) => void): () => void;
+    /**
+     * ウィンドウのタイトルを設定する（Issue #119 周5 / #20 の K-10）。
+     *
+     * `titleBarStyle: 'hiddenInset'` なのでタイトルバーには出ないが、
+     * **ウィンドウメニュー・Mission Control・App Exposé には出る。**
+     * アクティブなタブの名前を流す。
+     */
+    setTitle(title: string): void;
   };
   menu: {
     /** メニューから選ばれた操作の購読。購読解除関数を返す */

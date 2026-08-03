@@ -111,6 +111,11 @@ const api: RendererApi = {
         return '';
       }
     },
+    onFullScreenChanged: (listener: (fullScreen: boolean) => void): (() => void) =>
+      subscribe<boolean>(IpcEvent.fullScreenChanged, listener),
+    setTitle: (title: string): void => {
+      ipcRenderer.send(IpcSend.windowSetTitle, title);
+    },
   },
   menu: {
     onAction: (listener: (action: AppAction) => void): (() => void) =>

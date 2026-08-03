@@ -82,6 +82,22 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
     // 画面で直接確認できる（サイドバーが在るか無いか）ため、ラベルを動かす価値より
     // 経路が1本増える負債のほうが大きいと判断した。
     actionItem(win, 'サイドバーの表示を切り替え', 'Cmd+Option+S', { type: 'toggle-sidebar' }),
+    // **ドラッグのキーボード代替**（WCAG 2.5.7 Dragging Movements）。
+    // `分割比を広げる/狭める/50%に戻す` と同じ形で、accelerator は持たせない。
+    // 幅調整は 2〜5回/日（初日以降ほぼ0）で、`Cmd+英数字` の名前空間を
+    // 1つ消費する価値が無い（100手/日級の操作のために空けておく）。
+    actionItem(win, 'サイドバーを広げる', undefined, {
+      type: 'adjust-sidebar-width',
+      adjustment: 'wider',
+    }),
+    actionItem(win, 'サイドバーを狭める', undefined, {
+      type: 'adjust-sidebar-width',
+      adjustment: 'narrower',
+    }),
+    actionItem(win, 'サイドバーの幅を既定に戻す', undefined, {
+      type: 'adjust-sidebar-width',
+      adjustment: 'reset',
+    }),
     { type: 'separator' },
     actionItem(win, '画面を消去', 'Cmd+K', { type: 'clear-terminal' }),
     { type: 'separator' },

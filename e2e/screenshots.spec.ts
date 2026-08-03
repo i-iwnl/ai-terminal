@@ -376,13 +376,21 @@ test('screenshots S01 起動直後の画面', async () => {
       selector: '.sidebar__tabs',
       number: 1,
       caption: 'サイドバー: タスクと履歴を切り替え',
+      // **`below` のキャプションは、すぐ下のスコープ行
+      // （`.panel-scope`、「このマシン全体の Claude」）を覆う。**
+      // Issue #119 周3 で `right` と `above` を実測で試したが、どちらも別の破綻を
+      // 起こした（`right` はタブバーのキャプションと重なる / `above` は
+      // 番号バッジがキャプションの下に隠れる）。
+      // スコープ行そのものは **S12（README のタスク一覧の画像）で
+      // 遮られずに写っている**ので、ここは覆ったまま `below` を保つ。
+      // この注釈が説明しているのはタブの切り替えであって、範囲の行ではない。
       side: 'below',
     },
     {
       selector: '.tab-bar__tabs',
       number: 2,
       caption: 'タブバー: シェルや AI のタブを切り替え',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.terminal-pane__container .xterm-rows > div',
@@ -506,13 +514,13 @@ test('screenshots S06 タブを増やす', async () => {
       selector: '.tab-bar__tabs',
       number: 1,
       caption: 'Cmd+T でタブが増える（独立したシェル）',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: 'button[aria-label="新しいタブを開く"]',
       number: 2,
       caption: '+ ▾ を押すとメニューが開く',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.tab-bar__new-menu',
@@ -545,7 +553,7 @@ test('screenshots S09 claude を起動する', async () => {
       selector: '.tab-bar__tab.is-active .tab-bar__title',
       number: 1,
       caption: 'Cmd+Shift+C で claude が新しいタブに起動',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.terminal-pane:not(.terminal-pane--hidden) .xterm-rows > div',
@@ -610,7 +618,7 @@ test('screenshots S12 実行中タスク一覧', async () => {
       selector: '.task-item--your-turn',
       number: 1,
       caption: 'あなたの番: 入力を待っているタスク（強調される側。グループの先頭に来る）',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.task-item--working',
@@ -635,7 +643,7 @@ test('screenshots S16 履歴の並び順', async () => {
       index: 0,
       number: 1,
       caption: '更新が最も新しい',
-      side: 'right',
+      side: 'above',
     },
     { selector: '.history-item', index: 1, number: 2, caption: '2番目に新しい', side: 'right' },
     { selector: '.history-item', index: 2, number: 3, caption: '最も古い', side: 'right' },
@@ -657,13 +665,13 @@ test('screenshots S18 壊れた履歴の縮退表示', async () => {
       text: '33333333',
       number: 1,
       caption: '壊れても一覧から消えない',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.history-item__error',
       number: 2,
       caption: '打つ手が無い情報なので灰色1行（再開はできる）',
-      side: 'right',
+      side: 'above',
     },
   ]);
 });
@@ -689,7 +697,7 @@ test('screenshots S19 履歴から resume する', async () => {
       index: -1,
       number: 1,
       caption: '履歴クリックで新しいタブが開く',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.terminal-pane:not(.terminal-pane--hidden) .xterm-rows > div',
@@ -769,14 +777,14 @@ test('screenshots S31 設定パネル', async () => {
       selector: '.settings__select',
       number: 1,
       caption: '通知音を選んでその場で試聴',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: 'input[aria-label="Slack の Webhook URL"]',
       number: 2,
       caption: 'Slack / Discord へ完了通知を転送',
       // below だと直下の「テスト送信」ボタンを覆ってしまう
-      side: 'right',
+      side: 'above',
     },
   ],
   // 設定ウィンドウは幅 520px。1200 に引き伸ばすとぼやけるので実寸に寄せる。
@@ -813,7 +821,7 @@ test('screenshots S56 分割表示', async () => {
       selector: '.pane-splitter',
       number: 2,
       caption: 'スプリッタ: ドラッグで分割比を変更',
-      side: 'right',
+      side: 'above',
     },
     {
       selector: '.terminal-pane.is-active',

@@ -76,7 +76,12 @@ test('S70 設定ウィンドウの見出しと項目ラベルが、記録した�
 
   // 記録した文字列。**「あるべき値」ではなく「いまそうなっている値」。**
   const expected: SettingsSection[] = [
-    { heading: '外観', labels: ['フォント', 'サイズ'] },
+    // Issue #119 周6 で「配色」を先頭に足した（#20 の PR 18）。
+    // **プリセットの選択で、自由な色入力ではない** — 任意の色を選べると
+    // `chromeSafeToApply` が false になる背景を選べてしまい、
+    // 「端末だけ色が変わってクロームが暗いまま残る半適用」になる
+    // （src/shared/themes.ts 冒頭）。安全性は test/unit/themes.test.ts が関門。
+    { heading: '外観', labels: ['配色', 'フォント', 'サイズ'] },
     {
       heading: '動作中の AI',
       labels: [
