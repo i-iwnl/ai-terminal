@@ -117,7 +117,14 @@ test('S57 分割中だけペインヘッダが出て、最初の行を隠さず�
 
   // --- aria 名: 木のルートでない leaf は role="tabpanel" を名乗らない ---------
   // PR 4 の「role="tabpanel" は木のルートだけ」契約を壊していないこと。
-  await expect(window.locator('[role="tabpanel"]')).toHaveCount(1);
+  //
+  // **`<main>` の中に限る。** Issue #120 の周2 でサイドバーにも
+  // `role="tablist"` / `role="tabpanel"` が付いた（3パネルの切替を
+  // キーボードと支援技術へ開くため）。**このアプリには独立したタブ widget が
+  // 2つある**ので、文書全体で `[role="tabpanel"]` を数えると 2 になる。
+  // ここで見たいのは「ターミナル側の木で、ルート以外が tabpanel を名乗らない」
+  // ことなので、数える範囲を `<main>`（タブバー + ターミナル）に絞る。
+  await expect(window.locator('main [role="tabpanel"]')).toHaveCount(1);
   await expect(window.locator('.terminal-pane[role="group"]')).toHaveCount(2);
   const activeAriaLabel = await activePane.getAttribute('aria-label');
   expect(activeAriaLabel).toContain('zsh');
