@@ -112,4 +112,31 @@ test('S63 対象ペインが同じタブの非アクティブ側にあっても�
   await expect(window.locator('.app-status')).toContainText('は既に表示されています');
   // アクティブなペインは変わらず claude 側のまま。
   await expect(claudePane).toHaveClass(/is-active/);
+
+  // --- Issue #120 C-2（周4）: 対応するペインが1つも無い場合も無言で終わらせない ---
+  //
+  // 通知は `claude agents --json` のポーリングから作られ、`ownedByApp` で
+  // 絞っていない（`scopeAgentsToCwd` の既定は false = マシン全体）ので、
+  // **他のターミナルで起動した claude の完了通知が既定で飛ぶ**。それを押しても
+  // このアプリには対応する leaf が無く、以前は黙って抜けていた。
+  // 同じ空振りは tmux 永続化でタブだけ閉じた場合やアプリ再起動後にも起きる。
+  //
+  // ここでは「このアプリが一度も起動していない UUID」を送って再現する
+  // （resume 用の固定 UUID とも、claude 新規起動の randomUUID() とも重ならない）。
+  const UNKNOWN_SESSION_ID = '99999999-9999-4999-8999-999999999999';
+  await sendSessionFocus(launched.app, UNKNOWN_SESSION_ID);
+
+  // 1つ前の「既に表示されています」のバナーがまだ残っているので、
+  // `.notice-banner` だけだと strict mode 違反になる。文言で絞る
+  // （残っていること自体は仕様どおり。lib/notices.ts が上限まで積む）。
+  await expect(
+    window.locator('.notice-banner', { hasText: 'このセッションを開いているタブはありません' }),
+  ).toHaveCount(1, { timeout: 5_000 });
+  await expect(window.locator('.app-status')).toContainText(
+    'このセッションを開いているタブはありません',
+  );
+  // 見つからなかったのだから、タブもペインも動かしてはいけない
+  // （「何か起きたように見せる」ために別のペインへ移すと、それは嘘になる）。
+  await expect(tabs).toHaveCount(2);
+  await expect(claudePane).toHaveClass(/is-active/);
 });

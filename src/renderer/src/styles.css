@@ -690,10 +690,13 @@ body {
   min-width: 0;
   align-self: stretch;
   padding: 0;
-  /* 閉じるボタンの実測幅（14px。"x" + padding 0 var(--sp-1)）+ 1 gap 分。
+  /* 閉じるボタンの**見た目の**幅（14px。"x" + 元の padding 0 var(--sp-1)）+ 1 gap 分。
      閉じるボタン自体が絶対配置でこの行から外れたので、視覚上の開始位置を
      維持するためだけの余白（クリック領域はこの余白の下も含めて全部有効）。
-     `padding` の後に置いて左だけを上書きする（他の辺は 0 のまま）。 */
+     `padding` の後に置いて左だけを上書きする（他の辺は 0 のまま）。
+     **Issue #120 B-2 でボタンの箱は 24px に広がったが、広がったのは左側だけで
+     "x" の描画位置は動いていない**ので、この 14px は今も見た目の正。
+     箱の幅（24px）に合わせて増やすと、タイトルが 10px 右へずれる。 */
   padding-left: calc(14px + var(--sp-2));
   background: none;
   border: none;
@@ -745,17 +748,44 @@ body {
    埋まるようになったので、ここが非表示（pointer-events: none）の間は
    クリックがそのボタンまで素通しする。表示中（pointer-events: auto）は
    下の ::before（24x24 の当たり判定）が絶対配置で上に乗るので、
-   タブ選択のクリックに食い込まれない。 */
+   タブ選択のクリックに食い込まれない。
+
+   Issue #120 B-2（周3）: その「食い込まない」は**右側だけ成り立っていなかった**。
+   実測すると、見た目 14x14 のボタンに対し `::before` の 24x24 は左右に 5px ずつ
+   はみ出し、**左の 5px は gap の死角に乗るだけ**（`.tab-bar__tab-button` は
+   state-slot + gap の先から始まる）だが、**右の 5px は
+   `.tab-bar__tab-button` の padding-left の中に乗っていた**。タイトル文字まで
+   あと 3px の位置で、狙いがタイトル側へ 5px ずれると**タブ選択ではなく
+   タブが閉じる**（誤爆の結果が破壊的）。
+
+   直し方は「`::before` をずらす」ではなく **ボタンの箱そのものを左へ
+   `--target-size-min` まで広げる**。`left` を広げたぶんだけ戻し、同じ量を
+   `padding-left` に足すので、**"x" の描画位置は 1px も動かない**
+   （右端の位置も `left + width` が不変なので変わらない。この不変性は
+   グリフの実測幅に依らず成り立つ）。箱が 24px になれば
+   `max(100%, var(--target-size-min))` の `::before` は箱と一致し、
+   **横方向のはみ出しが両側とも 0 になる**。伸びた 10px は state-slot の右端と
+   gap（どちらも元から死角）へ回る。
+
+   **上下の 5px / 4px のはみ出しは残す。** そこは「閉じるボタンを狙って
+   縦に外した」位置で、押した結果（閉じる）は狙いと一致する。
+   害があるのは**隣のターゲットへ向かう向き**のはみ出しだけ
+   （design-rules.md「入れ子の破壊的ターゲット…」）。 */
 .tab-bar__close {
   position: absolute;
-  left: calc(var(--sp-3) + 6px + var(--sp-2));
+  /* 見た目の左端（--sp-3 + state-slot 6px + gap）から、箱を広げたぶんだけ
+     手前へ戻す。padding-left の加算と対になっていて、片方だけ変えると
+     "x" の描画位置がずれる。 */
+  left: calc(var(--sp-3) + 6px + var(--sp-2) - (var(--target-size-min) - 14px));
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
   border: none;
   color: inherit;
   cursor: pointer;
-  padding: 0 var(--sp-1);
+  /* 左だけ「箱を広げたぶん」を足す。左右非対称なのは、はみ出させたい向きが
+     左（死角）だけだから。14px は広げる前のボタンの実測幅。 */
+  padding: 0 var(--sp-1) 0 calc(var(--sp-1) + (var(--target-size-min) - 14px));
   font-size: var(--fs-sm);
   opacity: 0;
   /* opacity だけで隠すと、非表示のあいだも 24x24 の当たり判定（下の
@@ -2015,7 +2045,14 @@ button:focus-visible {
  * タブ中央の死角を直すため `position: absolute` に変えてあり（上のコメント参照）、
  * ここで `position: relative` を当てると絶対配置が上書きされて元に戻ってしまう。
  * `::before` の基準（containing block）には absolute でも relative と同じく
- * なれるので、下の `::before` 側の規則は変更不要。 */
+ * なれるので、下の `::before` 側の規則は変更不要。
+ *
+ * **Issue #120 B-2（周3）で `.tab-bar__close` の箱を 24px 幅にした**ので、
+ * この共有規則の `max(100%, var(--target-size-min))` は横方向で 100% 側を採り、
+ * `::before` は箱と一致する（= 横のはみ出しが 0）。**ここを触るときは、
+ * 広がった先が隣のクリック対象かを見ること**（design-rules.md
+ * 「入れ子の破壊的ターゲットは、隣のターゲットへ向かう向きにだけは
+ * 見た目を越えない」）。 */
 .notice-banner button,
 .memo-panel__close,
 .history-item__action,

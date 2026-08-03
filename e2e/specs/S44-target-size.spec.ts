@@ -88,6 +88,49 @@ test('S44 小さいボタンの当たり判定が 24x24 CSS px 以上ある', as
   await expect(tabs).toHaveCount(2);
   expectAtLeast24(await measureHitArea(tabs.nth(1).locator('.tab-bar__close')), 'タブの閉じる');
 
+  // Issue #120 B-2（周3）: 24x24 を満たしているだけでは足りない。
+  //
+  // 広げた当たり判定がすぐ隣のクリック対象へ食い込むと、**押し間違いの結果が
+  // 「タブを選ぶ」ではなく「タブを閉じる」になる**（走行中のエージェントを見失う）。
+  // 周3 の実測では、見た目 14x14 のボタンに対し ::before の 24x24 が左右へ
+  // 5px ずつはみ出し、**右の 5px が `.tab-bar__tab-button` の padding-left の中**に
+  // 乗っていた（タイトル文字まであと 3px）。
+  //
+  // 直したあとの契約は「**当たり判定の右端が、ボタンの箱の右端を越えない**」。
+  // サイズや ::before の実装（中央寄せか片寄せか）に依らず falsifiable にするため、
+  // computed style ではなく elementFromPoint で実際に確かめる。
+  // 上下のはみ出しは意図的に残している（そこは「閉じるを狙って縦に外した」
+  // 位置で、押した結果は狙いと一致する。害があるのは隣のターゲットへ
+  // 向かう向きだけ）。
+  const closeOverhang = await tabs.nth(1).evaluate((tab) => {
+    const close = tab.querySelector('.tab-bar__close') as HTMLElement;
+    const rect = close.getBoundingClientRect();
+    const centerY = rect.top + rect.height / 2;
+    const hitsClose = (x: number): boolean => {
+      const hit = document.elementFromPoint(x, centerY);
+      return hit !== null && (hit === close || close.contains(hit));
+    };
+    // 右へ 1px ずつ 12px ぶん見て、閉じるボタンに当たる点を全部集める。
+    const overhangingX: number[] = [];
+    for (let dx = 1; dx <= 12; dx += 1) {
+      if (hitsClose(rect.right + dx)) overhangingX.push(dx);
+    }
+    return {
+      overhangingX,
+      // 箱の内側（右端の 0.5px 手前）はちゃんと当たること。ここが false だと
+      // 上の「はみ出し 0」は「そもそもどこにも当たらない」で成立してしまう。
+      hitsJustInside: hitsClose(rect.right - 0.5),
+    };
+  });
+  expect(
+    closeOverhang.hitsJustInside,
+    'タブの閉じる: 箱の右端の内側では当たり判定が生きている',
+  ).toBe(true);
+  expect(
+    closeOverhang.overhangingX,
+    'タブの閉じる: 当たり判定がタブ選択の側（右）へ 1px も食い込まない',
+  ).toEqual([]);
+
   // 2) 検索の「前」「次」「x」ボタン。
   const screen = window.locator('.terminal-pane__container .xterm-screen').first();
   await expect(screen).toContainText(/[$%#>]/, { timeout: 20_000 });
