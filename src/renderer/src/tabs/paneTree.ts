@@ -52,6 +52,19 @@ export interface PaneLeaf {
   cwd?: string;
   exit?: { exitCode: number; signal?: number };
   /**
+   * この PTY が tmux でラップされて起動したか（`SpawnPtyResult.wrappedInTmux`）。
+   *
+   * **`config.useTmux` を後から読み直してはいけないので、leaf に持つ。**
+   * ラップするかどうかは spawn の瞬間に1回だけ決まる（`maybeWrapWithTmux`）。
+   * 設定を後から切り替えても、既に走っているペインのラップは剥がれないため、
+   * 設定値から導くと「設定を切ったあとに、tmux で走っているペインについて
+   * 嘘をつく」ことになる。
+   *
+   * **タブではなくペインの属性。** 分割すると1タブの中に
+   * 「tmux でラップされた claude」と「素の zsh」が同居しうる。
+   */
+  wrappedInTmux?: boolean;
+  /**
    * 履歴からの再開（`--resume` / gemini の再開ターゲット）で起動したか。
    * ペインヘッダ（design-review.md 提案 G。`tabs/paneHeader.ts`）が
    * `claude` / `claude (再開)` を出し分けるために使う。

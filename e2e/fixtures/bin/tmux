@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# E2E 用の偽 tmux。
+#
+# 本物の tmux を呼ぶとテストが非決定的になる（実行中の実セッションを拾う、
+# E2E 実行のたびにセッションが衝突する等）うえ、本物の tmux は代替画面
+# バッファへ切り替える（ESC [ ? 1049 h）ため、xterm 側のスクロールバックが
+# 実装と無関係な理由で変化する。PATH の先頭にこのスクリプトを置いて差し替える。
+#
+# 重要: 受け取るのは常に
+#   new-session -A -s <sessionName> -- <command> <args...>
+# の形（src/main/pty/tmux.ts の wrapCommandWithTmux が組み立てる）。
+# `-- ` より後ろをそのまま exec することで、ラップの中身（本物の claude /
+# gemini の起動）まで含めて動かす。
+#
+# セッション名は ${AI_TERMINAL_E2E_FIXTURES}/tmux-session-name.txt に書き出す。
+# spec 側はこのファイルを読むことで、アプリが渡した tmux セッション名
+# （aiterm-<agentSessionId> の形）を検証できる。
+#
+# このシムで担保できないこと（本物の tmux との差）:
+# - 代替画面バッファへの切り替えは行わない。
+# - セッションの永続化は再現しない（このプロセスは exec するだけで、
+#   親プロセスを kill してもセッションが生き残る、という tmux 本来の
+#   挙動は無い）。
+# - `-A`（同名セッションがあれば attach、無ければ new-session）の分岐は
+#   検証していない。常に「新規にコマンドを exec する」動きしかしない。
+
+set -uo pipefail
+
+session=""
+args=("$@")
+command_args=()
+found_separator=0
+
+i=0
+while [ "$i" -lt "$#" ]; do
+  arg="${args[$i]}"
+  if [ "$found_separator" -eq 1 ]; then
+    command_args+=("$arg")
+  elif [ "$arg" = "-s" ]; then
+    i=$((i + 1))
+    session="${args[$i]:-}"
+  elif [ "$arg" = "--" ]; then
+    found_separator=1
+  fi
+  i=$((i + 1))
+done
+
+if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ]; then
+  printf '%s' "$session" > "${AI_TERMINAL_E2E_FIXTURES}/tmux-session-name.txt"
+fi
+
+if [ "${#command_args[@]}" -eq 0 ]; then
+  echo "fake tmux: -- 以降に実行すべきコマンドが見つかりません" >&2
+  exit 1
+fi
+
+exec "${command_args[@]}"

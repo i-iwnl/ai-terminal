@@ -1182,7 +1182,12 @@ body {
   top: var(--sp-2);
   right: var(--sp-2);
   z-index: 10;
+  /* Issue #121 A-3: tmux ラップ時の注記（.terminal-search__hint）を下に足すため
+     縦積みにした。**入力欄とボタンの横並びは .terminal-search__row が持つ。**
+     注記が無いときは行が1枚だけなので、見た目は従来と変わらない。 */
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--sp-1);
   background: var(--surface-3);
   padding: var(--sp-1) var(--sp-2);
@@ -1195,6 +1200,25 @@ body {
      はみ出さない上限を持たせる。分割（Issue #56）で常態化するまでは
      ウィンドウ最小幅でだけ踏む問題だったため気づかれていなかった。 */
   max-width: calc(100% - var(--sp-4));
+}
+
+/* 入力欄と3つのボタンの行。`min-width: 0` は入力欄の縮小を親まで通すため
+   （Issue #67 の本体と同じ理由。ここが auto だと、コンテナは max-width に
+   収まったままボタンが箱の外へあふれる。S56 がこれを実測で固定している）。 */
+.terminal-search__row {
+  display: flex;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+/* tmux ラップ時だけ出る、検索の対象範囲の注記（Issue #121 A-3）。
+   `aria-describedby` で入力欄に紐づいており、フォーカスが入った瞬間に1回読まれる。
+   色は --text-secondary（--surface-3 の上で 6.20:1。--fs-xs の 11px は 4.5:1 が要る）。 */
+.terminal-search__hint {
+  margin: 0;
+  max-width: 32ch;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
 }
 
 .terminal-search input {

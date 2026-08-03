@@ -109,6 +109,7 @@ function renderNode(
         panelId={isRoot ? tabPanelId(props.tabId) : undefined}
         labelledBy={isRoot ? tabButtonId(props.tabId) : undefined}
         label={label}
+        wrappedInTmux={node.wrappedInTmux}
         showHeader={showHeader}
         fontFamily={props.fontFamily}
         fontSize={props.fontSize}

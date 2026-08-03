@@ -9,18 +9,25 @@
 // タブバーの x ボタン（TabBar.tsx の `.tab-bar__close`）も、`Cmd+Shift+W` を
 // 新設していないマウス経由の抜け穴として同じ確認を通す（呼び出し側で
 // 同じ requestCloseTab を通せば自動的に揃う）。
+//
+// **Issue #121 A-3: 文言はこのファイルが決めない。** tmux でラップされた
+// ペインは閉じても生き残るため、「すべて終了します」は既定構成では嘘になる
+// （実測済み。closeTabCopy.ts のコメント参照）。何をどう言うかは
+// `closeTabCopy()` が決め、ここは受け取った文字列を描くだけにする。
 
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from 'react';
 
+import type { CloseTabCopy } from './closeTabCopy';
+
 export interface CloseTabConfirmDialogProps {
-  /** このタブを閉じると失われる、走行中のプロセス（PTY）の本数。 */
-  paneCount: number;
+  /** `closeTabCopy()` が決めた文言（タイトル・本文・実行ボタンのラベル）。 */
+  copy: CloseTabCopy;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 export default function CloseTabConfirmDialog({
-  paneCount,
+  copy,
   onConfirm,
   onCancel,
 }: CloseTabConfirmDialogProps): ReactElement {
@@ -60,10 +67,10 @@ export default function CloseTabConfirmDialog({
         onKeyDown={handleKeyDown}
       >
         <h2 id="confirm-dialog-title" className="confirm-dialog__title">
-          走行中のプロセス {paneCount} 件を終了します
+          {copy.title}
         </h2>
         <p id="confirm-dialog-body" className="confirm-dialog__body">
-          このタブを閉じると、中で動いている {paneCount} 件のプロセスがすべて終了します。
+          {copy.body}
         </p>
         <div className="confirm-dialog__actions">
           <button type="button" className="confirm-dialog__button" ref={cancelRef} onClick={onCancel}>
@@ -74,7 +81,7 @@ export default function CloseTabConfirmDialog({
             className="confirm-dialog__button confirm-dialog__button--danger"
             onClick={onConfirm}
           >
-            終了する
+            {copy.confirmLabel}
           </button>
         </div>
       </div>

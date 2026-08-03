@@ -10,13 +10,15 @@ node-pty の macOS 向け prebuild に同梱されている `spawn-helper` は�
 
 **⛔ 再インストールのたびに壊れる問題なので、この `postinstall` 連携を外さないこと。** 手動で直す場合のコマンドは README.md の「うまく動かないとき」を参照。
 
-## tmux でラップすると PTY の exit が発火しないことがある
+## tmux でラップしたセッションは、タブを閉じても生き残る（2026-08-03 実測、tmux 3.7b）
 
-`useTmux` が有効かつ tmux が使える環境では、`claude` / `gemini` の起動コマンドを `tmux new-session -A -s <name> -- <command> ...` でラップする（[../../../../src/main/pty/tmux.ts](../../../../src/main/pty/tmux.ts)）。
+`useTmux` が有効かつ tmux が使える環境では、`claude` / `gemini` の起動コマンドを `tmux new-session -A -s <name> -- <command> ...` でラップする（[../../../../src/main/pty/tmux.ts](../../../../src/main/pty/tmux.ts)）。この挙動は tmux の実装に依存するため、将来のバージョンでは変わりうる。以下は 2026-08-03 に tmux 3.7b で実測した内容。
 
-この場合、**内側の `claude` プロセスが終了しても node-pty の `onExit` は発火しない**。`tmux new-session -A` が起動しているのは tmux セッションそのものであり、tmux セッション自体が消えたとき（`tmux kill-session` 等）にのみ exit が発火するため。
+**内側のプロセスが正常終了した場合は、tmux なしと同じく `onExit` が発火する。** 内側のコマンドが終わる → tmux のセッションが終了する → クライアントも終了する、という連鎖を辿るため。実測では、内側のコマンドの終了から1秒後には `tmux ls` が `no server running` を返した。実アプリでも、tmux クライアントに SIGTERM を送るとサーバごと終了し、タブは正しく `is-exited` になった。
 
-これは「アプリを落としても AI の作業が生き残る」という永続化の目的そのものによる挙動であり、バグではない。**タブを閉じるべきかどうかの判定を PTY の exit イベントだけに頼らないこと。** 内側のコマンドが終わったかどうかを知りたい場合は、`claude agents --json` のポーリング結果（/ai-cli 側の責務）と突き合わせる。
+**罠はタブを閉じる操作（クライアントの kill）の方。** `pty.kill()` が殺せるのは tmux **クライアント**だけで、サーバ側のセッションと内側の `claude` / `gemini` プロセスは生き残る。実機（agent-browser でアプリを操作）でも確認済みで、閉じるボタンでタブを閉じた後も `tmux ls` に該当セッション（`aiterm-<uuid>`）が残り、`ps` に `claude --session-id <uuid> (Ss+)` が生存していた。
+
+**resume できるかは CLI によって非対称。** tmux セッション名は `buildTmuxSessionName(plan.agentSessionId ?? ptyId)` で決まる（[../../../../src/main/pty/tmux.ts](../../../../src/main/pty/tmux.ts) 冒頭のコメント参照）。安定した `agentSessionId` を持つのは claude だけ（`--session-id` / `--resume` に渡した ID がそのまま入る）なので、claude はタブを閉じても履歴から resume すれば同じ tmux セッションに `-A` でアタッチし直せる。gemini は安定したセッション ID を持たないため、タブを閉じた時点で名前を二度と再現できず、生き残ったプロセスは孤立したまま残り続ける。
 
 ## PTY に渡す環境変数
 

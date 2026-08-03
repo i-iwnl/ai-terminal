@@ -215,6 +215,10 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           // フラグ。resumeOpts から直接立てる（title の文字列判定はしない。
           // paneTree.ts の isResume コメント参照）。
           isResume: Boolean(resumeOpts?.resumeSessionId ?? resumeOpts?.geminiResumeTarget),
+          // Issue #121 A-3: Main は以前からこの値を返していたのに、ここで
+          // 捨てていた。閉じる確認の文言（closeTabCopy.ts）と検索バーの注記が
+          // これを読む。**設定値ではなく spawn 時の実際の結果**であることが要点。
+          wrappedInTmux: result.wrappedInTmux,
         };
       } catch (err) {
         onError(describeSpawnError(err, kind));

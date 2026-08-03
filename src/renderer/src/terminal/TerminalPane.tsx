@@ -49,6 +49,21 @@ export interface TerminalPaneProps {
    */
   label: string;
   /**
+   * この PTY が tmux でラップされて起動したか（`PaneLeaf.wrappedInTmux`）。
+   *
+   * **検索バーを開いたときにだけ使う**（Issue #121 A-3 / 周2。design-review の
+   * 5ペルソナレビューで採った案）。tmux は代替画面バッファへ切り替えるため
+   * （実測: PTY のバイト列に `ESC [ ? 1049 h` が出る。2026-08-03 / tmux 3.7b）、
+   * 流れていった行は xterm 側のスクロールバックに入らず、検索の対象も
+   * 「いま見えている画面」だけになる。
+   *
+   * **常時のバッジにはしない。** tmux ラップは既定 ON でエージェントタブでは
+   * ほぼ常に true になり、タブバーに出しても情報を運ばないため
+   * （レビューで5人が独立に却下）。困っている瞬間 = 検索バーが開いている瞬間に
+   * だけ出す。
+   */
+  wrappedInTmux?: boolean;
+  /**
    * ペインヘッダ（高さ18px）を出すか。**分割中のタブだけ true**
    * （呼び出し側 `PaneTreeView` が木の根が split かどうかで決める）。
    * 通常の flex フローに入れて描画する（`position: absolute` の重ね描きに
@@ -101,6 +116,7 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     panelId,
     labelledBy,
     label,
+    wrappedInTmux,
     showHeader,
     fontFamily,
     fontSize,
@@ -248,8 +264,20 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       )}
       {searchOpen && (
         <div className="terminal-search">
+          {/* 入力欄とボタンの行。**注記を足すために1枚包んでいる**（Issue #121 A-3）。
+              `.terminal-search input` / `.terminal-search button` を使う spec
+              （S20 / S40 / S44 / S45 / S56）は子孫セレクタなので、この入れ子で壊れない。 */}
+          <div className="terminal-search__row">
           <input
             autoFocus
+            aria-label="このペインを検索"
+            // tmux ラップ時だけ、検索の対象範囲を説明する行を紐づける。
+            // **live region を1つも増やさない**のが要点（S37 / S48 が固定している
+            // 「露出している live region は1個」を触らずに、フォーカスが入った
+            // 瞬間に1回だけ読まれる）。通知バナーに出す案は、`.notice-list` が
+            // `.terminal-search` と同じ座標（top 44px）で z-index が上のため、
+            // autoFocus した入力欄を完全に覆う（WCAG 2.4.11）ので採らなかった。
+            aria-describedby={wrappedInTmux ? `${ptyId}-search-hint` : undefined}
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -279,6 +307,12 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
           <button onClick={() => handle.closeSearch()} title="検索を閉じる">
             x
           </button>
+          </div>
+          {wrappedInTmux && (
+            <p id={`${ptyId}-search-hint`} className="terminal-search__hint">
+              いま見えている画面だけを検索します（tmux 管理下のため）
+            </p>
+          )}
         </div>
       )}
       <div className="terminal-pane__container" ref={containerRef} />

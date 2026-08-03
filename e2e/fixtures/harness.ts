@@ -200,6 +200,18 @@ export interface LaunchOptions {
   /** 偽 CLI を PATH に置かない（CLI 不在時のエラー表示を検証する） */
   withoutCli?: boolean;
   /**
+   * 偽 tmux（e2e/fixtures/bin/tmux）も PATH に置くか。**既定は false（置かない）。**
+   *
+   * tmux 経路（Issue #121 A-3）を E2E から踏むための偽 CLI。`config: { useTmux: true }`
+   * と組み合わせて初めて `wrapCommandWithTmux` の出力（`tmux new-session -A -s <name>
+   * -- <command> ...`）が実行され、`SpawnPtyResult.wrappedInTmux` が true になる。
+   * 既定を変えないのは、既存の全シナリオが `useTmux: false`（DEFAULT_CONFIG）を
+   * 前提にしており、無関係なシナリオで tmux バイナリが PATH に居ても挙動を
+   * 変えないことを確認する必要が無いため（このオプションを立てたときだけ、
+   * 意図して踏む経路にする）。
+   */
+  fakeTmux?: boolean;
+  /**
    * 偽 CLI を起動時の PATH に置かず、一時 HOME の .zshrc からのみ PATH に足す。
    *
    * Finder / Dock から起動したパッケージ版は launchd の最小 PATH しか継承せず、
@@ -456,7 +468,10 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
   // 偽 CLI を置く bin ディレクトリ（実行権限を確実に付ける）
   mkdirSync(binDir, { recursive: true });
   if (!options.withoutCli) {
-    for (const name of ['claude', 'gemini']) {
+    // fakeTmux が既定 false のときは配列に 'tmux' が足されないため、
+    // 既存シナリオの PATH には従来どおり claude / gemini の2本しか置かれない。
+    const cliNames = options.fakeTmux ? ['claude', 'gemini', 'tmux'] : ['claude', 'gemini'];
+    for (const name of cliNames) {
       const dest = join(binDir, name);
       cpSync(join(FIXTURES_DIR, 'bin', name), dest);
       chmodSync(dest, 0o755);
@@ -581,7 +596,9 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     // フル実行3回・99起動で計測した firstWindow の所要時間は
     // 最小 101ms / 中央 119ms / **最大 421ms**。分布は二極で、成功する起動は
     // 必ず 0.5 秒以内に返り、**失敗する起動は 60 秒待ってもウィンドウが出ない**
-    // （99回中2回。待ち時間を伸ばしても救えない種類の失敗）。
+    // （実測は数%。マシンの負荷で 2.0〜6.4% の幅で動く。
+    //   待ち時間を伸ばしても救えない種類の失敗。率の記録は
+    //   .claude/skills/e2e/operations/run-e2e.md が正）。
     // 実測最大の約35倍に当たる 15 秒を上限とする。ここを長くしても、
     // 失敗した起動の判明が遅れるだけで成功率は上がらない。
     //
