@@ -16,12 +16,22 @@ import {
 /**
  * README の「使い方ガイド」用スクリーンショットの撮影スクリプト。
  *
- * e2e/scenarios.yml の readme: true な13シナリオについて、対応する spec と同じ
+ * e2e/scenarios.yml の `readme: true` なシナリオについて、対応する spec と同じ
  * 手順でハーネス（隔離 HOME + 偽 CLI）越しにアプリの画面状態を作り、docs/images/
  * に screenshot: で指定されたファイル名で保存する。
  *
- * 通常の `make e2e`（testDir: ./e2e/specs）には含まれない。実行は
- * `make e2e-screenshots`（e2e/screenshots.playwright.config.ts 経由）。
+ * **シナリオの件数をここに書かない**（Issue #121 A-2）。台帳は e2e/scenarios.yml が
+ * 唯一の正で、`scripts/lint-e2e.mjs` はコメント内の数値を見ないため、
+ * 手で書き写した数はずれても永久に検出されない。実際に一度ずれた。
+ * 数が知りたいときは台帳を数えること。
+ *
+ * **実行レーンは2つある。**
+ *
+ * - `make e2e-screenshots`（e2e/screenshots.playwright.config.ts 経由）
+ *   — README 用の画像を実際に更新するのはこちら。`docs/images/` へ直接書く
+ * - `make e2e` — **Issue #120 D-1 で第2 project（name: 'screenshots'）として
+ *   取り込んだ。** 出力先だけを一時ディレクトリへ振り替え、`docs/images/` は
+ *   書き換えずにセレクタの追随だけを検証する（下の IMAGES_DIR のコメント参照）
  *
  * 注釈は画像処理ライブラリを使わず、撮影直前に page.evaluate() で DOM
  * オーバーレイ（角丸四角の番号バッジ・対象を囲む枠線・日本語キャプション）を
@@ -36,8 +46,10 @@ const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // 出力先を差し替えられる口を開けた。** 撮影レーンの価値は「画像を作ること」と
 // 「セレクタが実装に追随しているかを確かめること」の2つあり、後者は
 // `make e2e` の側にこそ要る（PR #86 は「回せば落ちるが、回す動機が無かった」事例）。
-// しかし `docs/images/` は**同じコードで2回撮っても13枚中13枚がバイト差**になるため
+// しかし `docs/images/` は**同じコードで2回撮っても全枚数がバイト差**になるため
 // （実測）、`make e2e` のたびに約940KB のバイナリが dirty になるのは受け入れられない。
+// （**画素差**は Issue #120 周5 でほぼ消えた。残るのはセッション UUID が写る2枚だけで、
+// そちらは Issue #121 B-2 の担当。バイト差は PNG の圧縮まわりで別口に残る。）
 // `make e2e` からは一時ディレクトリへ吐かせ、検証だけを取り込む。
 const IMAGES_DIR =
   process.env.AI_TERMINAL_E2E_IMAGES_DIR ?? join(REPO_ROOT, 'docs', 'images');
@@ -107,6 +119,33 @@ async function annotateAndShoot(
       // opacity: 0 ならフォーカスを保ったまま画像から消せる。
       node.style.opacity = '0';
     });
+  });
+
+  // ターミナルのカーソルの点滅を止める（Issue #121 B-2）。
+  //
+  // `useTerminal.ts` は `cursorBlink: true` を渡しており、**撮影は点滅の位相を
+  // 乱数的に拾う**。実測では、同じコードの13枚撮影を繰り返すと S01 の
+  // カーソル 1セル（11x18px）が写ったり写らなかったりした
+  // （単独実行では3回とも一致、フル実行のときだけ消えた。2026-08-03）。
+  // これが残っている限り「画像の中身が実装とずれたか」を画素で検査できない。
+  //
+  // **消すのではなく、点滅アニメーションだけを止めて「見えている側」に固定する。**
+  // 消すと実機と違う絵になり、点滅させたままだと非決定になる。
+  // `animation` を切ると xterm のカーソルは基底状態（表示）で止まる。
+  await window.evaluate(() => {
+    const style = document.createElement('style');
+    style.id = '__e2e_cursor_freeze__';
+    style.textContent = [
+      // カーソルの点滅を止める。
+      '.xterm .xterm-cursor-blink, .xterm .xterm-cursor { animation: none !important; }',
+      // **後から生えた内部要素にも効かせる。** 上の per-node の opacity 指定は
+      // 「その時点で存在する要素」しか隠せず、分割で作った2枚目のペインの
+      // 幅計測コンテナが隠したあとに生成されて写り込んでいた
+      // （実測: S56 の2枚目のペインに `%` の箱が出たり出なかったりした。2026-08-03）。
+      // CSS 規則にしておけば、生成のタイミングに関係なく隠れる。
+      '.xterm-width-cache-measure-container, .xterm-helper-textarea { opacity: 0 !important; }',
+    ].join('\n');
+    document.head.appendChild(style);
   });
 
   await window.evaluate((items) => {
@@ -383,6 +422,7 @@ async function annotateAndShoot(
 
   await window.evaluate(() => {
     document.getElementById('__e2e_annotation_layer__')?.remove();
+    document.getElementById('__e2e_cursor_freeze__')?.remove();
     const nodes = document.querySelectorAll<HTMLElement>(
       '[data-e2e-hidden-for-screenshot="1"]',
     );

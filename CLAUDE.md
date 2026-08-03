@@ -37,6 +37,7 @@ make unit          # 単体テストのみ（vitest。純粋関数だけを対�
 make e2e           # E2E（Playwright + Electron。ウィンドウは表示しない）
 make e2e-visible   # E2E をウィンドウを表示して実行する（挙動を目で追いたいときだけ）
 make e2e-packaged  # パッケージ版 .app に対するスモーク E2E（package-dir から一括）
+make e2e-screenshots-check # docs/images/ の中身が実装とずれていないかを画素で検査する（後述）
 make css-substitution-check # CSS のトークン化で値が変わっていないことを証明する（後述）
 make build         # 本番ビルド
 make package       # 安定版の .app / dmg を dist/ に生成（ローカル用・署名は ad-hoc）
@@ -48,6 +49,8 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 一覧は `make` で表示できる。**skill やドキュメントに検証コマンドを再掲しない。ここを参照する。**
 
 **CSS のデザイントークンは「置換」と「値の変更」を同じ変更に混ぜない。** `src/renderer/src/styles.css` の `:root` が色・サイズ・余白の唯一の正で、本体に色のリテラルを直接書かない（単体テストが検出する）。トークンへ置換するだけの変更では `make css-substitution-check` が必ず通ること。**値を意図的に変えるときだけ落ちてよい**ので `make check` には含めていない。
+
+**README の画像が古くなっていないかは `make e2e-screenshots-check` が画素で見る。** `make e2e`（または `make e2e-screenshots`）で撮った直後に回すと、`docs/images/` の中身が実装とずれていれば落ちる。**画面を意図的に変えたときだけ落ちてよい**ので `make e2e` には含めていない（`css-substitution-check` と同じ扱い）。落ちたら `make e2e-screenshots` で撮り直し、**変わった画像1枚ずつについて「この画面にこの変更が波及するはずがあるか」を言えるまでコミットしない**。
 
 **テストの置き場は「外部に触れるか」で決める。** 入力から出力が閉じた純粋関数は `test/unit/`（vitest）、画面・PTY・IPC を跨ぐ振る舞いは `e2e/specs/`（Playwright）。Electron を起動する必要があるなら後者。
 
