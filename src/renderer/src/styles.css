@@ -705,6 +705,35 @@ body {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  /* 下の ::before の基準（containing block）。 */
+  position: relative;
+}
+
+/* Issue #121 周3: **タブのどこを押しても選択できるようにする。**
+   `.tab-bar__tab` は `padding: 0 var(--sp-3)` の flex コンテナで、選択用の
+   このボタンはその padding の内側で `flex: 1` している。**padding と、
+   先頭の `.tab-bar__state-slot`（6px）と gap は、どれもボタンの外側**なので、
+   そこを押しても何も起きなかった。
+
+   実測（S69。非アクティブ・非 hover の 90px のタブ、左端からの offset）:
+
+     修正前  0-25 死角(.tab-bar__tab) / 26-76 select / 77-88 死角(.tab-bar__tab)
+             = **90px 中 38px（42%）が死角**
+
+   左は `--sp-3`(12) + state-slot(6) + `--sp-2`(8) = 26px、右は `--sp-3`(12) と
+   ちょうど一致する。**見た目を1px も変えずに当たり判定だけ広げる**ため、
+   透明な `::before` を箱の外へ伸ばす（design-rules.md
+   「当たり判定の問題を、見た目を変える提案にすり替えない」）。
+   DOM 構造を変えないので、改名中（`.tab-bar__title-input` に差し替わる経路）と
+   `.tab-bar__state-slot` の描画位置にも影響しない。 */
+.tab-bar__tab-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * (var(--sp-3) + 6px + var(--sp-2)));
+  /* 右端の border-right 1px は `.tab-bar__tab` のものなので越えない。 */
+  right: calc(-1 * var(--sp-3));
 }
 
 .tab-bar__title {
@@ -712,6 +741,10 @@ body {
   text-overflow: ellipsis;
   flex: 1;
   font-size: var(--fs-sm);
+  /* 上の `::before`（絶対配置）より前面に置く。**これが無いと ::before が
+     タイトルを覆い、ダブルクリックでの改名が効かなくなる**（`onDoubleClick` は
+     この span に付いている。TabBar.tsx 参照）。 */
+  position: relative;
 }
 
 .tab-bar__title-input {
@@ -787,6 +820,10 @@ body {
      左（死角）だけだから。14px は広げる前のボタンの実測幅。 */
   padding: 0 var(--sp-1) 0 calc(var(--sp-1) + (var(--target-size-min) - 14px));
   font-size: var(--fs-sm);
+  /* Issue #121 周3: 選択用ボタンの `::before`（タブ全面へ広げた当たり判定）は
+     DOM 順で後に来るため、そのままだと閉じるボタンの上に載って閉じるを食う。
+     **閉じるボタンを明示的に上へ置く。** */
+  z-index: 1;
   opacity: 0;
   /* opacity だけで隠すと、非表示のあいだも 24x24 の当たり判定（下の
      ::before）が反応してしまい、常時表示していた頃と実害が変わらない。
