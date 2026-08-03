@@ -133,11 +133,23 @@ test('S74 履歴行のタイトルは、右端までクリックが resume に�
     ).toBeGreaterThanOrEqual(0);
     expect(probe.metaTopHitsRow, 'meta の左上は行（resume）に当たるべき').toBe(true);
 
-    // --- 現状の幅を固定する（characterization） ---------------------------------
-    // 周2 の目的はこの 139 を 235 近くまで回復させること。**この期待値の diff が
-    // そのままレビュー資料になる**ので、消さずに更新すること。
-    expect(probe.rowWidth, '.history-item__row の実効幅（周2 で回復させる）').toBe(139);
-    expect(probe.actionsWidth, '.history-item__actions が常時予約している幅').toBe(88);
+    // --- 幅を固定する（characterization） ---------------------------------------
+    //
+    // **周2（2026-08-03）で 139 -> 235 に回復した。**
+    //
+    // ```
+    // 260(サイドバー) − 1(border-right) − 12×2(.history-item の padding) = 235
+    // ```
+    //
+    // つまり行はサイドバーの内寸をすべて使えるようになった。以前は
+    // `.history-item__actions`（88px + gap 8px）がフレックスの行を占有しており、
+    // **見えていないボタンがサイドバーの内寸の 41% を予約していた。**
+    //
+    // 期待値は消さずに更新すること。この diff がレビュー資料になる。
+    expect(probe.rowWidth, '.history-item__row の実効幅').toBe(235);
+    // 絶対配置になったのでフローの幅は食わないが、**出ているあいだはタイトルに
+    // 重なる**帯の幅としてまだ意味がある（88px + padding-left 8px）。
+    expect(probe.actionsWidth, '.history-item__actions がホバー時に覆う幅').toBe(96);
   } finally {
     await closeApp(launched);
   }

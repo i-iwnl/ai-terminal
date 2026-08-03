@@ -1532,13 +1532,22 @@ button.task-item__row:hover {
   color: var(--text-bright);
 }
 
+/* `position: relative` は `.history-item__actions` の絶対配置の基準
+   （Issue #119 周2。下のコメント参照）。 */
 .history-item {
+  position: relative;
   padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border-row);
   font-size: var(--fs-sm);
 }
 
-.history-item:hover {
+/* `:focus-within` を足したのは Issue #119 周2。「メモ」「編集」は絶対配置で
+   タイトルの上に重なるため、出ているあいだは下の文字が透けないよう
+   `.history-item__actions` に行と同じ塗りを敷く（下記）。ホバーせずに
+   キーボードだけで到達したときも同じ塗りになっていないと、
+   ボタンの背後にだけ色の違う矩形が出て継ぎ目が見える。 */
+.history-item:hover,
+.history-item:focus-within {
   background: var(--surface-2);
 }
 
@@ -1582,15 +1591,79 @@ button.task-item__row:hover {
   white-space: nowrap;
 }
 
-/* resume 用ボタンの兄弟。<button> に入れ子にできないためここに独立して置く。 */
+/* resume 用ボタンの兄弟。<button> に入れ子にできないためここに独立して置く。
+ *
+ * **Issue #119 周2: フレックスの行から外した。**
+ *
+ * 以前はここが `.history-item__content` のフレックス行に普通に並ぶアイテムで、
+ * 中のボタンを `opacity: 0` で隠していた。**`opacity` はレイアウトから要素を
+ * 外さない**ので、88px + gap 8px = 96px が常時予約されたままだった
+ * （実測: `.history-item__row` の実効幅は 260px のサイドバーに対し **139px**）。
+ * 旧コメントは「常時表示するとタイトルの表示幅を食うため、普段は透明にしておく」と
+ * 書いていたが、**`opacity` ではその意図は達成できていない。**
+ *
+ * 絶対配置にして 96px を返した。`top` / `right` は従来のフロー上の位置と
+ * 同じ（`.history-item` の padding が `var(--sp-2) var(--sp-3)`）。
+ *
+ * **これは PR #108（タブの閉じるボタン）とは別物。** あちらは
+ * `.tab-bar__tab-button` に `padding-left` を与えて**幅を予約したまま**
+ * 当たり判定だけ直したので、描画位置が1px も動かなかった。ここは幅を回収するのが
+ * 目的なので、**`.history-item__title` の省略位置は動く**（S16 / S18 / S19 を撮り直した）。
+ *
+ * `opacity` / `pointer-events` をボタン個々ではなくこの入れ物に持たせたのは、
+ * 下の `background` を一緒にフェードさせるため。個々のボタンに置くと、
+ * 隠れているあいだも入れ物の塗りだけが行の上に残る。
+ *
+ * 編集中（`.history-item__title-input` を出す分岐）は `.history-item__actions`
+ * 自体がレンダリングされないので、絶対配置が入力欄に重なることはない。 */
 .history-item__actions {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-3);
   display: flex;
   gap: var(--sp-2);
   flex-shrink: 0;
+  /* 出ているあいだはタイトルの上に重なる。ボタン自身は `background: transparent`
+     なので、この塗りが無いと下のタイトル文字が透けて読めなくなる。値は
+     `.history-item:hover` / `:focus-within` の行の塗りと同じにして継ぎ目を消す。 */
+  background: var(--surface-2);
+  padding-left: var(--sp-2);
+  opacity: 0;
+  /* **`opacity: 0` はポインタイベントを止めない。** これが無いと、絶対配置に
+     したことでタイトルの右端のクリックが resume ではなく「編集」に当たる。
+     `.tab-bar__close` が同じ失敗モードを同じ手で潰している。
+     e2e/specs/S74-history-row-hit-area.spec.ts が、この1行を外すと
+     「タイトル上の9点中5点が resume に届かない」で赤くなる。 */
+  pointer-events: none;
 }
 
-/* 行のホバー時だけ出す操作ボタン（メモ / 編集）。
-   常時表示するとタイトルの表示幅を食うため、普段は透明にしておく。 */
+/* 塗りの左端に短いフェードを掛ける。これが無いと、長いタイトルが省略記号も無しに
+   不透明な矩形で断ち切られ、「タイトルがそこで終わっている」ように読める
+   （`.history-item__title` の `text-overflow` は 235px の位置で効くので、
+   その手前を覆っているあいだは省略記号が出ない）。
+   `pointer-events: none` にしているのは、この帯がタイトルのクリックを奪わないため。 */
+.history-item__actions::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--sp-4));
+  width: var(--sp-4);
+  background: linear-gradient(to right, transparent, var(--surface-2));
+  pointer-events: none;
+}
+
+/* `:focus-within` にしているのは、`opacity: 0` の要素は**フォーカスを受けられる**から
+   （`visibility: hidden` に変えるとフォーカス不能になり、`:focus-within` が
+   発火できず、キーボードからメモ機能への唯一の入口が消える）。 */
+.history-item:hover .history-item__actions,
+.history-item__actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 行のホバー / フォーカス時だけ出す操作ボタン（メモ / 編集）。
+   隠す・出すの制御は入れ物（`.history-item__actions`）側が持つ。 */
 .history-item__action {
   flex-shrink: 0;
   background: transparent;
@@ -1601,12 +1674,6 @@ button.task-item__row:hover {
   padding: var(--sp-1) var(--sp-2);
   border-radius: var(--radius-md);
   cursor: pointer;
-  opacity: 0;
-}
-
-.history-item:hover .history-item__action,
-.history-item__action:focus {
-  opacity: 1;
 }
 
 .history-item__title-input {
@@ -1626,12 +1693,36 @@ button.task-item__row:hover {
   outline: none;
 }
 
+/* `min-width: 0` と子の切り詰め規則は Issue #119 周2。
+ *
+ * ここには `white-space` も `text-overflow` も `min-width` も無く、**日本語は
+ * 文字間で改行できる**ため、幅が足りないと `demo-` / `project`、`10日` / `前` の
+ * ように**単語の途中で割れて**行の高さが伸びていた。PR 13-a' で
+ * 「すべてのフォルダのとき meta にフォルダ名を出す」を試して実際にこれを踏み、
+ * その案を取り下げている（#20 の提案 B も同じ理由で取り下げ）。
+ *
+ * フレックスの子は既定で `min-width: auto` なので、`min-width: 0` が無いと
+ * `text-overflow` を書いても縮まない。 */
 .history-item__meta {
   display: flex;
   gap: var(--sp-2);
+  min-width: 0;
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
   margin-top: var(--sp-1);
+}
+
+.history-item__meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 相対時刻（1つ目）は短く、欠けると「いつのセッションか」が分からなくなるので
+   縮めない。溢れたときに削るのはブランチ名（と、周3 で足すフォルダ名）のほう。 */
+.history-item__meta > span:first-child {
+  flex-shrink: 0;
 }
 
 /* Issue #20 I-3: 解析エラーは打つ手が無い情報なので、赤字（--status-error）ではなく

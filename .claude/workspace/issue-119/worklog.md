@@ -105,3 +105,73 @@
 5. `.history-item__meta` は `.history-item__row` の**内側**にある（実測で確認）。
    幅を回復すれば meta も一緒に広がるので、B-4（フォルダ名を出す）の前提は
    周2 だけで揃う
+
+---
+
+## 2026-08-03 - 周2: 履歴行の幅を回復する
+
+### 実施内容
+
+- `.history-item__actions` を `position: absolute` にしてフレックスの行から外した。
+  **`.history-item__row` の実効幅が 139px -> 235px に回復**（S74 で実測）
+- `.history-item__action` の `opacity` / `pointer-events` を**入れ物側へ移した**
+  （`.history-item__actions` に `opacity: 0; pointer-events: none`、
+  `.history-item:hover` と `:focus-within` で `1` / `auto`）
+- `.history-item__meta` に `min-width: 0`、子の `<span>` に
+  `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` を入れた。
+  1つ目（相対時刻）だけ `flex-shrink: 0`
+- `.history-item:focus-within` にも行の塗りを当てた
+- `.history-item__actions::before` に 16px のフェードを足した
+- S74 の characterization を 139/88 -> 235/96 に更新
+- `docs/images/` の S16 / S18 / S19 を撮り直した
+
+### 設計判断
+
+- **`opacity` を個々のボタンではなく入れ物に持たせた。** ボタンは絶対配置で
+  タイトルの上に重なるので、`background: transparent` のままだと下の文字が
+  透けて読めなくなる。入れ物に `--surface-2`（行のホバーと同じ塗り）を敷いたが、
+  **opacity を個々のボタンに置いたままだと、隠れているあいだも入れ物の塗りだけが
+  行の上に残る。** 入れ物側へ移すことで塗りも一緒にフェードする
+- **`visibility: hidden` ではなく `opacity: 0` + `pointer-events: none`。**
+  `visibility: hidden` の要素はフォーカスを受けられないので `:focus-within` が
+  発火できず、キーボードからメモ機能への唯一の入口が消える（レビュアー2人が
+  この点を見落としていた。`architecture.md` の 4.2）
+- **`.history-item:focus-within` にも行の塗りを当てた。** ホバーせずに
+  キーボードだけで到達したとき、入れ物の塗りだけが行と違う色になって
+  継ぎ目が見えるのを防ぐ
+- **左端に 16px のフェードを足した。** agent-browser で実機を見たところ、
+  長いタイトルが**省略記号も無しに不透明な矩形で断ち切られ**、
+  「タイトルがそこで終わっている」ように読めた（`text-overflow` は 235px の
+  位置で効くので、その手前を覆っているあいだは省略記号が出ない）。
+  フェードにすると「文字がボタンの下へ続いている」と読める
+
+### 教訓
+
+- **撮り直した13枚のうち、今回の変更が理由なのは3枚だけだった。** 残り8枚は
+  撮影レーンの非決定性（経過時間・ランダム UUID・空状態が写る）。
+  `known-issues.md` の 8 に記録した。**RGB で画素差を測って1枚ずつ判定し、
+  説明できないものは `git checkout HEAD --` で戻す**運用で守った
+  （`.convert('RGBA')` を挟むと Pillow の `getbbox()` が誤判定するので必ず RGB）
+- **agent-browser で実機を見て初めて分かったことがある。** E2E と
+  スクリーンショットはどちらもホバーしていない状態しか撮らないので、
+  「ボタンが出ているあいだタイトルがどう見えるか」を1本も見ていなかった。
+  断ち切られた見た目は自動検査では絶対に見つからない
+- **S74 が予測どおりに機能した。** 周1 で「`pointer-events` を省くと9点中5点が
+  resume に届かなくなる」ことを確認してあったので、周2 では入れ忘れがないことを
+  green で確認するだけで済んだ
+
+### 次に再開するとき最初に読むべきこと
+
+1. **次のアクションは周3（B: スコープ行 + C の結論）。** `overview.md` の「周3」が正
+2. **周3 では最初に `.panel-heading` への畳み込みをやる**（周1 から移した）。
+   `test/unit/css-tokens.test.ts` の「サイドバーの見出し2種の宣言が完全に一致している」が
+   畳める前提を保証している。**`make css-substitution-check` はこの変更では
+   必ず FAIL する**（セレクタをまとめると宣言の出現回数が減るため）。
+   落ちた出力を根拠として残すこと
+3. **`.memo-panel__heading` は畳む対象に含めない**（`color` と `margin` が別物。
+   単体テストが固定している）
+4. 周3 の B-4（履歴 meta にフォルダ名）の前提は周2 で揃った。
+   `.history-item__meta > span` は既に ellipsis を持ち、1つ目（相対時刻）だけ
+   `flex-shrink: 0` なので、**フォルダ名を足すならその後ろに置けば削られるのは
+   フォルダ名とブランチ名になる**
+5. **画像は毎回 RGB で1枚ずつ判定すること**（`known-issues.md` の 8）
