@@ -178,8 +178,18 @@ design-review は「ペインヘッダを通常フローに入れるな（幾何
 ```python
 from PIL import Image, ImageChops
 # git show HEAD:<path> と現在のファイルを比べ、getbbox() が None なら画素差ゼロ
-ImageChops.difference(a, b).getbbox() is None
+# **必ず RGB で比べる。** RGBA だと Pillow 9.5+ の getbbox() が既定 alpha_only=True で
+# 差分画像のアルファ（全面0）だけを見るため、**目に見えて違う画像でも None を返す**。
+ImageChops.difference(a.convert('RGB'), b.convert('RGB')).getbbox() is None
 ```
+
+**このレシピは実際に誤判定を出した。** PR 13-b で `.convert('RGBA')` を挟んだ結果、
+**撮り直した設定ウィンドウを含む13枚すべてが「画素差ゼロ」と出た**（Pillow 12.3.0 で実測)。
+`getbbox(alpha_only=False)` でも正しく出るが、**RGB に落とすほうが間違えにくい**。
+
+**判定コードそのものが「差が無い」側に倒れる壊れ方をすることに注意する。**
+疑わしいときは、**変わったと分かっている1枚で先にレシピを較正する**（差分が出ることを確認してから、
+出なかった画像を「画素差ゼロ」と結論する）。
 
 **差分の原因を追跡せずに撮り直すと、実装の不整合が画像として固定され README で配布される。**
 

@@ -1661,6 +1661,20 @@ button:focus-visible {
  * #25（PR #35）で設定が独立ウィンドウ化された際に画面上のボタンごと無くなり
  * （Escape / Cmd+W / OS のクローズボタンのみになった）、対象が消滅している。
  *
+ * **`.settings__button`（設定ウィンドウの「試聴」「テスト送信」）を後から足した。**
+ * ただし**これは違反の是正ではなく、下限の常設である**。
+ *
+ * PR 13-b の設計案は「実測 22.7〜23.8px で 2.5.8 を割っている」としていたが、
+ * 実際に測ると **48x26.5（試聴）/ 80.45x26.5（テスト送信）で、既に 24x24 を
+ * 満たしていた**。案の値は `--fs-xs`(11px) x 1.2 + padding(8px) + border(2px) = 23.2px
+ * という**紙の上の計算**で、実際の行ボックスは日本語を含むシステムフォントスタックで
+ * 16.5px になる。design-rules.md が「紙の表で3回続けて誤った」と書いているのと同じ型。
+ *
+ * それでもリストに残すのは、`max(100%, --target-size-min)` が
+ * **すでに 24px 以上ある辺を縮めない**ため副作用がゼロで、`--fs-xs` や padding を
+ * 将来下げたときに 24px を割らない床になるから（S44 は本体ウィンドウしか測っておらず、
+ * 設定ウィンドウは別 BrowserWindow なので関門が無い）。
+ *
  * **`.tab-bar__close` はこのリストから除いた**（PR 19 差し戻し）。
  * タブ中央の死角を直すため `position: absolute` に変えてあり（上のコメント参照）、
  * ここで `position: relative` を当てると絶対配置が上書きされて元に戻ってしまう。
@@ -1671,7 +1685,8 @@ button:focus-visible {
 .history-item__action,
 .history-list__providers button,
 .history-list__reload,
-.terminal-search button {
+.terminal-search button,
+.settings__button {
   position: relative;
 }
 
@@ -1681,7 +1696,8 @@ button:focus-visible {
 .history-item__action::before,
 .history-list__providers button::before,
 .history-list__reload::before,
-.terminal-search button::before {
+.terminal-search button::before,
+.settings__button::before {
   content: '';
   position: absolute;
   top: 50%;
@@ -1959,7 +1975,14 @@ button:focus-visible {
   cursor: default;
 }
 
+/* URL 入力欄（.settings__text）の `flex: 1; min-width: 0` は、この親が単なる
+   ブロックだったため効いていなかった（input は block 化しても自動では伸びず、
+   size 属性ぶんの幅で止まる）。列方向の flex にすると align-items の既定
+   （stretch）で横幅いっぱいに伸び、URL の末尾が切れなくなる。
+   **Slack -> Discord の DOM 順は変えない**（S32 が .first() / .nth(1) で引く）。 */
 .settings__webhook {
+  display: flex;
+  flex-direction: column;
   margin-bottom: var(--sp-3);
 }
 
