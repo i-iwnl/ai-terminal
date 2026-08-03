@@ -10,14 +10,25 @@
 // が実態に合う。中の3ボタン自体に role="tablist" を付けるかどうかは Issue #20 PR 9 の
 // スコープなので、ここでは構造（ランドマーク）だけを変える。
 
-import { useState, type CSSProperties } from 'react';
-import type { SessionHistoryEntry } from '@shared/ipc';
+import { useEffect, useState, type CSSProperties } from 'react';
+import type { SessionHistoryEntry, SidebarPanel } from '@shared/ipc';
 import TaskList from './TaskList';
 import HistoryList from './HistoryList';
 import MemoPanel, { type MemoTarget } from './MemoPanel';
 import SidebarResizeHandle from './SidebarResizeHandle';
 
-type SidebarTab = 'tasks' | 'history' | 'memo';
+// **語彙の正は `src/shared/ipc.ts` の `SidebarPanel`**（Issue #120 周2）。
+// メニュー・ショートカット・ここの3つが同じ語を使う必要があるので、
+// ローカルの union を持たない（鉄則3）。
+
+/** パネルの表示名。**メニュー項目のラベルと同じ文字列を使う。** */
+const PANEL_LABEL: Record<SidebarPanel, string> = {
+  tasks: 'タスク',
+  history: '履歴',
+  memo: 'メモ',
+};
+
+const PANEL_ORDER: readonly SidebarPanel[] = ['tasks', 'history', 'memo'];
 
 export interface SidebarProps {
   /**
@@ -51,6 +62,14 @@ export interface SidebarProps {
   onCommitWidth: (width: number) => void;
   /** メニューから幅を変えたときに `.focus()` するための参照登録 */
   registerResizeHandleRef?: (el: HTMLDivElement | null) => void;
+  /**
+   * 外から（キーボード / メニュー）パネルを切り替えるための購読登録。
+   *
+   * **状態は Sidebar が持つ**（タブ選択・メモの編集途中・履歴の絞り込みは
+   * すべてこの木の中の state で、App へ持ち上げると畳むたびに失われる）。
+   * App 側はこの関数で「切り替えたい」を伝えるだけ。
+   */
+  registerPanelSwitcher?: (switchTo: ((panel: SidebarPanel) => void) | null) => void;
 }
 
 export default function Sidebar({
@@ -63,8 +82,9 @@ export default function Sidebar({
   width,
   onCommitWidth,
   registerResizeHandleRef,
+  registerPanelSwitcher,
 }: SidebarProps) {
-  const [tab, setTab] = useState<SidebarTab>('tasks');
+  const [tab, setTab] = useState<SidebarPanel>('tasks');
   const [memoTarget, setMemoTarget] = useState<MemoTarget | null>(null);
 
   const openMemo = (target: MemoTarget): void => {
@@ -77,6 +97,14 @@ export default function Sidebar({
   // 利用者はその行の存在自体を知らないため、メモタブ側にも往路を用意する。
   const goToHistory = (): void => setTab('history');
 
+  // キーボード（Cmd+Option+1/2/3）とメニューからの切り替えを受ける。
+  // **アンマウント時に必ず解除する**（App 側が古い setter を掴んだままだと、
+  // 畳んで開き直したあとの切り替えが効かなくなる）。
+  useEffect(() => {
+    registerPanelSwitcher?.(setTab);
+    return () => registerPanelSwitcher?.(null);
+  }, [registerPanelSwitcher]);
+
   return (
     <nav
       className={`sidebar${collapsed ? ' is-collapsed' : ''}`}
@@ -84,18 +112,45 @@ export default function Sidebar({
       style={{ '--sidebar-width': `${width}px` } as CSSProperties}
     >
       <div className="sidebar__drag-region" />
-      <div className="sidebar__tabs">
-        <button className={tab === 'tasks' ? 'is-active' : ''} onClick={() => setTab('tasks')}>
-          タスク
-        </button>
-        <button className={tab === 'history' ? 'is-active' : ''} onClick={() => setTab('history')}>
-          履歴
-        </button>
-        <button className={tab === 'memo' ? 'is-active' : ''} onClick={() => setTab('memo')}>
-          メモ
-        </button>
+      {/* Issue #120 周2 / 旧 #111: 選択状態を機械可読にする。
+          周2 まで手がかりは `className` の `is-active` だけで、`role` /
+          `aria-selected` / `aria-current` のいずれも無かった。塗りの差は
+          `--surface-3` 対 `--surface-2` で **1.08**（S40 が `wcag: 'fail'` で
+          実測固定）なので、支援技術にも色の弱い利用者にも選択が伝わっていない。
+          WCAG 4.1.2（名前・役割・値）。
+
+          **`<button>` 要素そのものは変えない。** `e2e/` の 28 ファイル・44 箇所が
+          `.sidebar__tabs button` でパネルを切り替えている。`role` を**足す**のは問題ない。
+
+          タブバー側（`TabBar.tsx`）は #86 で既に `role="tablist"` を持っており、
+          サイドバーだけが取り残されていた。 */}
+      <div className="sidebar__tabs" role="tablist" aria-label="サイドバーのパネル">
+        {PANEL_ORDER.map((panel) => (
+          <button
+            key={panel}
+            role="tab"
+            id={`sidebar-panel-tab-${panel}`}
+            aria-selected={tab === panel}
+            aria-controls={`sidebar-panel-${panel}`}
+            // roving tabindex。`role="tablist"` の停止点は1つであるべき。
+            // ただし**そもそも Tab では到達できない**（xterm のヘルパー textarea が
+            // Tab を端末入力として消費する）ので、実際の入口は
+            // `Cmd+Option+1/2/3` とメニュー。ARIA で嘘をつかないために
+            // 停止点の数だけは正しくしておく。
+            tabIndex={tab === panel ? 0 : -1}
+            className={tab === panel ? 'is-active' : ''}
+            onClick={() => setTab(panel)}
+          >
+            {PANEL_LABEL[panel]}
+          </button>
+        ))}
       </div>
-      <div className="sidebar__content">
+      <div
+        className="sidebar__content"
+        role="tabpanel"
+        id={`sidebar-panel-${tab}`}
+        aria-labelledby={`sidebar-panel-tab-${tab}`}
+      >
         {tab === 'tasks' && (
           <TaskList
             onFocusTab={onFocusTaskTab}

@@ -86,6 +86,25 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
     // `分割比を広げる/狭める/50%に戻す` と同じ形で、accelerator は持たせない。
     // 幅調整は 2〜5回/日（初日以降ほぼ0）で、`Cmd+英数字` の名前空間を
     // 1つ消費する価値が無い（100手/日級の操作のために空けておく）。
+    // サイドバーのパネル切替（Issue #120 周2 / 旧 #111）。
+    //
+    // **ラベルにチェックマークは付けない。** 付けるには Renderer の選択状態を
+    // Main へ送り返す配線（`menu:pane-count` と同型の IPC）が要るが、
+    // **どのパネルを見ているかは画面で直接確認できる**（セグメンテッドコントロールが
+    // 選択中を示している）。すぐ上の「サイドバーの表示を切り替え」でラベルを
+    // 状態に応じて変えないと決めたのと同じ判断。
+    actionItem(win, 'タスクのパネル', 'Cmd+Option+1', {
+      type: 'switch-sidebar-panel',
+      panel: 'tasks',
+    }),
+    actionItem(win, '履歴のパネル', 'Cmd+Option+2', {
+      type: 'switch-sidebar-panel',
+      panel: 'history',
+    }),
+    actionItem(win, 'メモのパネル', 'Cmd+Option+3', {
+      type: 'switch-sidebar-panel',
+      panel: 'memo',
+    }),
     actionItem(win, 'サイドバーを広げる', undefined, {
       type: 'adjust-sidebar-width',
       adjustment: 'wider',
@@ -135,9 +154,31 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
       direction: 'right',
     }),
     { type: 'separator' },
-    { role: 'resetZoom', label: '実際のサイズ' },
-    { role: 'zoomIn', label: '拡大' },
-    { role: 'zoomOut', label: '縮小' },
+    // ターミナルの文字サイズ（Issue #120 周1）。
+    //
+    // **Electron の `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` は外した。**
+    // あの3つは `actionItem()` を通らないため `registerAccelerator: false` が付かず、
+    // **このファイルの冒頭が謳う「キーを実際に拾うのはここ1箇所。メニューは
+    // 同じキーを表示するだけで登録しない」という原則の唯一の例外**になっていた。
+    // 実際に `Cmd+-` / `Cmd+0` を押すと Renderer 全体（サイドバーもタブバーも）の
+    // 拡大率が変わり、しかも `config.json` に保存されないので次回起動で戻っていた。
+    //
+    // 残したまま下の3項目を足すと、**同じキーが2系統から発火する**。
+    // 「ターミナルの文字サイズを変える」のほうが利用者の意図に近いので、
+    // zoom を捨ててこちらに寄せた（#20 の「(a) を採るなら zoom をどうするかを
+    // 同じ PR で決める」という条件をここで満たしている）。
+    actionItem(win, '文字を大きく', 'Cmd+=', {
+      type: 'adjust-font-size',
+      adjustment: 'increase',
+    }),
+    actionItem(win, '文字を小さく', 'Cmd+-', {
+      type: 'adjust-font-size',
+      adjustment: 'decrease',
+    }),
+    actionItem(win, '文字サイズを既定に戻す', 'Cmd+0', {
+      type: 'adjust-font-size',
+      adjustment: 'reset',
+    }),
     { type: 'separator' },
     // スプリッタの分割比調整（Issue #56 PR 7・design-review.md 提案 D'）。
     // スプリッタの当たり判定は 8px しかなく、WCAG 2.5.7（ドラッグ動作）と
@@ -205,11 +246,16 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
         // 結果としてタブが閉じる。useTabs.ts の closeActivePane 参照）。
         actionItem(win, 'ペインを閉じる', 'Cmd+W', { type: 'close-pane' }),
         // 「タブを閉じる」は明示的にタブ全体（何本の PTY が動いていても全部）を
-        // 閉じる操作で、**キーは持たない**（design-review.md「却下した提案」:
-        // Cmd+Shift+W は macOS 全域で「ウィンドウを閉じる」と学習されているため
-        // 新設しない。メニューだけが入口）。ラベルの N はアクティブなタブの
-        // ペイン数に応じて updateCloseTabLabel が書き換える。
-        { ...actionItem(win, closeTabLabel(1), undefined, { type: 'close-tab' }), id: CLOSE_TAB_MENU_ITEM_ID },
+        // 閉じる操作。**Issue #120 周1 で `Cmd+Option+W` を与えた。**
+        // それまではキーが無く、分割中のタブを閉じるにはペインの枚数ぶん
+        // `Cmd+W` を押すかメニューをマウスで辿るしかなかった（他ターミナルの
+        // 筋肉記憶では `Cmd+W` 一発でタブが消えるので「閉じたつもりが半分残る」）。
+        // `Cmd+Shift+W` は macOS 全域で「ウィンドウを閉じる」と学習されているので使わない。
+        // ラベルの N はアクティブなタブのペイン数に応じて updateCloseTabLabel が書き換える。
+        {
+          ...actionItem(win, closeTabLabel(1), 'Cmd+Option+W', { type: 'close-tab' }),
+          id: CLOSE_TAB_MENU_ITEM_ID,
+        },
       ],
     },
     {

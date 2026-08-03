@@ -1059,3 +1059,63 @@ scenarios:
       **`S21-config.spec.ts` は無傷** — `themeName` 未設定なら保存済みの `theme`
       （4色）が勝つ設計で、逆にすると config.json に手で書いた設定が黙って
       無視される。
+
+  # --- Issue #120 周1: キーボードの決着 --------------------------------------
+  - id: S81
+    title: Cmd+= / Cmd+- でターミナルの文字サイズだけが変わり、設定に保存される
+    spec: S81-font-size-shortcut.spec.ts
+    readme: false
+    note: >-
+      Issue #120 の周1。文字サイズの変更手段は設定ウィンドウの往復だけだった。
+      **`Cmd+-` / `Cmd+0` は「何も起きない」のではなく、別のものが動いていた** —
+      `menu.ts` の `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` は `actionItem()` を
+      通らないため `registerAccelerator: false` が付かず、menu.ts が謳う
+      「キーを実際に拾うのは matchShortcut 1箇所」という原則の**唯一の例外**だった。
+      押すと Renderer 全体（サイドバーもタブバーも）の拡大率が変わり、
+      `config.json` にも保存されないので次回起動で戻る。周1 で zoom の `role` を
+      外し、同じキーを `AppConfig.fontSize` に割り当てた。ここでは
+      (1) キーで xterm の文字サイズが変わる (2) **サイドバーは変わらない**
+      （zoom との決定的な違い）(3) `config.json` に保存される (4) `Cmd+0` で
+      既定に戻る、を見る。**「同じキーが2系統から発火しない」ことは S36 が
+      `role` の不在で固定する**（そちらは小文字で比較する。**Electron は
+      `MenuItem.role` を正規化した小文字で返すため、`toggleDevTools` のような
+      キャメルケースで比べていた既存の2件は一度も機能していなかった**）。
+      `Cmd+1` がタブ切替のままであることも見る（`/^[1-9]$/` を `[0-9]` へ
+      広げると index が -1 になって壊れる）。
+
+  - id: S82
+    title: Cmd+Option+W は分割中のタブも1手で閉じる
+    spec: S82-close-tab-shortcut.spec.ts
+    readme: false
+    note: >-
+      Issue #120 の周1。`Cmd+W` は `close-pane` で、**残るペインが1枚なら
+      タブごと閉じる**ので分割していないタブでは macOS 標準どおりに振る舞うが、
+      **分割中のタブを閉じるにはペインの枚数ぶん押す必要があった**（他ターミナルの
+      筋肉記憶では `Cmd+W` 一発でタブが消えるので「閉じたつもりが半分残る」）。
+      メニューの「タブを閉じる」はキーを持っていなかった。`Cmd+Shift+W` は
+      macOS 全域で「ウィンドウを閉じる」と学習されているので使わない。
+      **判定は `e.code`**（macOS では Option を押しながらの英字キーは合成後の
+      文字が `e.key` に入りうる。Option+w -> `∑`。`Cmd+Option+S` と同じ理由）。
+      2本の PTY を一度に閉じるので既存の確認ダイアログを通ることも見る。
+
+  - id: S83
+    title: Cmd+Option+1/2/3 でサイドバーのパネルを切り替えられ、選択が機械可読になっている
+    spec: S83-sidebar-panel-keyboard.spec.ts
+    readme: false
+    note: >-
+      Issue #120 の周2（旧 #111）。3パネル切替は素の `<button>` 3つで、
+      **マウスでしか押せなかった**（`shortcuts.ts` に分岐なし / `AppAction` に
+      種別なし / `menu.ts` に該当の語が 0 箇所）。**`Tab` キーでも到達できない** —
+      xterm のヘルパー textarea が Tab を端末入力として消費するので、
+      フォーカスがターミナルにある限り DOM のフォーカス順に出られない。
+      WCAG 2.1.1。選択状態も `className` の `is-active` だけで `role` /
+      `aria-selected` のいずれも無く、塗りの差は **1.08**（S40 が `wcag: 'fail'` で
+      固定）なので支援技術にも色の弱い利用者にも伝わっていなかった。WCAG 4.1.2。
+      **`Cmd+Shift+1/2/3` は使えない**（`Cmd+Shift+3/4/5` は macOS の
+      スクリーンショットにシステムが先に奪う。「3パネルだから 1/2/3」は3番目で
+      必ず破綻する）。`Cmd+Option+` に寄せたのは `Cmd+Option+S`（表示切替）が
+      既にそこにあるため。**判定は `e.code`**（Option+1 の `e.key` は `¡`）。
+      **`<button>` 要素そのものは変えていない** — `e2e/` の 28 ファイル・44 箇所が
+      `.sidebar__tabs button` を使うので、要素を変えると全部落ちる。`role` を
+      足すだけ。畳んでいるときは開いてから切り替えることも見る（**「何も起きない」で
+      終わらせない**。畳んだまま切り替えても画面が1pxも動かず壊れて見える）。

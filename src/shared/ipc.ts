@@ -538,7 +538,31 @@ export type AppAction =
    * （`accelerator` は持たない。幅調整は頻度が低く、`Cmd+英数字` の名前空間は
    * 100手/日級の操作のために空けておく）。
    */
-  | { type: 'adjust-sidebar-width'; adjustment: 'wider' | 'narrower' | 'reset' };
+  | { type: 'adjust-sidebar-width'; adjustment: 'wider' | 'narrower' | 'reset' }
+  /**
+   * ターミナルのフォントサイズ（Issue #120 周1）。
+   *
+   * **Electron の `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` とは別物。**
+   * あちらは Renderer 全体（サイドバー・タブバーを含む）の拡大率で、
+   * `config.json` にも保存されない。こちらは `AppConfig.fontSize` を動かし、
+   * **xterm の文字だけ**を変える。同じキーが2系統から発火しないよう、
+   * `menu.ts` 側で zoom のアクセラレータを潰してある。
+   */
+  | { type: 'adjust-font-size'; adjustment: 'increase' | 'decrease' | 'reset' }
+  /**
+   * サイドバーのパネル切替（Issue #120 周2 / 旧 #111）。
+   *
+   * **`switch-tab` はタブバーのタブであってサイドバーではない。** 混同しないこと。
+   *
+   * 周2 まで、3パネル（タスク / 履歴 / メモ）はマウスでしか押せなかった。
+   * `Tab` キーでも到達できない（xterm のヘルパー textarea が Tab を端末入力として
+   * 消費するため、フォーカスがターミナルにある限り DOM のフォーカス順に出られない）。
+   * WCAG 2.1.1（キーボード）。
+   */
+  | { type: 'switch-sidebar-panel'; panel: SidebarPanel };
+
+/** サイドバーの3パネル。`Sidebar.tsx` の内部状態と `AppAction` の両方が使う。 */
+export type SidebarPanel = 'tasks' | 'history' | 'memo';
 
 // ---------------------------------------------------------------------------
 // チャンネル定義

@@ -57,10 +57,34 @@ test('S36 アプリケーションメニューが定義され、再読み込み�
 
   // 1. 再読み込み系が1つも無いこと。
   //    E2E は本番と同じビルド済みアプリを起動するので、開発時のみの分岐には入らない。
-  const roles = items.map((i) => i.role);
+  //
+  // **`role` は小文字で返る。** Electron の `MenuItem.role` は指定した綴りを
+  // そのまま返さず、正規化した小文字を返す（実測: `hideOthers` -> `hideothers`、
+  // `toggleDevTools` -> `toggledevtools`）。
+  //
+  // **この spec は Issue #120 周1 まで、そこを取り違えていた。**
+  // `not.toContain('forceReload')` と `not.toContain('toggleDevTools')` は
+  // **一度も機能していなかった**（キャメルケースの文字列は決して一致しないので、
+  // 実際にその role を足しても緑のまま通る）。効いていたのは元から小文字だった
+  // `'reload'` の1つだけ。**小文字へ正規化してから比べる。**
+  const roles = items.map((i) => i.role?.toLowerCase());
   expect(roles).not.toContain('reload');
-  expect(roles).not.toContain('forceReload');
-  expect(roles).not.toContain('toggleDevTools');
+  expect(roles).not.toContain('forcereload');
+  expect(roles).not.toContain('toggledevtools');
+
+  // 1-b. **Electron の zoom 系の `role` が1つも無いこと**（Issue #120 周1）。
+  //
+  // `role: 'zoomIn' / 'zoomOut' / 'resetZoom'` は `actionItem()` を通らないため
+  // `registerAccelerator: false` が付かず、**このファイル（menu.ts）が謳う
+  // 「キーを実際に拾うのは matchShortcut 1箇所。メニューは表示するだけ」という
+  // 原則の唯一の例外**だった。実際に `Cmd+-` / `Cmd+0` を押すと Renderer 全体の
+  // 拡大率が変わり、しかも config.json に保存されないので次回起動で戻っていた。
+  //
+  // 周1 で「ターミナルの文字サイズ」を同じキーに割り当てたので、**残っていると
+  // 同じキーが2系統から発火する。** ここで1つでも復活したら赤くなる。
+  expect(roles).not.toContain('zoomin');
+  expect(roles).not.toContain('zoomout');
+  expect(roles).not.toContain('resetzoom');
 
   // 2. 主要な操作がメニューに載っていて、キーも表示されていること。
   const byLabel = new Map(items.map((i) => [i.label, i]));
@@ -76,12 +100,20 @@ test('S36 アプリケーションメニューが定義され、再読み込み�
   // Cmd+W は「ペインを閉じる」に意味が変わった（意味変更。design-review.md
   // 「確定している仕様」。1枚しか無ければ結果としてタブが閉じる）。
   expect(byLabel.get('ペインを閉じる')?.accelerator).toBe('Cmd+W');
-  // 「タブを閉じる」はメニュー専用になり、キーは持たない（Cmd+Shift+W は
-  // macOS 全域で「ウィンドウを閉じる」と学習されているため新設しない。
-  // design-review.md「却下した提案」）。起動直後はタブが1枚だけなので
-  // ラベルに「（N ペイン）」は付かない（menu.ts の updateCloseTabLabel 参照）。
-  // Electron は accelerator 未指定の MenuItem を読むと null を返す（undefined ではない）。
-  expect(byLabel.get('タブを閉じる')?.accelerator).toBeNull();
+  // 「タブを閉じる」は **Issue #120 周1 で `Cmd+Option+W` を得た**。
+  // それまではキーが無く、分割中のタブを閉じるにはペインの枚数ぶん `Cmd+W` を
+  // 押すかメニューをマウスで辿るしかなかった（他ターミナルの筋肉記憶では
+  // `Cmd+W` 一発でタブが消えるので「閉じたつもりが半分残る」）。
+  // `Cmd+Shift+W` は macOS 全域で「ウィンドウを閉じる」と学習されているので使わない。
+  // 起動直後はタブが1枚だけなのでラベルに「（N ペイン）」は付かない
+  // （menu.ts の updateCloseTabLabel 参照）。
+  expect(byLabel.get('タブを閉じる')?.accelerator).toBe('Cmd+Option+W');
+  // ターミナルの文字サイズ（Issue #120 周1）。**Electron の zoom を置き換えたもの。**
+  // こちらは `AppConfig.fontSize` を動かすので config.json に保存され、
+  // xterm の文字だけが変わる（サイドバー・タブバーは動かない）。
+  expect(byLabel.get('文字を大きく')?.accelerator).toBe('Cmd+=');
+  expect(byLabel.get('文字を小さく')?.accelerator).toBe('Cmd+-');
+  expect(byLabel.get('文字サイズを既定に戻す')?.accelerator).toBe('Cmd+0');
   expect(byLabel.get('ターミナル内を検索')?.accelerator).toBe('Cmd+F');
   // 次を検索 / 前を検索も Issue #62 で追加。前を検索が Cmd+Shift+G を引き取っている。
   expect(byLabel.get('次を検索')?.accelerator).toBe('Cmd+G');

@@ -7,7 +7,24 @@ import {
   type CSSProperties,
   type ReactElement,
 } from 'react';
-import type { AgentTask, AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
+import type {
+  AgentTask,
+  AppAction,
+  AppConfig,
+  PtyExitEvent,
+  SessionHistoryEntry,
+  SidebarPanel,
+} from '@shared/ipc';
+
+/**
+ * 読み上げ用のパネル名。**`Sidebar.tsx` の `PANEL_LABEL` と同じ語**
+ * （画面に出ている語と読み上げが食い違わないようにする）。
+ */
+const SIDEBAR_PANEL_LABEL: Record<SidebarPanel, string> = {
+  tasks: 'タスク',
+  history: '履歴',
+  memo: 'メモ',
+};
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
 import { resolveTheme } from '@shared/themes';
@@ -156,6 +173,16 @@ export default function App(): ReactElement {
   // メニュー項目「サイドバーを広げる / 狭める」が、動かした対象へ `.focus()` して
   // フォーカスリングを見せるための参照（PaneSplitterHandle と同じ形）。
   const sidebarResizeHandleRef = useRef<HTMLDivElement | null>(null);
+  // サイドバーのパネル切替（Issue #120 周2）。**状態は Sidebar が持つ**
+  // （タブ選択・メモの編集途中・履歴の絞り込みはすべて Sidebar の木の中の state で、
+  // ここへ持ち上げると畳むたびに失われる）。ここは「切り替えたい」を伝える口だけ持つ。
+  const switchSidebarPanelRef = useRef<((panel: SidebarPanel) => void) | null>(null);
+  const registerPanelSwitcher = useCallback(
+    (switchTo: ((panel: SidebarPanel) => void) | null) => {
+      switchSidebarPanelRef.current = switchTo;
+    },
+    [],
+  );
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
@@ -573,6 +600,45 @@ export default function App(): ReactElement {
           announce(`サイドバーの幅 ${next} ピクセル`);
           break;
         }
+        case 'adjust-font-size': {
+          // ターミナルの文字サイズ（Issue #120 周1）。
+          //
+          // **Electron の zoom（Renderer 全体の拡大率）とは別物。** menu.ts 側で
+          // zoom の `role` を外してあるので、同じキーが2系統から発火することはない。
+          //
+          // 範囲は設定ウィンドウの数値入力（min 6 / max 48）と同じ。
+          // 値の正は `coerceConfig` で、そこでも同じ範囲に丸められる。
+          const next =
+            action.adjustment === 'reset'
+              ? DEFAULT_CONFIG.fontSize
+              : Math.min(
+                  48,
+                  Math.max(6, config.fontSize + (action.adjustment === 'increase' ? 1 : -1)),
+                );
+          if (next === config.fontSize) {
+            // 端に達している。**「何も起きない」で終わらせない**（U4）。
+            announce(`文字サイズは ${config.fontSize} で、これ以上変えられません`);
+            break;
+          }
+          // **フォントサイズを変えると全ペインが再 fit され pty.resize が走る**
+          // （非表示タブも visibility: hidden でレイアウトを持つため
+          // clientWidth === 0 のガードを通過する）。連打されうるキーなので、
+          // 実際に飛ぶ回数は resizeGate.ts の shouldSendResize（cols/rows が
+          // 変わった回だけ通す）が抑える。ここでは間引かない
+          // （1回のキー入力で1段階変わることが期待どおりの挙動なので、
+          // デバウンスすると「押したのに変わらない」に見える）。
+          void window.api.config.set({ fontSize: next }).catch(() => undefined);
+          announce(`文字サイズ ${next}`);
+          break;
+        }
+        case 'switch-sidebar-panel': {
+          // 畳んでいる間に切り替えても画面は何も変わらないので、まず開く。
+          // **「何も起きない」で終わらせない**（U4）。
+          if (sidebarCollapsed) setSidebarCollapsed(false);
+          switchSidebarPanelRef.current?.(action.panel);
+          announce(`${SIDEBAR_PANEL_LABEL[action.panel]} のパネルを表示しました`);
+          break;
+        }
         case 'next-tab':
           if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
           break;
@@ -617,7 +683,15 @@ export default function App(): ReactElement {
     // sidebarCollapsed は toggle-sidebar が「いまどちら側か」を読む必要があるため
     // 依存に含める（runAction は runActionRef 経由でしか呼ばれず、再生成しても
     // keydown / menu:action のリスナは張り直されない）。
-    [announce, commitSidebarWidth, requestCloseTab, showNotice, sidebarCollapsed, sidebarWidth],
+    [
+      announce,
+      commitSidebarWidth,
+      config.fontSize,
+      requestCloseTab,
+      showNotice,
+      sidebarCollapsed,
+      sidebarWidth,
+    ],
   );
 
   const runActionRef = useRef(runAction);
@@ -787,6 +861,7 @@ export default function App(): ReactElement {
         registerResizeHandleRef={(el) => {
           sidebarResizeHandleRef.current = el;
         }}
+        registerPanelSwitcher={registerPanelSwitcher}
       />
       <main className="main">
         <TabBar
