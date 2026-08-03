@@ -3,6 +3,11 @@ import type { AgentTask, AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
 import Sidebar from './sidebar/Sidebar';
+import {
+  SIDEBAR_DEFAULT_WIDTH_PX,
+  clampSidebarWidth,
+  stepSidebarWidth,
+} from './sidebar/sidebarWidth';
 import TabBar from './tabs/TabBar';
 import PaneTreeView from './tabs/PaneTreeView';
 import type { TerminalHandle } from './terminal/useTerminal';
@@ -116,6 +121,20 @@ export default function App(): ReactElement {
   // （「一時的に畳む」操作であり、次回起動時にサイドバーが消えている状態から
   // 始まるとタスク一覧・履歴の存在自体に気づけなくなる）。
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // サイドバーの幅（Issue #119 周4 / #20 の PR 16）。
+  //
+  // **折りたたみと違い、こちらは AppConfig に永続化する。** 畳むのは「一時的に
+  // どける」操作なので次回起動へ持ち越さないが、幅は「自分が決めた作業環境」で、
+  // 畳んで開き直したときに戻らないと毎回やり直しになる。
+  //
+  // 実際の書き込みは `commitSidebarWidth`（mouseup とメニュー操作のときだけ）。
+  // **ドラッグ中は呼ばない。** `configSet` は全ウィンドウへブロードキャストされ、
+  // その先で `coerceConfig` が毎回新しい `theme` を組み立てるため、
+  // 全ペインの `term.options.theme` 再代入まで連鎖する。
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH_PX);
+  // メニュー項目「サイドバーを広げる / 狭める」が、動かした対象へ `.focus()` して
+  // フォーカスリングを見せるための参照（PaneSplitterHandle と同じ形）。
+  const sidebarResizeHandleRef = useRef<HTMLDivElement | null>(null);
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
@@ -190,6 +209,18 @@ export default function App(): ReactElement {
   // 比率を動かした**その対象**へ `.focus()` するために引く（レビュー指摘。
   // ペインが3枚以上あるとスプリッタが複数本になり、フォーカスリングが出て
   // 初めてどちらが動いたかが画面から分かる）。
+  /**
+   * 幅を確定して永続化する。ドラッグの mouseup とメニュー操作からのみ呼ぶ。
+   * `clampSidebarWidth` を必ず通す（ドラッグ側でも通しているが、
+   * メニュー経路や将来の呼び出し元が範囲外を渡す余地を残さない）。
+   */
+  const commitSidebarWidth = useCallback((next: number) => {
+    const width = clampSidebarWidth(next);
+    setSidebarWidth(width);
+    // 失敗しても画面上の幅は変わったままにする（次回起動で戻るだけ）。
+    void window.api.config.set({ sidebarWidth: width }).catch(() => undefined);
+  }, []);
+
   const splitterRefsRef = useRef(new Map<string, HTMLDivElement>());
   const registerSplitterElement = useCallback((key: string, el: HTMLDivElement | null) => {
     if (el) splitterRefsRef.current.set(key, el);
@@ -281,6 +312,16 @@ export default function App(): ReactElement {
   useEffect(() => {
     return window.api.config.onChange(setConfig);
   }, []);
+
+  // サイドバーの幅は「即座に画面へ反映する state」と「永続化された設定」の2箇所に
+  // 存在する（ドラッグ中の追従を Main 経由の往復にすると1フレーム遅れる）。
+  // 設定側が動いたら state を合わせる。**初回読み込みもこの経路を通る**
+  // （config は FALLBACK_CONFIG で始まり、get() の解決で置き換わる）。
+  // commitSidebarWidth は両方を同時に更新するので、この effect は同じ値で
+  // 上書きするだけになり、ドラッグ結果を打ち消さない。
+  useEffect(() => {
+    setSidebarWidth(clampSidebarWidth(config.sidebarWidth));
+  }, [config.sidebarWidth]);
 
   // クロームの面（サイドバー・行のホバー・浮いた面）を theme.background から
   // 機械的に導出し、CSS 変数へ流し込む（Issue #20 の G「テーマ（方向を逆にする）」）。
@@ -459,6 +500,27 @@ export default function App(): ReactElement {
           setSidebarCollapsed(!sidebarCollapsed);
           announce(sidebarCollapsed ? 'サイドバーを表示しました' : 'サイドバーを隠しました');
           break;
+        case 'adjust-sidebar-width': {
+          // メニュー項目「サイドバーを広げる / 狭める / 幅を既定に戻す」。
+          // **ドラッグのキーボード代替**（WCAG 2.5.7）。ドラッグを一切経由せず
+          // 同じ純粋関数（clampSidebarWidth / stepSidebarWidth）を通す。
+          if (sidebarCollapsed) {
+            // 畳んでいる状態で幅だけ変えても画面は何も変わらない。
+            // 「何も起きない」で終わらせない（U4）。
+            showNotice('サイドバーが畳まれています（Cmd+Option+S で表示）', 'info');
+            announce('サイドバーが畳まれています');
+            break;
+          }
+          const next =
+            action.adjustment === 'reset'
+              ? SIDEBAR_DEFAULT_WIDTH_PX
+              : stepSidebarWidth(sidebarWidth, action.adjustment);
+          commitSidebarWidth(next);
+          // 動かした対象へ .focus() してリングを見せる（PaneSplitterHandle と同じ）。
+          sidebarResizeHandleRef.current?.focus();
+          announce(`サイドバーの幅 ${next} ピクセル`);
+          break;
+        }
         case 'next-tab':
           if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
           break;
@@ -503,7 +565,7 @@ export default function App(): ReactElement {
     // sidebarCollapsed は toggle-sidebar が「いまどちら側か」を読む必要があるため
     // 依存に含める（runAction は runActionRef 経由でしか呼ばれず、再生成しても
     // keydown / menu:action のリスナは張り直されない）。
-    [announce, requestCloseTab, showNotice, sidebarCollapsed],
+    [announce, commitSidebarWidth, requestCloseTab, showNotice, sidebarCollapsed, sidebarWidth],
   );
 
   const runActionRef = useRef(runAction);
@@ -668,6 +730,11 @@ export default function App(): ReactElement {
         onResumeHistory={resumeHistory}
         onLaunchClaude={launchClaude}
         scopeAgentsToCwd={config.scopeAgentsToCwd}
+        width={sidebarWidth}
+        onCommitWidth={commitSidebarWidth}
+        registerResizeHandleRef={(el) => {
+          sidebarResizeHandleRef.current = el;
+        }}
       />
       <main className="main">
         <TabBar

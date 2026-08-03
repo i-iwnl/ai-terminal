@@ -76,6 +76,10 @@ export function coerceConfig(raw: unknown): AppConfig {
     slack: webhook('slack'),
     discord: webhook('discord'),
     scopeAgentsToCwd: bool('scopeAgentsToCwd', DEFAULT_CONFIG.scopeAgentsToCwd),
+    // 範囲の判定そのものは Renderer 側の clampSidebarWidth が正（ドラッグ中も
+    // 同じ関数を通す）。ここでは「数値でなければ既定へ落とす」だけに留め、
+    // 上下限をもう1箇所に書き写さない（二重管理を作らない）。
+    sidebarWidth: num('sidebarWidth', DEFAULT_CONFIG.sidebarWidth),
     screenReaderMode: bool('screenReaderMode', DEFAULT_CONFIG.screenReaderMode),
     theme: {
       background: themeStr('background'),

@@ -65,6 +65,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   slack: DEFAULT_WEBHOOK,
   discord: DEFAULT_WEBHOOK,
   scopeAgentsToCwd: false,
+  // サイドバーの既定幅。`sidebarWidth.ts` の SIDEBAR_DEFAULT_WIDTH_PX と
+  // 同じ値でなければならない（test/unit/sidebar-width.test.ts が突き合わせる）。
+  sidebarWidth: 260,
   // 既定で有効にしない理由は描画コスト。VoiceOver を検知したときは設定に関わらず有効になる。
   screenReaderMode: false,
   theme: DEFAULT_THEME,

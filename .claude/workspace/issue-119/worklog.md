@@ -247,3 +247,88 @@
 4. **`DEFAULT_CONFIG.sidebarWidth` を `src/shared/defaults.ts` に必ず足す**
    （`e2e/fixtures/harness.ts` が `{ ...DEFAULT_CONFIG, ...options.config }` を書き出す）
 5. 周4 は画像0枚の見込み（既定幅を変えないため）。変わったら理由を追跡すること
+
+---
+
+## 2026-08-03 - 周4: サイドバーのドラッグリサイズと幅の永続化
+
+### 実施内容
+
+- `src/renderer/src/sidebar/sidebarWidth.ts` を新設（`clampSidebarWidth` /
+  `sidebarWidthFromPointerDelta` / `stepSidebarWidth`）+ 単体テスト12件
+- `SidebarResizeHandle.tsx` を新設。**ゴースト方式**（`PaneSplitterHandle.tsx` と同型）
+- `.sidebar` の `width` を **`--sidebar-width` カスタムプロパティ経由**にし、
+  `min-width` / `max-width` を CSS から外した
+- `AppConfig.sidebarWidth`（既定 260）を `ipc.ts` -> `defaults.ts` -> `coerceConfig` の順に追加
+- `AppAction` に `adjust-sidebar-width` を追加し、「表示」メニューに3項目
+  （`accelerator` は持たせない）
+- **S76**（ドラッグ + `pty:resize` 0 回 + 幅を変えても畳める）と
+  **S77**（メニュー代替）を追加
+- README にドラッグ・メニュー・下限の理由・スコープ行の説明を追記
+
+### 設計判断
+
+- **範囲は 220〜420px。** 下限 220 は現行の `min-width` 据え置きで、**信号機ボタンの
+  実測右端（x=76）より 144px 上**にある（単体テストが `>= 100px` の余裕を固定）。
+  下げると design-rules が却下した「44px のレール」の構図が再現する。
+  **幅0はドラッグではなく折りたたみ（`Opt+Cmd+S`）の担当。**
+  上限は 340 -> 420 に広げた（340 は掴めなかった頃の値で、実際に動かせると窮屈）
+- **`min-width` / `max-width` を CSS から外した。** 範囲の正は `clampSidebarWidth`
+  1箇所。CSS にも書くと二重管理になるうえ、**インラインの幅が `min-width` に負けて
+  ハンドルが無反応に見える**（範囲外を掴んだときに「壊れている」と読まれる）
+- **ドラッグ中は `configSet` を呼ばない。** `setConfig` -> `broadcastConfig` ->
+  `coerceConfig` が毎回新しい `theme` を組み立てる -> `App.tsx` の
+  `useEffect([config.theme])` -> 全ペインの `term.options.theme` 再代入、という
+  経路が実在する。`mouseup` の1回だけにした
+- **幅は永続化するが、折りたたみ状態は永続化しない。** 幅は「自分が決めた作業環境」で
+  開き直すたびにやり直しになると困る。畳むのは「一時的にどける」操作で、
+  次回起動で畳まれていると**サイドバーの存在自体に気づけなくなる**（既存の判断）
+
+### 教訓
+
+- **`--sidebar-width` にした判断が実測で裏付けられた。** インラインの
+  `style={{ width }}` に差し替えて再ビルドしたところ、**S72 と S76 が両方落ちた**
+  （畳んでも幅が 260 のまま）。レビュアー2人が独立に予測したとおりで、
+  実装前に潰せていなければ #118 を黙って壊していた
+- **`pty:resize` の関門は空振りしない形にした。** 同じ実行の中で
+  「ドラッグ中0回 / mouseup 後1回以上」を両方見るので、カウンタが死んでいて
+  0 が出ているという `revert しても green` の罠に落ちない
+- **台帳は 1 spec = 1 シナリオ。** 1ファイルに `test()` を2つ書いたら
+  `make e2e-lint` の check7 が落ちた。S76 / S77 に分けた
+- **`make e2e-screenshots` は 9 枚に画素差を出したが、周4 の変更は1枚も無かった。**
+  差分の位置は経過時間（x145-210）・セッション UUID・注釈の反転だけで、
+  **ハンドルの位置（x≈256-264）には1px も無い**（`background: transparent` なので
+  当然だが、確かめて初めて言える）。全部戻した
+- **dev と安定版でデータディレクトリが分かれている**（`~/.ai-terminal-dev` /
+  `~/.ai-terminal`）。実機確認で「既定 260 のはずが 220」と食い違ったのは、
+  dev 側の config.json に古い値が残っていたため。**実機の値を疑う前に
+  どちらのディレクトリを見ているかを確認する**
+
+### 実機確認（agent-browser）
+
+| 確認したこと | 結果 |
+|---|---|
+| 設定にキーが無いときの既定 | 260px |
+| ドラッグ中の幅とゴースト | 幅は 260 のまま / `.sidebar__resize-ghost` が出る |
+| mouseup 後 | 340px |
+| `config.json` への保存 | `sidebarWidth: 340` |
+| **アプリ再起動後** | **340px（永続化できている）** |
+
+### 次に再開するとき最初に読むべきこと
+
+1. **次のアクションは周5（F: ウィンドウ + G: 選択中タブ + state slot）。**
+   `overview.md` の「周5」が正
+2. **周5 の先頭で vibrancy の生死を実機確認する**（`known-issues.md` の 3）。
+   `body { background: var(--surface-1) }` が不透明 + `backgroundColor` 明示で、
+   **一度も見えていない疑い**がある。`document.body.style.background='transparent'` に
+   して左上が変わるかを見れば1行で決着する。**F-1（帯の高さ）の判断材料**
+3. **帯は 36px + `trafficLightPosition: { x: 16, y: 11 }`。** `(36-14)/2 = 11` で
+   信号機の中心・帯の中心・タブバーのテキスト中心が初めて 18 で揃う。
+   **44px 案は「22 x 2」という誤った算術の産物**（信号機の中心は 22 ではなく 23）
+4. **G（選択中タブ）は白（`--focus-ring`）の下辺 2px `box-shadow: inset`。**
+   `border-bottom` ではないのは `.tab-bar__tabs` の `overflow-x: auto` が
+   外向きの影を切るため。**4辺にするとフォーカスリングと区別できなくなる**
+5. **周5 は画像12枚を撮り直す。** F と G で PR は分けるが撮影は1回にまとめる。
+   S40 の未較正4件（`known-issues.md` の 7）もこの周で実測に置き換える
+6. `.tab-bar__state-slot` の配線もこの周（判定関数 `findNextYourTurnTab` は既にあり、
+   **唯一の利用者が `Cmd+J` だけ**）

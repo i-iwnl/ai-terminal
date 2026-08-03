@@ -60,14 +60,14 @@
 | `--bar-height` を 40px に変える | S73 |
 | `.history-list__heading` の `color` を1つ変える | 単体（見出し2種の宣言の一致） |
 
-### 周2: A（履歴行の幅回復）
+### 周2: A（履歴行の幅回復）— **完了 2026-08-03**
 
 - [ ] `.history-item__action` に `pointer-events: none`、hover / focus で `auto` を入れた。**周1 の elementFromPoint assert が green になった**
 - [ ] `.history-item__actions` をフローから外し、`.history-item__row` の実効幅が 235px 近くまで回復した（`getBoundingClientRect()` で実測）
 - [ ] `.history-item__meta` に `min-width: 0` + `text-overflow: ellipsis` を入れた
 - [ ] **「見た目を変えない」と名乗っていない。** `.history-item__title` の省略位置が動くので S16 / S18 / S19 を撮り直した
 
-### 周3: B（スコープ行）+ C（改名しない結論）
+### 周3: B（スコープ行）+ C（改名しない結論）— **完了 2026-08-03**
 
 - [ ] 本体ウィンドウに `<h1>`（視覚的非表示）が1つあり、既存の `<h2>` の階層が整理された
 - [ ] タスク / メモの最上部にスコープ行が常設され、**0 件のときも消えない**
@@ -76,7 +76,7 @@
 - [ ] C の結論（改名しない）と、**#115 で出荷済みの設定の節名「動作中の AI」との整合**をこの Issue に書き戻した
 - [ ] スコープ行の文字列を固定する spec が green（S70 / S71 と同じ characterization の形）
 
-### 周4: D（サイドバー幅）
+### 周4: D（サイドバー幅）— **完了 2026-08-03**
 
 - [ ] `clampSidebarWidth()` が `test/unit/` にあり、**下限が信号機の実測右端（x=76）より上**であることを固定している
 - [ ] ハンドルは `PaneSplitterHandle.tsx` と同じゴースト方式で、**ドラッグ中に `pty.resize` が0回**であることを実測した
@@ -119,8 +119,8 @@
 | 項目 | 状態 |
 |---|---|
 | 設計 | **完了**（5ペルソナレビュー実施済み。裁定は `architecture.md`） |
-| 実装 | 未着手 |
-| 検証 | 未着手 |
+| 実装 | **進行中**（周1〜4 完了 / 周5・6 が残り） |
+| 検証 | 各周で `make check` + 名指しの spec + agent-browser。**`make e2e` は P1 の最後に1回** |
 
 ---
 
@@ -128,6 +128,5 @@
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | 周1（関門を先に置く） | 値も見た目も1つも変えない。`make css-substitution-check` PASS が受け入れ条件 |
-| P1 | 周2（A: 履歴行の幅回復） | `pointer-events` をセットで入れる。**単独でやると当たり判定を壊す** |
-| P2 | 周3〜6 | `architecture.md` の周の表を参照 |
+| **P0** | 周5（F: ウィンドウ + G: 選択中タブ + state slot） | **先頭で vibrancy の生死を実機確認する**（known-issues の 3）。画像12枚の撮り直しはここ1回にまとめる |
+| P1 | 周6（E: テーマ切替 UI） | `chromeSafeToApply === false` の `removeProperty` 漏れ（known-issues の 2）を同じ周で直す |

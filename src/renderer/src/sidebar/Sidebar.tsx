@@ -10,11 +10,12 @@
 // が実態に合う。中の3ボタン自体に role="tablist" を付けるかどうかは Issue #20 PR 9 の
 // スコープなので、ここでは構造（ランドマーク）だけを変える。
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { SessionHistoryEntry } from '@shared/ipc';
 import TaskList from './TaskList';
 import HistoryList from './HistoryList';
 import MemoPanel, { type MemoTarget } from './MemoPanel';
+import SidebarResizeHandle from './SidebarResizeHandle';
 
 type SidebarTab = 'tasks' | 'history' | 'memo';
 
@@ -40,6 +41,16 @@ export interface SidebarProps {
    * TaskList のスコープ行の文言にだけ使う（Issue #20 I-2）。
    */
   scopeAgentsToCwd: boolean;
+  /**
+   * サイドバーの幅（CSS px）。**インラインの `width` ではなく
+   * `--sidebar-width` カスタムプロパティとして流す**（インラインスタイルは
+   * `.sidebar.is-collapsed { width: 0 }` に詳細度で勝って折りたたみを壊す）。
+   */
+  width: number;
+  /** ドラッグが確定したとき（mouseup）に1回だけ呼ばれる */
+  onCommitWidth: (width: number) => void;
+  /** メニューから幅を変えたときに `.focus()` するための参照登録 */
+  registerResizeHandleRef?: (el: HTMLDivElement | null) => void;
 }
 
 export default function Sidebar({
@@ -49,6 +60,9 @@ export default function Sidebar({
   onResumeHistory,
   onLaunchClaude,
   scopeAgentsToCwd,
+  width,
+  onCommitWidth,
+  registerResizeHandleRef,
 }: SidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('tasks');
   const [memoTarget, setMemoTarget] = useState<MemoTarget | null>(null);
@@ -64,7 +78,11 @@ export default function Sidebar({
   const goToHistory = (): void => setTab('history');
 
   return (
-    <nav className={`sidebar${collapsed ? ' is-collapsed' : ''}`} aria-label="サイドバー">
+    <nav
+      className={`sidebar${collapsed ? ' is-collapsed' : ''}`}
+      aria-label="サイドバー"
+      style={{ '--sidebar-width': `${width}px` } as CSSProperties}
+    >
       <div className="sidebar__drag-region" />
       <div className="sidebar__tabs">
         <button className={tab === 'tasks' ? 'is-active' : ''} onClick={() => setTab('tasks')}>
@@ -91,6 +109,17 @@ export default function Sidebar({
           <MemoPanel target={memoTarget} onSelectTarget={setMemoTarget} onGoToHistory={goToHistory} />
         )}
       </div>
+      {/* 畳んでいるあいだはハンドルを出さない（幅0のサイドバーの右端に
+          掴める帯があると、ターミナルの左端 8px が奪われる）。
+          `.sidebar.is-collapsed` は visibility: hidden なので描画自体も消えるが、
+          当たり判定を確実に外すためにマウント自体をやめる。 */}
+      {!collapsed && (
+        <SidebarResizeHandle
+          width={width}
+          onCommitWidth={onCommitWidth}
+          registerRef={registerResizeHandleRef}
+        />
+      )}
     </nav>
   );
 }

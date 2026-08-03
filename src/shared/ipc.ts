@@ -321,6 +321,16 @@ export interface AppConfig {
   /** サイドバーを現在のディレクトリに絞り込むか（false ならマシン全体） */
   scopeAgentsToCwd: boolean;
   /**
+   * サイドバーの幅（CSS px）。ドラッグでの変更を跨いで保存する。
+   *
+   * **折りたたみ（`Opt+Cmd+S`）の状態は意図的に保存しない**（README 参照。
+   * 畳んだ状態を覚えると、サイドバーの存在自体に気づけなくなる）。
+   * 幅を保存するのは、畳んで開き直したときに「自分が決めた幅」へ戻るのが
+   * 期待どおりだから。範囲の判定は
+   * `src/renderer/src/sidebar/sidebarWidth.ts` の `clampSidebarWidth` が正。
+   */
+  sidebarWidth: number;
+  /**
    * xterm の screenReaderMode。ターミナルの内容を支援技術から読める DOM として
    * 露出させる。既定 false。
    *
@@ -502,7 +512,16 @@ export type AppAction =
    * 状態は Renderer（App.tsx）だけが持つ。Main はこの操作を知らない
    * （`toggle-maximize-pane` と同じく、レイアウトだけで完結する）。
    */
-  | { type: 'toggle-sidebar' };
+  | { type: 'toggle-sidebar' }
+  /**
+   * サイドバーの幅の増減（Issue #119 周4 / #20 の PR 16）。
+   *
+   * **ドラッグのキーボード代替**（WCAG 2.5.7 Dragging Movements）。
+   * `adjust-split-ratio` と同じく、メニュー項目からのみ届く
+   * （`accelerator` は持たない。幅調整は頻度が低く、`Cmd+英数字` の名前空間は
+   * 100手/日級の操作のために空けておく）。
+   */
+  | { type: 'adjust-sidebar-width'; adjustment: 'wider' | 'narrower' | 'reset' };
 
 // ---------------------------------------------------------------------------
 // チャンネル定義

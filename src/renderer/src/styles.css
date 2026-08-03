@@ -304,14 +304,61 @@ body {
      背後のウィンドウ）に依存せず、これまでと同じ値のまま固定できる
    - `prefers-reduced-transparency` では `.sidebar` 自体を不透明に戻し、
      ドラッグ領域も含めて完全に静止した塗りへフォールバックする（下記） */
+/* 幅は `--sidebar-width` 経由で受ける（Issue #119 周4 / #20 の PR 16）。
+ *
+ * **インラインの `style={{ width }}` にしてはいけない。** インラインスタイル
+ * （詳細度 1,0,0,0）は `.sidebar.is-collapsed { width: 0 }`（0,2,0）に**必ず勝つ**ので、
+ * #118 で入れた折りたたみ（`Opt+Cmd+S`）が黙って壊れる。
+ * カスタムプロパティで渡せば `width` の宣言同士の後勝ちになり、
+ * `.is-collapsed` が生きる。
+ *
+ * `min-width` / `max-width` は持たせない。範囲は
+ * `src/renderer/src/sidebar/sidebarWidth.ts` の `clampSidebarWidth` が
+ * 唯一の正で、CSS 側にも書くと二重管理になるうえ、**インラインの幅が
+ * `min-width` に負けてハンドルが無反応に見える**（範囲外を掴んだときに
+ * 「壊れている」と読まれる）。 */
 .sidebar {
-  width: 260px;
-  min-width: 220px;
-  max-width: 340px;
+  position: relative;
+  width: var(--sidebar-width, 260px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-subtle);
+}
+
+/* 右端のリサイズハンドル（Issue #119 周4）。
+ *
+ * **見た目は 1px、当たり判定は 8px。** `.pane-splitter` と同じ考え方で、
+ * 掴める帯を広げても描画は動かさない（`::before` を使わないのは、
+ * 疑似要素だとカーソル形状が本体に効かないため。ここは要素自体を 8px にして
+ * 中央に 1px の線を描く）。
+ *
+ * **`-webkit-app-region: no-drag` は必須。** `.sidebar__drag-region` は
+ * `.sidebar` の子で全幅を占めるため、ハンドルの上端 40px と重なる。
+ * 明示しないと macOS がウィンドウごと動かし、**「上のほうを掴んだときだけ
+ * 動かせない」という追いにくい再現条件**になる。 */
+.sidebar__resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  z-index: 2;
+  cursor: col-resize;
+  -webkit-app-region: no-drag;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* ドラッグ中に動かすのはこのゴースト線だけで、`.sidebar` の幅は変えない
+   （`PaneSplitterHandle.tsx` と同じ方式）。実レイアウトが動かないので
+   ResizeObserver がそもそも発火せず、**ドラッグ中の pty.resize は 0 回**になる。
+   `fit()` の間引きも `transition` の禁止も要らない。 */
+.sidebar__resize-ghost {
+  z-index: 20;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 /* Issue #20 K-1: サイドバーの折りたたみ（Cmd+Option+S）。**既定は開いたまま**で、

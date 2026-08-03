@@ -932,3 +932,47 @@ scenarios:
       test/unit/css-tokens.test.ts が突き合わせ、ここでは描画結果が違うことを見る。
       **日本語には `text-transform: uppercase` が効かない**ので、主な手がかりは
       下線のほう（`.panel-scope` だけが `border-bottom` を持つ）。
+
+  # --- サイドバーのドラッグリサイズ（Issue #119 周4 / #20 PR 16） -------------
+  - id: S76
+    title: サイドバーをドラッグで広げられ、ドラッグ中は pty:resize が飛ばない
+    spec: S76-sidebar-resize.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周4（#20 の PR 16）。**関門はドラッグ中に `pty:resize` が
+      飛ばないこと。** `.sidebar` の幅を実際に書き換えると `.terminal-stack` の
+      実ピクセル寸法が変わり、`ResizeObserver -> fitAddon.fit() -> pty.resize()
+      -> node-pty の TIOCSWINSZ -> SIGWINCH` まで連鎖する。しかも全タブの
+      TerminalPane が同時にマウントされ、非表示タブも `visibility: hidden` で
+      レイアウトを持つため `clientWidth === 0` のガードを通過する（タブ10枚なら
+      1px 動かすたびに10回）。`PaneSplitterHandle.tsx` が確立したゴースト方式
+      （`position: fixed` の線だけを動かし、実レイアウトは mouseup で1回だけ
+      変える）を使い、S59 と同じ手法（`electronApp.evaluate()` に `ipcMain.on` を
+      足して回数を数える）で固定する。**同じ実行の中で「ドラッグ中0回 /
+      mouseup 後は1回以上」を両方見る**ので、カウンタが死んでいて 0 が出ている
+      という空振りにならない。あわせて**幅を変えたあとに畳めること**も見る。
+      幅を `style={{ width }}` で渡すと、インラインスタイル（詳細度 1,0,0,0）が
+      `.sidebar.is-collapsed { width: 0 }`（0,2,0）に**必ず勝つ**ので #118 の
+      折りたたみが黙って壊れる（実際にその版を作って S72 と S76 が両方
+      落ちることを確認した）。`--sidebar-width` カスタムプロパティ経由なら
+      `width` の宣言同士の後勝ちになり `.is-collapsed` が生きる。**S72 は
+      既定幅で畳めることしか見ていない**ので、この壊れ方は S76 でしか
+      捕まらない。2本目はドラッグの代替手段（WCAG 2.5.7 Dragging Movements）で、
+      「表示」メニューの3項目が効くことと、**それらが accelerator を持たない**
+      ことを見る（幅調整は 2〜5回/日で、`Cmd+英数字` の名前空間は 100手/日級の
+      操作のために空けておく）。ドラッグの代替手段そのものは S77 が見る
+      （台帳は 1 spec = 1 シナリオなので分けてある）。
+
+  - id: S77
+    title: サイドバーの幅をメニューから変えられる（ドラッグの代替手段）
+    spec: S77-sidebar-width-menu.spec.ts
+    readme: false
+    note: >-
+      Issue #119 の周4。**WCAG 2.5.7 Dragging Movements。** ポインタのドラッグで
+      しか到達できない機能は、ドラッグ以外の単一ポインタ操作でも達成できなければ
+      ならない。サイドバーの幅は「表示」メニューの `サイドバーを広げる / 狭める /
+      幅を既定に戻す` が担う。**アクセラレータは持たせない**ことも固定する
+      （`menu.ts` の `分割比を広げる / 狭める / 50%に戻す` と同じ形。幅調整は
+      2〜5回/日で初日以降ほぼ0なので、`Cmd+英数字` の名前空間は 100手/日級の
+      操作＝タブ切替・「あなたの番」へのジャンプのために空けておく）。
+      **Electron は未設定の accelerator に `undefined` ではなく `null` を返す。**
