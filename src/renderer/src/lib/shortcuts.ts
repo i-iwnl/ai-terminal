@@ -139,6 +139,22 @@ export function matchShortcut(e: KeyboardEvent): ShortcutAction | null {
     // `Cmd+Option+W` を足して1手で閉じられるようにする。
     // 2つ以上の PTY を一度に閉じるので、App.tsx 側の確認ダイアログを必ず通る。
     if (e.code === 'KeyW') return { type: 'close-tab' };
+    // サイドバーのパネル切替（Issue #120 周2 / 旧 #111）。
+    //
+    // **`Cmd+Shift+1/2/3` は使えない。** `Cmd+Shift+3` / `4` / `5` は macOS の
+    // スクリーンショットにシステム側が先に奪うので、アプリに届かない。
+    // 「3パネルだから 1/2/3」という並びは3番目で必ず破綻する。
+    //
+    // `Cmd+Option+` に寄せたのは、既に `Cmd+Option+S`（サイドバーの表示切替）が
+    // ここにあるため。**「Option+Cmd はサイドバー系」で揃う。**
+    // `Cmd+1`〜`Cmd+9` がタブ切替なので、「修飾キー + 数字 = 切り替え」の
+    // 並びとしても学習しやすい。
+    //
+    // **`e.code` で判定する。** macOS では Option を押しながらの数字キーも
+    // 合成後の文字（Option+1 なら `¡`）が `e.key` に入る。
+    if (e.code === 'Digit1') return { type: 'switch-sidebar-panel', panel: 'tasks' };
+    if (e.code === 'Digit2') return { type: 'switch-sidebar-panel', panel: 'history' };
+    if (e.code === 'Digit3') return { type: 'switch-sidebar-panel', panel: 'memo' };
     // Cmd+Option+矢印: ペイン間移動（Issue #56 PR 8。design-review.md 提案 B'）。
     switch (e.key) {
       case 'ArrowUp':

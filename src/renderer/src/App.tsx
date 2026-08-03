@@ -7,7 +7,24 @@ import {
   type CSSProperties,
   type ReactElement,
 } from 'react';
-import type { AgentTask, AppAction, AppConfig, PtyExitEvent, SessionHistoryEntry } from '@shared/ipc';
+import type {
+  AgentTask,
+  AppAction,
+  AppConfig,
+  PtyExitEvent,
+  SessionHistoryEntry,
+  SidebarPanel,
+} from '@shared/ipc';
+
+/**
+ * 読み上げ用のパネル名。**`Sidebar.tsx` の `PANEL_LABEL` と同じ語**
+ * （画面に出ている語と読み上げが食い違わないようにする）。
+ */
+const SIDEBAR_PANEL_LABEL: Record<SidebarPanel, string> = {
+  tasks: 'タスク',
+  history: '履歴',
+  memo: 'メモ',
+};
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
 import { resolveTheme } from '@shared/themes';
@@ -156,6 +173,16 @@ export default function App(): ReactElement {
   // メニュー項目「サイドバーを広げる / 狭める」が、動かした対象へ `.focus()` して
   // フォーカスリングを見せるための参照（PaneSplitterHandle と同じ形）。
   const sidebarResizeHandleRef = useRef<HTMLDivElement | null>(null);
+  // サイドバーのパネル切替（Issue #120 周2）。**状態は Sidebar が持つ**
+  // （タブ選択・メモの編集途中・履歴の絞り込みはすべて Sidebar の木の中の state で、
+  // ここへ持ち上げると畳むたびに失われる）。ここは「切り替えたい」を伝える口だけ持つ。
+  const switchSidebarPanelRef = useRef<((panel: SidebarPanel) => void) | null>(null);
+  const registerPanelSwitcher = useCallback(
+    (switchTo: ((panel: SidebarPanel) => void) | null) => {
+      switchSidebarPanelRef.current = switchTo;
+    },
+    [],
+  );
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
@@ -604,6 +631,14 @@ export default function App(): ReactElement {
           announce(`文字サイズ ${next}`);
           break;
         }
+        case 'switch-sidebar-panel': {
+          // 畳んでいる間に切り替えても画面は何も変わらないので、まず開く。
+          // **「何も起きない」で終わらせない**（U4）。
+          if (sidebarCollapsed) setSidebarCollapsed(false);
+          switchSidebarPanelRef.current?.(action.panel);
+          announce(`${SIDEBAR_PANEL_LABEL[action.panel]} のパネルを表示しました`);
+          break;
+        }
         case 'next-tab':
           if (api.activeTabId) api.setActiveTabId(nextTabId(api.tabs, api.activeTabId));
           break;
@@ -826,6 +861,7 @@ export default function App(): ReactElement {
         registerResizeHandleRef={(el) => {
           sidebarResizeHandleRef.current = el;
         }}
+        registerPanelSwitcher={registerPanelSwitcher}
       />
       <main className="main">
         <TabBar

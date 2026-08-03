@@ -1097,3 +1097,25 @@ scenarios:
       **判定は `e.code`**（macOS では Option を押しながらの英字キーは合成後の
       文字が `e.key` に入りうる。Option+w -> `∑`。`Cmd+Option+S` と同じ理由）。
       2本の PTY を一度に閉じるので既存の確認ダイアログを通ることも見る。
+
+  - id: S83
+    title: Cmd+Option+1/2/3 でサイドバーのパネルを切り替えられ、選択が機械可読になっている
+    spec: S83-sidebar-panel-keyboard.spec.ts
+    readme: false
+    note: >-
+      Issue #120 の周2（旧 #111）。3パネル切替は素の `<button>` 3つで、
+      **マウスでしか押せなかった**（`shortcuts.ts` に分岐なし / `AppAction` に
+      種別なし / `menu.ts` に該当の語が 0 箇所）。**`Tab` キーでも到達できない** —
+      xterm のヘルパー textarea が Tab を端末入力として消費するので、
+      フォーカスがターミナルにある限り DOM のフォーカス順に出られない。
+      WCAG 2.1.1。選択状態も `className` の `is-active` だけで `role` /
+      `aria-selected` のいずれも無く、塗りの差は **1.08**（S40 が `wcag: 'fail'` で
+      固定）なので支援技術にも色の弱い利用者にも伝わっていなかった。WCAG 4.1.2。
+      **`Cmd+Shift+1/2/3` は使えない**（`Cmd+Shift+3/4/5` は macOS の
+      スクリーンショットにシステムが先に奪う。「3パネルだから 1/2/3」は3番目で
+      必ず破綻する）。`Cmd+Option+` に寄せたのは `Cmd+Option+S`（表示切替）が
+      既にそこにあるため。**判定は `e.code`**（Option+1 の `e.key` は `¡`）。
+      **`<button>` 要素そのものは変えていない** — `e2e/` の 28 ファイル・44 箇所が
+      `.sidebar__tabs button` を使うので、要素を変えると全部落ちる。`role` を
+      足すだけ。畳んでいるときは開いてから切り替えることも見る（**「何も起きない」で
+      終わらせない**。畳んだまま切り替えても画面が1pxも動かず壊れて見える）。

@@ -86,6 +86,25 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
     // `分割比を広げる/狭める/50%に戻す` と同じ形で、accelerator は持たせない。
     // 幅調整は 2〜5回/日（初日以降ほぼ0）で、`Cmd+英数字` の名前空間を
     // 1つ消費する価値が無い（100手/日級の操作のために空けておく）。
+    // サイドバーのパネル切替（Issue #120 周2 / 旧 #111）。
+    //
+    // **ラベルにチェックマークは付けない。** 付けるには Renderer の選択状態を
+    // Main へ送り返す配線（`menu:pane-count` と同型の IPC）が要るが、
+    // **どのパネルを見ているかは画面で直接確認できる**（セグメンテッドコントロールが
+    // 選択中を示している）。すぐ上の「サイドバーの表示を切り替え」でラベルを
+    // 状態に応じて変えないと決めたのと同じ判断。
+    actionItem(win, 'タスクのパネル', 'Cmd+Option+1', {
+      type: 'switch-sidebar-panel',
+      panel: 'tasks',
+    }),
+    actionItem(win, '履歴のパネル', 'Cmd+Option+2', {
+      type: 'switch-sidebar-panel',
+      panel: 'history',
+    }),
+    actionItem(win, 'メモのパネル', 'Cmd+Option+3', {
+      type: 'switch-sidebar-panel',
+      panel: 'memo',
+    }),
     actionItem(win, 'サイドバーを広げる', undefined, {
       type: 'adjust-sidebar-width',
       adjustment: 'wider',
