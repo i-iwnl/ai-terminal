@@ -5,7 +5,24 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. 通知のクリックは自動テストできない | **一部が生きている → #151** | **対処方針の2つ目（Renderer 側の受け口を `webContents.send` で担保）は `4a7556d` で実施済み**。`e2e/specs/S63-task-pane-focus.spec.ts` の `sendSessionFocus()` が3ケースを検証する。残っているのは**実機確認1件だけ**なので、#151 はそこに絞って起票した |
+| 2. 対応するタブが無ければ何も起きない | **解決済み** | `4a7556d`（#120 C-2）。`App.tsx` の `session.onFocus` が `findPaneByAgentSessionId` で見つからないとき `showNotice('このセッションを開いているタブはありません（サイドバーの「タスク」で確認できます）', 'info')` と `announce()` を呼ぶ。`S63` が未知 UUID で検証済み。※ 対処方針にあった「サイドバーの行を強調する」という着地ではない（通知バナー + アナウンス）。`--resume` の自動起動は却下のまま |
+| 3. Dock バッジは macOS / Linux のみ | **生きている。起票しない** | ステータスが「対処しない（記録のみ）」で、その前提（macOS 専用）が `README.md` と `electron-builder.yml`（`mac:` のみ）で維持されていることを確認した。Windows 対応を始めるときに初めて意味を持つ記録 |
+
+---
+
+
 ## 1. 通知のクリックは自動テストできない
+
+> **GitHub Issue**: [#151](https://github.com/i-iwnl/ai-terminal/issues/151)
 
 ### 症状
 

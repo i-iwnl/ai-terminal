@@ -5,6 +5,21 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 5. WebGL レンダラ経路を検証していない | **解決済み** | `c540127` で `e2e/fixtures/harness.ts` に `gpu` オプションが入り（`--disable-gpu` は固定ではなくなった）、`e2e/specs/S23-webgl-rendering.spec.ts` が `launchApp({ gpu: true })` で `.xterm-screen canvas` の存在と `captureRegionStats().nonBackground` の増加を実測する。S23 は `e2e/scenarios.yml` にも登録済み |
+
+1〜4 は起票済み（#7 / #8 / #15 / #16）。
+
+---
+
+
 ## 1. Phase 1 の受け入れ基準（残るは実 IME のみ）
 
 > **GitHub Issue**: [#7](https://github.com/Yoshinaga-iwnl/ai-terminal/issues/7)

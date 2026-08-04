@@ -8,6 +8,24 @@ Issue #120（P2）の実装中に発見された未解決のバグ・先送り�
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. タブ幅 90px のうち 34px が死角 | **解決済み** | `d7a4db1`（#121 周3。`4a7556d` = B-2 では端の死角が残っていた）。`.tab-bar__tab-button::before` が padding + 状態スロット + gap を透明な当たり判定で埋め、`.tab-bar__close` に `z-index: 1`。`S69` は「中央1点」から**幅いっぱいを 1px 刻みで走査する帯**に変わり、非アクティブ時は死角0列、アクティブ時は close の帯が 24px 以上の連続1本であることを検査する |
+| 2. S69 が一度だけ flaky になった | **解決済み**（追わない結論） | `8d5e77f`。周6 のフル実行で再発せず、マシン負荷として閉じた。`run-e2e.md` の flake も `firstWindow: Timeout` として一般化されている |
+| 3. 撮影レーンに残る非決定性はセッション UUID だけ | **解決済み** | `d7a4db1`。`e2e/fixtures/bin/claude` が `ARGS_FOR_DISPLAY` から UUID を `<session-id>` へ置換して**発生源で断った**。`scripts/verify-screenshots.mjs` が画素比較の関門になり、`readme: true` 13件と `docs/images/*.png` 13枚が一致 |
+| 4. E-1（Webhook URL を safeStorage へ） | **生きている（deferred）→ #156** | 判断は今も有効だが**追跡が落ちていた**。詳細は下記の項目4の追記を参照 |
+| 5. 起動 flake の発生率が記録より高い | **解決済み** | `d7a4db1`。`run-e2e.md` に3行の実測表（#17: 2.0% / #120 周6: 6.4% / #121 周4: 約3.5%）が入り、「率は 2〜6% の幅で動く」に更新。`harness.ts` と `playwright.config.ts` のコメント（挙げられた3箇所すべて）も追随済み。#17 は CLOSED |
+| 6. `ownedByApp` の肯定側（未実装） | **本体は実装済み。文書だけ生きている → #157** | 詳細は下記の項目6の追記を参照 |
+
+---
+
+
 ## 1. タブ幅 90px のうち 34px（38%）が、押しても何も起きない死角
 
 ### 症状
@@ -142,6 +160,8 @@ S69 も中央 1点しか見ていないため、この帯は関門をすり抜�
 
 ## 4. E-1（Webhook URL を safeStorage へ）— 着手条件は今も満たされていない
 
+> **GitHub Issue**: [#156](https://github.com/i-iwnl/ai-terminal/issues/156)
+
 ### 判断
 
 **実装しない。周知で足りているという判断は今も有効。** 周6 で前提を4点とも実コードで確認した。
@@ -174,6 +194,20 @@ S69 も中央 1点しか見ていないため、この帯は関門をすり抜�
 届いており、config.json を共有する動線がアプリ側に無い。
 
 **新しい Issue は起票しない。** 着手条件が満たされた時点で、この節を根拠に起票する。
+
+### 優先度
+
+P2（2026-08-04 の棚卸しで補記。#13 に付いていた値を引き継ぐ）
+
+### 追記（2026-08-04・棚卸し）
+
+**判断は今も有効**（前提4点を実コードで再確認。`grep -rn "safeStorage" src/` は 0件、
+README と `SettingsPanel.tsx` の周知は現存、設定のエクスポート／インポート／同期は1つも無い）。
+
+ただし**追跡が落ちていた**。この課題を持っていた #13 は「#120 へ統合」としてクローズされ、
+その #120 も closed になったため、`deferred` 分を保持する open な Issue が1本も無くなっていた。
+そこで**再起票した**（下記）。「起票しない」という当時の判断を覆したのではなく、
+`deferred` を明示的に台帳へ載せ直したもの。
 
 ---
 
@@ -212,6 +246,8 @@ S69 も中央 1点しか見ていないため、この帯は関門をすり抜�
 
 ## 6. `ownedByApp` の肯定側が検証できるようになった（未実装）
 
+> **GitHub Issue**: [#157](https://github.com/i-iwnl/ai-terminal/issues/157)
+
 ### これまで「原理的に不可能」だった理由
 
 `.claude/skills/e2e/reference/limitations.md` は、`ownedByApp` が true になる側を
@@ -241,3 +277,22 @@ S69 も中央 1点しか見ていないため、この帯は関門をすり抜�
 **新しい Issue は起票しない。** #121（P3）で扱う。
 
 `limitations.md` の該当行は「解消した。未実装」へ書き換え済み。
+
+### 優先度
+
+P3（2026-08-04 の棚卸しで補記）
+
+### 追記（2026-08-04・棚卸し）— 本体は実装済み。残っているのは文書のずれだけ
+
+**肯定側は実装された。** `e2e/specs/S15-task-owned.spec.ts` に「--- ここから肯定側 ---」の節があり、
+`claude-session-id.txt` から実 UUID を読んで `agentEntriesWithStatus()` の `sessionId` を差し替え、
+`setAgentEntries()` で流し込んで `.task-item--owned` が1件・バッジ「このアプリ」・行が `BUTTON` に
+なることを検査している。否定側も同一テスト内に残っている。
+
+**にもかかわらず `.claude/skills/e2e/reference/limitations.md` の `ownedByApp` の行は
+「未実装（#121 で扱う）」のまま。** 実装に文書が追い越された状態。
+
+**S47 の固定 UUID は置き換えない**（この節の「ついでに」は誤り）。S47 は `--session-id` ではなく
+**resume 経由**（履歴 JSONL の sessionId を agents.json の固定値に一致させ、`buildClaudePlan` が
+`resumeSessionId` をそのまま `agentSessionId` にする性質を使う）で owned を作っており、
+**S15 とは別の `ownedByApp` 経路をカバーしている**。spec 冒頭にその設計意図が書かれている。

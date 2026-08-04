@@ -5,6 +5,23 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. Finder からの実ドラッグが自動テストの対象外 | **解決済み** | `8d5e77f`（#120 周6）。**手動確認が 2026-08-03 に実施され**、`.claude/skills/e2e/reference/limitations.md` に「ファイルの D&D の手動確認（Issue #120 D-3）」節の4項目表 +「最終確認: 2026-08-03。4項目とも期待どおり」として恒久記録になった。#57 は CLOSED |
+| 2. ペイン外へのドロップの画面遷移抑止に関門が無い | **解決済み** | 同上。`main.tsx` の window レベル `preventDefault()` は健在で、`limitations.md` の表 #4 として人手の関門ができた。同ファイルに「**4 が最重要。ここが壊れると全タブと PTY を失うが、自動テストは常に green を返す**」という運用ルールも明記された |
+| 3. ドロップ中の視覚的なフィードバックが無い | **解決済み** | `1b333bc`。`.terminal-pane--drop-target` のセレクタ3種と `TerminalPane.tsx` の `dragenter` / `dragover` / `dragleave` / `drop` の4ハンドラ（カウンタ方式）。**E2E も専用シナリオがある** — `e2e/specs/S58-drop-target-highlight.spec.ts` がカーソル下のペインにだけ付くこと・子要素をまたいでも消えないこと・アクティブ線とドロップ枠の区別まで実測で固定。README にも記載。予定どおり #56 の周（提案 H）に合流して解決した |
+
+3 件とも**ステータス欄が古い**（「未対処（手動確認待ち）」「先送り」）。
+
+---
+
+
 ## 1. Finder からの実ドラッグ（`dataTransfer.files` 経路）が自動テストの対象外
 
 ### 症状

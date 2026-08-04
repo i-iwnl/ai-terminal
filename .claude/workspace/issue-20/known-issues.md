@@ -5,6 +5,24 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 5. S12 が「待たせている時間」を示せない | **解決済み** | `5910aca`。`e2e/fixtures/harness.ts` に `setAgentEntries()` / `agentEntriesWithStatus()` / `writeAgentsFixture()`（動的フィクスチャ、#120 D-2）が入り、`S12` が `idle -> busy -> idle` を作って `.task-item--your-turn .task-item__elapsed` を検証する。`docs/images/S12-task-list.png` にも「0秒待たせています」が写っている。#83 は CLOSED |
+| 6. プロバイダの色相は色覚特性に届かない | **生きている。起票しない** | 対処方針が「解消しようとしない（却下済みの2案以外に構造的な代案が無い）」で、`src/renderer/src/tabs/tabProvider.ts` のヘッダコメントにも同じ内容が「残る限界」として書き写されている。open にしても着手されない。**代案が `/design-review` から出たときに起票する** |
+| 8. 通知バナーを出す実経路が PTY の終了しか無い | **生きている → #146** | ただし見出しはもう正しくない。`App.tsx` の `showNotice` / `setNotices` は11箇所あり複数が E2E から踏まれている。**残る穴は `describeSpawnError` 経路の1本だけ**。文言を組み立てているのも `App.tsx` の `showError` ではなく `useTabs.ts` の `describeSpawnError` |
+| 9. 明るい背景はクロームが追従できない | **生きている → #147** | 対処方針の「PR 18 で解消する前提」は外れた。PR 18（`715f4e0`）は文字色の導出をやらず、`src/shared/themes.ts` で「安全なプリセット5件だけを選ばせる」形に着地した。制約は残るが、利用者が半適用を引くことは無くなっている |
+
+1 / 2 / 3 / 4 / 7 は起票済み（#58 / #91 / #92 / #89 / #90。いずれも CLOSED）。
+
+---
+
+
 ## 1. cwd がアプリ起動時に固定され、複数リポジトリの並走が成立しない -> #58 として起票済み
 
 ### 症状
@@ -274,6 +292,8 @@ P2
 
 ## 8. 通知バナーを出す実経路が「PTY の終了」しか無い
 
+> **GitHub Issue**: [#146](https://github.com/i-iwnl/ai-terminal/issues/146)
+
 ### 症状
 
 `App.tsx` の `showError`（spawn 失敗）は、E2E のハーネスから**確実に発火させる手段が無い**。
@@ -305,6 +325,8 @@ P3
 ---
 
 ## 9. 明るい背景は原理的にクロームが追従できない。暗い背景でも救えないものがある
+
+> **GitHub Issue**: [#147](https://github.com/i-iwnl/ai-terminal/issues/147)
 
 ### 症状
 
