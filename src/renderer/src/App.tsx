@@ -58,6 +58,7 @@ import {
   findTabByPtyId,
   nextTabId,
   previousTabId,
+  tabDisplayTitle,
   tabLeaf,
   type PaneLocation,
 } from './tabs/tabPane';
@@ -184,6 +185,13 @@ export default function App(): ReactElement {
     },
     [],
   );
+  // ペイン名の変更（Issue #130）。**編集中の下書き文字列は TabBar が持つ**
+  // （ここへ持ち上げると、タブの再描画のたびに入力途中の文字が失われる）。
+  // 上の registerPanelSwitcher と同じく、ここは「始めたい」を伝える口だけ持つ。
+  const startRenameRef = useRef<((tabId: string) => void) | null>(null);
+  const registerRenameStarter = useCallback((startRename: ((tabId: string) => void) | null) => {
+    startRenameRef.current = startRename;
+  }, []);
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
   // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
   //
@@ -381,7 +389,12 @@ export default function App(): ReactElement {
   useEffect(() => {
     const tab = tabsApi.tabs.find((t) => t.id === tabsApi.activeTabId);
     if (!tab) return;
-    window.api.app.setTitle(tabLeaf(tab).title);
+    // **アクティブなペインからではなく、タブの見出しから引く**（Issue #131）。
+    // tabLeaf（いま選んでいるペイン）から引いていたため、Cmd+] を押すたびに
+    // Mission Control 上のウィンドウ名が書き換わっていた。「どのウィンドウが
+    // どのプロジェクトか」を見分けるために入れた層なので、分割中だけその
+    // 目的が消えていたことになる。
+    window.api.app.setTitle(tabDisplayTitle(tab));
   }, [tabsApi.tabs, tabsApi.activeTabId]);
 
   // サイドバーの幅は「即座に画面へ反映する state」と「永続化された設定」の2箇所に
@@ -534,6 +547,24 @@ export default function App(): ReactElement {
         case 'toggle-maximize-pane':
           api.toggleMaximizePane();
           break;
+        case 'rename-active-pane': {
+          // Issue #130。編集の下書き文字列は TabBar が持つので、ここは
+          // 「編集を始めたい」を伝えるだけ（Sidebar の registerPanelSwitcher と
+          // 同じ形）。
+          //
+          // **何も起きないまま終わらせない**（Issue #56 U4 の教訓）。
+          // タブが1枚も無い起動直後は、押しても画面が1px も動かないので
+          // 理由を出す。
+          const tabId = api.activeTabId;
+          const starter = startRenameRef.current;
+          if (tabId === null || starter === null) {
+            showNotice('名前を変更できるペインがありません', 'info');
+            announce('名前を変更できるペインがありません');
+            break;
+          }
+          starter(tabId);
+          break;
+        }
         case 'next-pane': {
           const tab = api.tabs.find((t) => t.id === api.activeTabId);
           if (tab) api.setActivePaneInTab(tab.id, nextPane(tab.layout, tab.activePaneId));
@@ -908,7 +939,9 @@ export default function App(): ReactElement {
           onNewShell={() => void tabsApi.newShellTab()}
           onNewClaude={() => void tabsApi.newAgentTab('claude')}
           onNewGemini={() => void tabsApi.newAgentTab('gemini')}
-          onRename={tabsApi.renameTab}
+          onRenameTab={tabsApi.renameTab}
+          onRenamePane={tabsApi.renamePane}
+          registerRenameStarter={registerRenameStarter}
           onOpenSettings={() => window.api.settings.open()}
         />
         <div className="terminal-stack">

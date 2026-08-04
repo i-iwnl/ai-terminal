@@ -16,7 +16,9 @@ import {
   findTabByPtyId,
   nextTabId,
   previousTabId,
+  tabDisplayTitle,
   tabLeaf,
+  tabRepresentativeLeaf,
   type TabState,
 } from '../../src/renderer/src/tabs/tabPane';
 
@@ -188,5 +190,88 @@ describe('nextTabId / previousTabId', () => {
   it('タブが1枚も無ければそのまま返す', () => {
     expect(nextTabId([], 'a')).toBe('a');
     expect(previousTabId([], 'a')).toBe('a');
+  });
+});
+
+// --- Issue #131: タブの見出しの出所 -----------------------------------------
+//
+// それまでタブは名前という属性を持たず、タブバーは tabLeaf（いま選んでいる
+// ペイン）の title を借りていた。借り先が「今選んでいるペイン」なので、
+// Cmd+] を押すたびに見出し・プロバイダ色・ツールチップ・ウィンドウ名が
+// 同時に書き換わっていた。
+
+describe('tabRepresentativeLeaf', () => {
+  it('leaf 1枚の木では、その leaf を返す（tabLeaf と一致する）', () => {
+    const t = tab();
+    expect(tabRepresentativeLeaf(t)).toBe(tabLeaf(t));
+  });
+
+  it('**アクティブなペインがどれであっても、木の先頭 leaf を返す**', () => {
+    const left = leaf({ paneId: 'left', ptyId: 'pty-left', title: '認証の調査', ptyKind: 'claude' });
+    const right = leaf({ paneId: 'right', ptyId: 'pty-right', title: 'zsh' });
+    const t = tab({ layout: splitRow([left, right]), activePaneId: 'right' });
+
+    // tabLeaf は右（アクティブ）を返すが、代表は左のまま。
+    expect(tabLeaf(t)).toBe(right);
+    expect(tabRepresentativeLeaf(t)).toBe(left);
+  });
+
+  it('入れ子の分割でも、いちばん左上の leaf を返す', () => {
+    const a = leaf({ paneId: 'a', ptyId: 'pty-a', title: 'A' });
+    const b = leaf({ paneId: 'b', ptyId: 'pty-b', title: 'B' });
+    const c = leaf({ paneId: 'c', ptyId: 'pty-c', title: 'C' });
+    const t = tab({ layout: splitRow([splitRow([a, b]), c]), activePaneId: 'c' });
+    expect(tabRepresentativeLeaf(t).title).toBe('A');
+  });
+});
+
+describe('tabDisplayTitle', () => {
+  it('タブ自身の名前が無ければ、木の先頭 leaf の title を出す（従来と同じ見え方）', () => {
+    const t = tab({ layout: leaf({ title: 'my-repo' }) });
+    expect(tabDisplayTitle(t)).toBe('my-repo');
+  });
+
+  it('タブ自身の名前があればそれを出す', () => {
+    const t = tab({ layout: leaf({ title: 'my-repo' }), title: '認証まわり' });
+    expect(tabDisplayTitle(t)).toBe('認証まわり');
+  });
+
+  it('**ペインを移っても見出しが変わらない**（この Issue が直した不具合そのもの）', () => {
+    const left = leaf({ paneId: 'left', ptyId: 'pty-left', title: 'my-repo' });
+    const right = leaf({ paneId: 'right', ptyId: 'pty-right', title: 'zsh' });
+    const layout = splitRow([left, right]);
+    const onLeft = tab({ layout, activePaneId: 'left' });
+    const onRight = tab({ layout, activePaneId: 'right' });
+
+    // tabLeaf 経由（旧実装）だと変わってしまうことを、対比として固定する。
+    expect(tabLeaf(onLeft).title).not.toBe(tabLeaf(onRight).title);
+    // tabDisplayTitle は変わらない。
+    expect(tabDisplayTitle(onLeft)).toBe(tabDisplayTitle(onRight));
+  });
+
+  it('**名前を付けたタブは、先頭ペインを閉じても見出しが変わらない**（(b) 案の「ジャンプ」を防ぐ）', () => {
+    const left = leaf({ paneId: 'left', ptyId: 'pty-left', title: 'my-repo' });
+    const right = leaf({ paneId: 'right', ptyId: 'pty-right', title: 'zsh' });
+    const before = tab({ layout: splitRow([left, right]), title: '認証まわり' });
+    // 左（先頭 leaf）を閉じると、木は右 leaf 1枚に畳まれる。
+    const after = tab({ layout: right, activePaneId: 'right', title: '認証まわり' });
+
+    expect(tabDisplayTitle(before)).toBe('認証まわり');
+    expect(tabDisplayTitle(after)).toBe('認証まわり');
+  });
+
+  it('名前を付けていないタブは、先頭ペインを閉じると導出先が繰り上がる（(d) を採る理由）', () => {
+    const left = leaf({ paneId: 'left', ptyId: 'pty-left', title: 'my-repo' });
+    const right = leaf({ paneId: 'right', ptyId: 'pty-right', title: 'zsh' });
+    const before = tab({ layout: splitRow([left, right]) });
+    const after = tab({ layout: right, activePaneId: 'right' });
+
+    expect(tabDisplayTitle(before)).toBe('my-repo');
+    expect(tabDisplayTitle(after)).toBe('zsh');
+  });
+
+  it('空文字・空白だけの名前は導出へ落とす（鉄則5）', () => {
+    expect(tabDisplayTitle(tab({ layout: leaf({ title: 'my-repo' }), title: '' }))).toBe('my-repo');
+    expect(tabDisplayTitle(tab({ layout: leaf({ title: 'my-repo' }), title: '   ' }))).toBe('my-repo');
   });
 });

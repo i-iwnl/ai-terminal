@@ -58,7 +58,10 @@ export interface UseTabsResult {
   newAgentTab: (kind: 'claude' | 'gemini', opts?: SpawnOpts) => Promise<void>;
   closeTab: (id: string) => Promise<void>;
   markExited: (ptyId: string, exit: { exitCode: number; signal?: number }) => void;
-  renameTab: (id: string, title: string) => void;
+  /** タブ自身の名前（Issue #131）。空文字を渡すと未設定に戻り、木の先頭 leaf からの導出に落ちる。 */
+  renameTab: (tabId: string, title: string) => void;
+  /** そのタブの、指定したペインの名前（Issue #130）。空文字は無視する。 */
+  renamePane: (tabId: string, paneId: string, title: string) => void;
   /**
    * アクティブなタブのアクティブなペインを、指定した方向へ分割する（Issue #56 PR 4）。
    * `metrics` は呼び出し側（App.tsx）が対象ペインの `TerminalHandle.getCellMetrics()`
@@ -467,16 +470,40 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     });
   }, []);
 
-  // タイトルの手動編集。空文字（trim 後）は既存タイトルを維持する。
-  const renameTab = useCallback((id: string, title: string) => {
+  // 名前の手動編集。空文字（trim 後）は既存の名前を維持する。
+  //
+  // **書き込み先はタブではなく、そのタブのアクティブなペイン。** `title` は
+  // `PaneLeaf` の属性で、タブ側に名前という属性は存在しない（design-review Q4 で
+  // PTY のメタを leaf に移した結果）。分割中に呼べば、いま見ているペインの
+  // 名前だけが変わる。**Issue #130 以前は関数名が `renameTab` で、この事実が
+  // 名前と食い違っていた。**
+  //
+  // `renamed: true` を同時に立てるのが要点。ペインヘッダ（paneHeader.ts）が
+  // 「そのペインの名前」と「種別・cwd」のどちらを出すかをこのフラグで決める。
+  // **title の文字列比較では判定できない**（paneTree.ts の `renamed` コメント参照）。
+  // タブ自身の名前（Issue #131）。**ペインの名前とは別物。**
+  //
+  // 空文字（trim 後）は `undefined` に畳んで導出（`tabDisplayTitle` = 木の先頭
+  // leaf の title）へ戻す。**`renamePane` とは非対称**で、あちらは空文字を
+  // 「変更しない」として無視する。理由は既定値の有無で、ペインの名前には
+  // 常に spawn 時の既定（`zsh` / `basename(cwd)`）があるのに対し、タブの名前は
+  // 未設定が正常な状態なので、「消して既定に戻す」経路が要る。
+  const renameTab = useCallback((tabId: string, title: string) => {
+    const trimmed = title.trim();
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, title: trimmed === '' ? undefined : trimmed } : t)),
+    );
+  }, []);
+
+  const renamePane = useCallback((tabId: string, paneId: string, title: string) => {
     const trimmed = title.trim();
     if (trimmed === '') return;
     setTabs((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const paneId = tabLeaf(t).paneId;
-        return { ...t, layout: updateLeaf(t.layout, paneId, { title: trimmed }) };
-      }),
+      prev.map((t) =>
+        t.id === tabId
+          ? { ...t, layout: updateLeaf(t.layout, paneId, { title: trimmed, renamed: true }) }
+          : t,
+      ),
     );
   }, []);
 
@@ -489,6 +516,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     closeTab,
     markExited,
     renameTab,
+    renamePane,
     splitActivePane,
     closeActivePane,
     setActivePaneInTab,

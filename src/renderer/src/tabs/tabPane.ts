@@ -22,6 +22,22 @@ export interface TabState {
   layout: PaneNode;
   /** 木の中で「今表示している」leaf の paneId。 */
   activePaneId: string;
+  /**
+   * タブ自身の名前（Issue #131）。**未設定なら木の先頭 leaf から導出する**
+   * （`tabDisplayTitle`）。
+   *
+   * **なぜタブ側に持つのか。** それまでタブは名前という属性を持たず、タブバーは
+   * `tabLeaf(tab)`（＝いま選んでいるペイン）の `title` を借りて表示していた。
+   * 借り先が「今選んでいるペイン」なので、`Cmd+]` を押すたびに見出し・タブ上端の
+   * プロバイダ色・ツールチップ・**Mission Control 上のウィンドウ名**が同時に
+   * 書き換わっていた（`shortcuts.ts` 自身の見積もりで 40〜80回/日）。
+   *
+   * **借り先を「木の先頭 leaf」に固定するだけでは足りない。** `closePane` は
+   * 「2つの子を持つ分割ノードを、残った側の子1つに置き換える」ので、先頭の
+   * ペインを閉じると別の leaf が繰り上がる。ユーザーが「このタブの名前」として
+   * 付けた文字列が、**最初に開いたペインの寿命に縛られて消える**。
+   */
+  title?: string;
   createdAt: number;
   /**
    * アクティブなペイン（`activePaneId`）を最大化して表示するか（Issue #56 PR 8。
@@ -45,6 +61,38 @@ export interface TabState {
  */
 export function tabLeaf(tab: TabState): PaneLeaf {
   return resolveActiveLeaf(tab.layout, tab.activePaneId);
+}
+
+/**
+ * そのタブを**代表する** leaf（Issue #131）。木の先頭 = 左上のペイン。
+ *
+ * `tabLeaf`（いま選んでいるペイン）との違いが要点。**タブが何であるかを示す
+ * ものは、ここから引く**（見出し・プロバイダ色・ツールチップ）。
+ * `tabLeaf` から引くと `Cmd+]` のたびに書き換わる。
+ *
+ * **状態（終了・あなたの番）はここから引かない。** それぞれ別の意味が既に
+ * 決まっている（「あなたの番」は木の全 leaf を見る = `tabYourTurn.ts`、
+ * 終了は `issue-56/design-review.md:81` が「全 leaf が終了したときだけ」と
+ * 確定させている）。**識別と状態は別の軸**で、ここに混ぜると第三の意味が増える。
+ */
+export function tabRepresentativeLeaf(tab: TabState): PaneLeaf {
+  return flattenPaneTree(tab.layout)[0];
+}
+
+/**
+ * タブバー・ウィンドウタイトルに出す見出し（Issue #131）。
+ *
+ * **この関数がタブの見出しの唯一の正。** タブバー・macOS のウィンドウタイトルが
+ * 揃ってここを通る（借り先が箇所ごとにずれる状態を作らないため。それが
+ * まさに #131 で直した不具合だった）。
+ *
+ * `tab.title` が空文字だけになる経路は `renameTab` 側が `undefined` に
+ * 畳むが、外部から回り込む可能性を考えてここでも導出へ落とす（鉄則5）。
+ */
+export function tabDisplayTitle(tab: TabState): string {
+  const own = tab.title?.trim();
+  if (own !== undefined && own !== '') return own;
+  return tabRepresentativeLeaf(tab).title;
 }
 
 /**

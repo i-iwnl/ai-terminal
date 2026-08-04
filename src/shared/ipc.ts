@@ -490,6 +490,22 @@ export type AppAction =
    * 一切知らない）。
    */
   | { type: 'toggle-maximize-pane' }
+  /**
+   * アクティブなペインの名前を変更する（Issue #130）。タブバーの名前欄を
+   * 編集状態にして `.focus()` するところまでが Renderer の責務。
+   *
+   * **アクセラレータを割り当てない。** 想定頻度が低い操作に
+   * `Cmd+英数字` の名前空間を払わない（design-rules.md）。`menu.ts` の
+   * 「分割比を広げる / 狭める」と同じ形。
+   *
+   * **これがキーボードからの唯一の到達手段。** それまでリネームは
+   * タブのダブルクリックだけで、`AppAction` にも `menu.ts` にも無く、
+   * キーボードから1手も届かなかった（WCAG 2.1.1）。ペインヘッダを
+   * クリック可能にする案は、18px が 2.5.8 の 24x24 を割ること・Tab を
+   * xterm が食うこと・focus 効果と衝突して開いた瞬間に閉じることから
+   * 5人のレビューで否定された。
+   */
+  | { type: 'rename-active-pane' }
   /** 平坦化した順で次/前のペインへフォーカスを移す（`Cmd+]` / `Cmd+[`。design-review.md 提案 B'）。 */
   | { type: 'next-pane' }
   | { type: 'previous-pane' }

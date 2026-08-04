@@ -41,13 +41,21 @@ export interface TerminalPaneProps {
   /** このペインを説明する `role="tab"` の要素の id（`aria-labelledby` に使う）。panelId と同様、ルートだけが渡す。 */
   labelledBy?: string;
   /**
-   * このペインの種別 + cwd を説明する文字列（`tabs/paneHeader.ts`）。
-   * ペインヘッダの表示テキストと、`role="group"`（木のルートでない leaf）の
-   * aria-label の両方に使う（design-review.md 提案 G / PR 5「aria 名」）。
+   * ペインヘッダに実際に描く文字列（`tabs/paneHeader.ts` の `paneHeaderLabel`）。
+   * **単一スロット。** 名前を付けたペインはその名前、付けていなければ
+   * 「種別・cwd」（Issue #130。2要素を横に並べない理由は paneHeader.ts の冒頭）。
+   */
+  label: string;
+  /**
+   * `label` の完全版（`tabs/paneHeader.ts` の `paneAccessibleLabel`）。
+   * **`title` 属性（ツールチップ）と `role="group"` の aria-label の両方に使う**
+   * （Issue #130）。ヘッダは `text-overflow: ellipsis` で省略されるので、
+   * これが無いと切れた文字列を読む手段が画面上にも読み上げにも1つも無い。
+   *
    * ルートの leaf は role="tabpanel" + aria-labelledby が既に名前を持っている
    * （aria-labelledby が aria-label より優先されるため、両方渡しても壊れない）。
    */
-  label: string;
+  fullLabel: string;
   /**
    * この PTY が tmux でラップされて起動したか（`PaneLeaf.wrappedInTmux`）。
    *
@@ -116,6 +124,7 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     panelId,
     labelledBy,
     label,
+    fullLabel,
     wrappedInTmux,
     showHeader,
     fontFamily,
@@ -231,7 +240,13 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       id={panelId}
       role={panelId ? 'tabpanel' : 'group'}
       aria-labelledby={labelledBy}
-      aria-label={label}
+      // **可視テキストではなく完全版を名前にする**（Issue #130）。ヘッダは
+      // 単一スロットなので、名前を付けたペインでは「種別・cwd」が可視から
+      // 落ちる。xterm は WebGL レンダラで canvas に描くため、screenReaderMode が
+      // false のペイン（分割中の非アクティブなペイン全部）は支援技術から見て
+      // 中身が空で、この名前が唯一の情報源になる。
+      // 可視テキストは fullLabel の先頭に含まれる（WCAG 2.5.3 Label in Name）。
+      aria-label={fullLabel}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -256,9 +271,15 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
         // をやめた。「幾何を分岐させない」という design-review 提案 G の要求は、
         // 分割そのものが常に幅か高さのどちらかを変えるため、フローに入れても
         // pty:resize の発火回数が増えないことを実測で確認した上で満たしている）。
-        // 見た目の説明は aria-label（上の role="group"/"tabpanel"）と同じ
-        // 文字列なので、読み上げの二重化を避けて aria-hidden にする。
-        <div className="pane-header" aria-hidden="true">
+        // 見た目の説明は aria-label（上の role="group"/"tabpanel"）に完全版が
+        // 入っているので、読み上げの二重化を避けて aria-hidden にする。
+        //
+        // `title` 属性は Issue #130 で追加。`.pane-header` は
+        // `text-overflow: ellipsis` で省略されるのに、切れた文字列を読む手段が
+        // **画面上にも読み上げにも1つも無かった**（aria-hidden なので支援技術
+        // からも辿れない）。分割の下限幅ではヘッダの文字領域が約 148.6px しか
+        // 無く、`claude (再開)・my-repo` だけで既に切れる。
+        <div className="pane-header" aria-hidden="true" title={fullLabel}>
           {label}
         </div>
       )}
