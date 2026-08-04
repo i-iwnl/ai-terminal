@@ -2141,6 +2141,31 @@ button:focus-visible {
   outline-offset: -2px;
 }
 
+/* **タブのボタンだけ、リングをもう 2px 内側へ。**
+ *
+ * `.tab-bar__tab-button` は `align-self: stretch` なので border-box の上端が
+ * タブの content-box 上端に一致する = **プロバイダの色相アクセント（`border-top: 2px`）の真下**。
+ * 既定の `outline-offset: -2px` だと、帯とリングが**隙間 0px で接する**。
+ *
+ * これが Issue #165 後半を詰ませていた。帯を「面から見えるように」明るくすると
+ * 白いリングとの差が消えるが、**その2つの要求は同時に満たせない**
+ * （対 `#525252` で 3:1 には相対輝度 >= 0.3531、対 `#ffffff` で 3:1 には <= 0.3000。
+ * 区間が交わらないので 24bit の全色に解が無い）。
+ * **リングを 2px 内側へ寄せて面を挟めば「隣接色」ではなくなり、制約そのものが外れる。**
+ *
+ * 隙間の実測と、その隙間が 0 に戻っていないことの担保は
+ * `src/renderer/src/tabs/tabBandGeometry.ts`（符号と向きを閉じた純粋関数）と
+ * `test/unit/tab-band-geometry.test.ts` / S41 が持つ。**この値を宣言のまま検査しない。**
+ *
+ * **承知して受ける副作用: 選択中かつフォーカス中のタブは、下辺が白 4px の塊になる。**
+ * `.tab-bar__tab.is-active` の `box-shadow: inset 0 -2px 0 var(--focus-ring)` の
+ * すぐ内側にリングの下辺が来るため。上の「選択は下辺のみ・フォーカスは4辺」という
+ * 面積差での区別は、左右と上の3辺で保たれる（下辺だけは元々リングと重なっていて
+ * 面積差が付いていなかったので、区別の根拠が新たに失われるわけではない）。 */
+.tab-bar__tab-button:focus-visible {
+  outline-offset: -4px;
+}
+
 /* WCAG 2.2 の 2.5.8 Target Size（AA、最小 24x24 CSS px）対応。
  *
  * 見た目のボタン自体は小さいまま変えず、::before の透明な当たり判定だけを
