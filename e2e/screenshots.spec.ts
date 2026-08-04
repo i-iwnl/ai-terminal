@@ -598,11 +598,11 @@ test('screenshots S06 タブを増やす', async () => {
   await expect(tabs).toHaveCount(2);
 
   // Issue #20 I-1（PR 12）: 「+」は分割ボタン（+ ▾）になった。
-  // 押すと「新しいシェル / Claude / Gemini」のメニューが開く。
+  // 押すと「シェル / Claude / Gemini」のメニューが開く。
   await window.locator('button[aria-label="新しいタブを開く"]').click();
   const menu = window.locator('.tab-bar__new-menu');
   await expect(menu).toBeVisible();
-  await menu.locator('[role="menuitem"]', { hasText: '新しいシェル' }).click();
+  await menu.locator('[role="menuitem"]', { hasText: 'シェル' }).click();
   await expect(tabs).toHaveCount(3);
   await expect(tabs.last()).toHaveClass(/is-active/);
 

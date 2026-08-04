@@ -22,6 +22,7 @@ import {
   type SplitDirection,
 } from './paneTree';
 import { findTabByPtyId, tabLeaf, type TabState } from './tabPane';
+import { SHELL_FALLBACK_LABEL } from './paneHeader';
 import { resolveAgentTabTitle } from './tabTitle';
 
 export type { TabState };
@@ -211,7 +212,13 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           paneId: result.ptyId,
           ptyId: result.ptyId,
           ptyKind: kind,
-          title,
+          // **シェルの既定タイトルは呼び出し側ではなくここで決める**（Issue #137）。
+          // 以前は呼び出し側3箇所がリテラル `'zsh'` を渡しており、`$SHELL` が
+          // fish/bash の人にも `zsh` と表示していた。**正を1箇所に集める**ため、
+          // spawn 結果（Main の buildShellPlan が解決した実際のシェル）を採る。
+          // 呼び出し側が明示的なタイトルを渡したとき（履歴からの再開など）は
+          // そちらを優先する。
+          title: kind === 'shell' && title === '' ? (result.shellName ?? SHELL_FALLBACK_LABEL) : title,
           agentSessionId: result.agentSessionId,
           cwd,
           // ペインヘッダ（paneHeader.ts）が「claude (再開)」を出し分けるための
@@ -222,6 +229,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           // 捨てていた。閉じる確認の文言（closeTabCopy.ts）と検索バーの注記が
           // これを読む。**設定値ではなく spawn 時の実際の結果**であることが要点。
           wrappedInTmux: result.wrappedInTmux,
+          shellName: result.shellName,
         };
       } catch (err) {
         onError(describeSpawnError(err, kind));
@@ -251,7 +259,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     [spawnLeaf],
   );
 
-  const newShellTab = useCallback(() => spawn('shell', 'zsh'), [spawn]);
+  const newShellTab = useCallback(() => spawn('shell', ''), [spawn]);
 
   const newAgentTab = useCallback(
     async (kind: 'claude' | 'gemini', opts?: SpawnOpts): Promise<void> => {
@@ -314,7 +322,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
 
       if (remaining.length === 0) {
         // 最後の1枚を閉じた場合は、新しいシェルタブを自動で開く。
-        void spawn('shell', 'zsh');
+        void spawn('shell', '');
       }
     },
     [spawn],
@@ -338,7 +346,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       }
 
       const activeLeaf = tabLeaf(tab);
-      const newLeaf = await spawnLeaf('shell', 'zsh', activeLeaf.cwd);
+      const newLeaf = await spawnLeaf('shell', '', activeLeaf.cwd);
       if (!newLeaf) {
         // spawnLeaf は失敗時に onError 経由で既に通知を出している。
         return { ok: false, reason: '新しいペインの起動に失敗しました' };
@@ -486,7 +494,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   // 空文字（trim 後）は `undefined` に畳んで導出（`tabDisplayTitle` = 木の先頭
   // leaf の title）へ戻す。**`renamePane` とは非対称**で、あちらは空文字を
   // 「変更しない」として無視する。理由は既定値の有無で、ペインの名前には
-  // 常に spawn 時の既定（`zsh` / `basename(cwd)`）があるのに対し、タブの名前は
+  // 常に spawn 時の既定（シェル名 / `basename(cwd)`）があるのに対し、タブの名前は
   // 未設定が正常な状態なので、「消して既定に戻す」経路が要る。
   const renameTab = useCallback((tabId: string, title: string) => {
     const trimmed = title.trim();

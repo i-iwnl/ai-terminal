@@ -75,6 +75,28 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
       selector: '.terminal-pane.is-active .terminal-pane__container',
       property: 'box-shadow',
     },
+    // Issue #134（周3）。**`--status-your-turn` を高コントラストで上げた。**
+    // 理由は2つあり、どちらも独立に成り立つ:
+    //
+    // 1. 選択中タブの上では `--surface-tab-active` が #2e2e2e -> #525252 に
+    //    明るくなるのに前景が据え置きで、**6.70 -> 3.86 と 42% 落ちていた**
+    //    （「コントラストを上げる」を選んだ人にとって、このアプリで最も
+    //    情報量のある表示が悪化していた）
+    // 2. `--status-exited` を高コントラストで上げると、据え置きのままでは
+    //    **終了マークがあなたの番のドットより明るくなる**（styles.css 冒頭の
+    //    「強調するのは『あなたの番』の側」に反する）
+    //
+    // ここで測るのはサイドバーのドット（`--surface-0` の上）。この面は
+    // 高コントラストで変わらないので、**前景が明るくなったぶんがそのまま比に出る**
+    // = トークンの上書きが効いていることの直接の証拠になる。
+    // 下の `against` は S40 と同じ理由（塗りが非透明なので自分自身と比べて 1.0 になる）。
+    {
+      name: 'あなたの番のドット',
+      kind: 'non-text',
+      selector: '.task-item--your-turn .task-item__status-dot',
+      property: 'background-color',
+      againstColor: '--surface-2',
+    },
   ];
 
   const normal = await measureContrast(window, targets);
@@ -89,7 +111,7 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
         .join('\n'),
   );
 
-  // 3項目とも測れていること（セレクタが変わって静かに素通りしないように）
+  // 全項目とも測れていること（セレクタが変わって静かに素通りしないように）
   expect(Object.keys(high).sort()).toEqual(targets.map((t) => t.name).sort());
 
   // **どれも「上がる」こと。** 個別の数値は S40 が既定側を押さえているので、
@@ -110,4 +132,96 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
     getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim(),
   );
   expect(tertiary).toBe(secondary);
+
+  // --- Issue #134（周3）: 選択中タブの上の終了表示 -----------------------------
+  //
+  // **`@media (prefers-contrast: more)` は `--surface-tab-active` を
+  // #2e2e2e -> #525252 と明るくする。その面に乗る前景を数え直さないと、
+  // 「コントラストを上げる」がその箇所だけコントラストを下げる。**
+  // 実際 `--status-exited` を据え置いていたときは 4.47 -> 2.57 で、
+  // テキストの 4.5:1 どころか**非テキストの 3:1 すら割っていた**。
+  //
+  // **上の `targets` には入れられない。** この状態（終了したタブが選択されたまま）を
+  // 作るには新しいタブを1枚足して選択を移すしかなく、それをすると
+  // 「アクティブペインの枠線」が依存している前提（2枚目の分割タブが選択中）が崩れる。
+  // 測り方は同じ（既定 -> 高コントラストで2回測って向きを見る）。
+  //
+  // **`.tab-bar__tab.is-active .tab-bar__state-slot--exited` をここに入れている。**
+  // 周1 のコメントは「(対 --surface-1) は高コントラストで背景が変わらないので
+  // 必ず割る」と書いていたが、**それは非選択タブに限った話だった**。
+  // 同じセレクタが、タブの選択状態で別の面に乗る。選択中タブの上なら
+  // `--surface-tab-active` が動くので `high > normal` を満たす。
+  // （design-review で3人が独立に指摘した、周1 の予測の誤り）
+  await window.emulateMedia({ contrast: null });
+
+  await window.keyboard.press('Meta+t');
+  await expect(window.locator('.tab-bar__tab')).toHaveCount(3, { timeout: 15_000 });
+  const exitedScreen = window
+    .locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-screen')
+    .first();
+  await expect(exitedScreen).toContainText(/[%#]/, { timeout: 20_000 });
+  await window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-helper-textarea').focus();
+  await window.keyboard.type('exit');
+  await window.keyboard.press('Enter');
+  await expect(window.locator('.tab-bar__tab.is-active.is-exited')).toHaveCount(1, {
+    timeout: 15_000,
+  });
+
+  const exitedTargets: ContrastTarget[] = [
+    {
+      name: '終了したタブの文字（選択中）',
+      kind: 'text',
+      selector: '.tab-bar__tab.is-active.is-exited',
+      property: 'color',
+    },
+    {
+      name: '終了バッジの文字（選択中）',
+      kind: 'text',
+      selector: '.tab-bar__tab.is-active .tab-bar__exit-badge',
+      property: 'color',
+    },
+    {
+      name: '終了マークの塗り（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab.is-active .tab-bar__state-slot--exited',
+      property: 'background-color',
+      against: '.tab-bar__tab.is-active',
+    },
+  ];
+
+  const exitedNormal = await measureContrast(window, exitedTargets);
+  await window.emulateMedia({ contrast: 'more' });
+  const exitedHigh = await measureContrast(window, exitedTargets);
+
+  console.log(
+    '[S41] 終了色（既定 -> 高コントラスト）:\n' +
+      Object.keys(exitedNormal)
+        .map((k) => `  ${k}: ${exitedNormal[k].toFixed(2)} -> ${exitedHigh[k].toFixed(2)}`)
+        .join('\n'),
+  );
+
+  // 3項目とも測れていること（セレクタが変わって静かに素通りしないように）
+  expect(Object.keys(exitedHigh).sort()).toEqual(exitedTargets.map((t) => t.name).sort());
+
+  for (const name of exitedTargets.map((t) => t.name)) {
+    // **向きが正しいこと。** 上の targets と同じ不変条件を、この状態でも要求する。
+    expect(
+      exitedHigh[name],
+      `${name} が高コントラストで上がっていない（--status-exited の @media 上書きを確認すること）`,
+    ).toBeGreaterThan(exitedNormal[name]);
+
+    // **閾値そのものも見る。** `#f0b8b8` 対 `#525252` は 4.56 で、4.5 に対する
+    // 余裕が +1.3% しかない。固定値だけだと「上がったが足りない」に赤くならない。
+    expect(
+      exitedHigh[name],
+      `${name} が高コントラストで 4.5:1 を満たしていない`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+
+  // 既定側は**まだ 4.5 を割っている**（テキスト2件が 4.47）。
+  // ここは値ではなく結合状態の規則（`.tab-bar__tab.is-active.is-exited` に
+  // `--text-bright` を戻す）で解くのが筋、という design-review の結論に従い
+  // 別 Issue に切り出した。**割っている事実は固定しておく**（黙って腐らせない）。
+  expect(exitedNormal['終了したタブの文字（選択中）']).toBeCloseTo(4.47, 1);
+  expect(exitedNormal['終了バッジの文字（選択中）']).toBeCloseTo(4.47, 1);
 });

@@ -622,6 +622,17 @@ scenarios:
       status に出し分けている。S37（xterm の assertive live region が
       常に1個）・S48（.app-status の role="status" が常に1個）を
       壊していないことも合わせて固定する。
+      **Issue #136（#160 の周1）で、ペイン内の終了行
+      `[プロセスは終了しました（コード N）]` の assert を足した。**
+      `useTerminal.ts` がそのペインのスクロールバックへ書くこの行は、
+      **現状ただ1つの「ペイン単位で消えない終了表示」**（タブバーのバッジは
+      アクティブな leaf しか見ておらず、通知バナーは消え、Dock バッジは
+      exit を数えない）なのに、リポジトリ全体で assert が0本だった。
+      この spec が既にコード0とコード7の**両方**を打っているため、
+      追加のセットアップ無しで `label` のコード側2ケースを押さえられる
+      （シグナル側は harness から起こせない）。通知を全部閉じたあとに
+      置いてあるのは、「バナーは消えるがこの行は消えない」という主張
+      そのものを同じ流れの中で示すため。
 
   # --- ペイン分割（Issue #56 PR 4） -------------------------------------------
   - id: S56
@@ -821,14 +832,15 @@ scenarios:
     spec: S68-your-turn-jump-empty.spec.ts
     readme: false
     note: >-
-      Issue #20 J。次の「あなたの番」のタブへジャンプする `Cmd+J` /
-      `Cmd+Shift+J` の「該当タブが1つも無い」側（Issue #56 U4 と同じ
-      「何も起きないで終わらせない」の教訓）を見る。**実際にジャンプが
-      成功するケースはこのハーネスでは検証できない**（偽 CLI の agents.json
-      のフィクスチャ sessionId が、アプリが実際に起動するセッションの
-      agentSessionId と独立しているため。S15 / S63 が既に記録済みの同じ制限。
-      Issue #83 でハーネスの動的フィクスチャ化が解く予定）。探索そのもの
-      （`findNextYourTurnTab`）は test/unit/tab-your-turn.test.ts が固定している。
+      Issue #20 J。次の「あなたの番」のペインへジャンプする `Cmd+J` /
+      `Cmd+Shift+J` の「該当が1つも無い」側（Issue #56 U4 と同じ
+      「何も起きないで終わらせない」の教訓）を見る。**成功する側は S89 が担当する。**
+      かつてここには「成功するケースはこのハーネスでは検証できない
+      （解くのは Issue #83）」と書いてあったが、**#83 は CLOSED で
+      `setAgentEntries()` は実装済み**であり、S63 の「履歴 resume なら
+      agentSessionId を決め打てる」手法と組み合わせれば作れる（#160 の周6 で是正）。
+      探索そのもの（`findNextYourTurnPane`）は
+      test/unit/tab-your-turn.test.ts が固定している。
 
   # --- PR 19 差し戻し: タブの当たり判定 -------------------------------------
   - id: S69
@@ -1246,3 +1258,107 @@ scenarios:
       ペインを書き換えていた）と、名前を付けたタブは**先頭ペインを閉じても
       見出しが変わらない**こと（借り先を先頭 leaf に固定するだけの案では、
       `closePane` が木を畳んで別の leaf が繰り上がるため見出しがジャンプする）。
+
+  - id: S87
+    title: 分割したタブの終了表示が、どのペインが終了しているかで決まる
+    spec: S87-tab-exit-across-panes.spec.ts
+    readme: false
+    note: >-
+      Issue #160 周1 / Issue #142 の**関門**。タブの終了表示（`TabBar.tsx` の
+      `leaf.exit` 参照4箇所 = 文字色・状態スロットの四角・可視バッジ・読み上げ）が、
+      分割したタブの中で**どのペインが終了しているか**にどう反応するかを固定する。
+      **characterization テストで、1つ目のケースは確定仕様に反した現状を記録している**
+      （`.claude/workspace/issue-56/design-review.md:81` は「全 leaf が終了した
+      ときだけ出す」と確定させているが、実装は `tabLeaf(tab).exit` =
+      アクティブな leaf しか見ていない）。実測したところ「片方だけ exit /
+      両方 exit」を見るテストは e2e にも unit にも1本も無く、**`every` に変えても
+      `some` に変えても全部 green のまま**だった。3ケース（終了ペインが
+      アクティブ / 生存ペインがアクティブ / 両方終了）を書くことで、現状・
+      `some`・`every` の3つの挙動が互いに区別できる。**周2（#142）で
+      1ケース目の期待値を反転させ、`tabAllPanesExited`（tabPane.ts）へ
+      差し替えた。** いまはケース1 と ケース2 がどちらも「出さない」で、
+      **同じ木なのに `Cmd+]` で表示が変わらない**ことがそのまま検査になっている。
+
+  - id: S88
+    title: 画面に出るシェル名が、実際に起動したシェル（config.shell）を反映する
+    spec: S88-shell-name-follows-config.spec.ts
+    readme: false
+    note: >-
+      Issue #137。Renderer が `'zsh'` をリテラルで4箇所持っており、
+      `$SHELL=/bin/fish` の人にも `zsh` と表示していた。決定順の唯一の正は
+      Main の `buildShellPlan()`（`config.shell -> $SHELL -> /bin/zsh`）で、
+      Renderer は `AppConfig.shell` を読んでも既定が undefined なので
+      `$SHELL` を知りえない。そこで `SpawnPtyResult.shellName` ->
+      `PaneLeaf.shellName` で値を運ぶようにした（`wrappedInTmux` と同型。
+      spawn の瞬間に1回だけ決まる値なので leaf に持つ）。
+      **既存の関門（S57 / S86 / test/unit/pane-header.test.ts / 撮影）は
+      すべて「zsh と出る」を見ているが、ハーネスの `$SHELL` が `/bin/zsh` である
+      以上、リテラルに戻しても全部 green のまま**だった（loop.md の
+      「検査は正しいが、その条件を踏んでいない」）。本シナリオは
+      `launchApp({ config: { shell: '/bin/bash' } })` で `$SHELL` と違うシェルを
+      踏み、タブ見出し・ペインヘッダ・aria-label の3つの出口すべてが追従すること、
+      および `zsh` がどこにも残っていないことを見る。
+      **プロンプトを待たない**（ハーネスの `PROMPT` は `.zshrc` に書いてあり
+      bash では効かない）。
+
+  - id: S89
+    title: Cmd+J が、分割したタブの裏で待っている claude のペインまで着地する
+    spec: S89-your-turn-jump-lands-on-pane.spec.ts
+    readme: false
+    note: >-
+      Issue #132。`findNextYourTurnTab` は tabId しか返しておらず、呼び出し側は
+      `setActiveTabId` しかできなかった。分割しているタブでは**タブが前に出ても
+      アクティブなペインは前のまま**なので、待っている claude が裏のペインに
+      居ると飛んだ先で入力できない（タブ止まり）。`findNextYourTurnPane` へ
+      置き換え、着地は通知クリック・タスク一覧クリックと同じ
+      `focusPaneLocation` を通す。
+      **「このハーネスでは成功経路を作れない」という注記は古かった。**
+      S68 / S78 / S63 と本ファイルの4箇所が「解くのは Issue #83」と書いていたが、
+      #83 は CLOSED で `setAgentEntries()` は実装済み。S63 の
+      「履歴 resume なら agentSessionId を決め打てる」手法と組み合わせれば、
+      偽 CLI の出力とアプリが実際に起動したセッションを一致させられる。
+      本シナリオがその実例で、**#160 の周6 で4箇所の注記も是正した**。
+
+  - id: S90
+    title: Cmd+W で回収不能な gemini ペインを閉じようとすると確認が出て、シェルでは出ない
+    spec: S90-close-pane-orphan-confirm.spec.ts
+    readme: false
+    note: >-
+      Issue #158。`Cmd+W`（ペインを閉じる）はペインが1枚しか無いタブでは
+      結果としてタブごと閉じるが、**その経路は「タブを閉じる唯一の入口」と
+      されていた `requestCloseTab` を通っていなかった**（`App.tsx` の
+      `case 'close-pane'` が `closeActivePane` を直接呼んでいた）。
+      そのため tmux でラップされた gemini のペインを `Cmd+W` で閉じると、
+      **確認も通知も一切出ないまま、アプリからは二度と回収できない tmux
+      セッションとプロセスが残る**。`Cmd+W` は `Cmd+Option+W` より押しやすく、
+      実運用ではこちらが主要な経路になる。
+      判定は `closeTabCopy.ts` の `needsCloseConfirmation` に切り出して
+      両経路で共有する（`test/unit/close-tab-copy.test.ts` が
+      「1 leaf・tmux+gemini / tmux+claude / tmux 無し」の3ケースを固定）。
+      本シナリオは S84 と同じ偽 tmux レーン（`fakeTmux: true`）で
+      **実際に `Cmd+W` を押したときにその判定を通ること**を見る。
+      **手数が増えていないこと（シェルでは確認が出ない）を同じ spec で見る**
+      のが要点で、これが無いと「全部確認する」直し方でも green になる。
+
+  - id: S91
+    title: ターミナル面の右クリックでメニューが出て、項目を選ぶと既存の操作が走る
+    spec: S91-terminal-context-menu.spec.ts
+    readme: false
+    note: >-
+      Issue #135。`contextmenu` / `Menu.popup` はそれまでアプリ全体に0件で、
+      Terminal.app / iTerm2 / Ghostty がいずれも持つ導線が無かった。
+      **ネイティブ（Main の `Menu.popup()`）を選んだ**（design-review の5人中3人）。
+      HTML メニューは `.terminal-stack` / `.pane-split__cell` の
+      `overflow: hidden` で切られ、DOM フォーカスを奪って DECSET 1004 の
+      `ESC [ O` を PTY へ流し、コピー / ペーストが xterm 本来の経路
+      （bracketed paste を含む）から外れる。理由は
+      `src/shared/context-menu.ts` の冒頭が正。
+      **「ネイティブは E2E で検証できない」は誤りだった** — `Menu.prototype.popup`
+      は JS 側にあるので `app.evaluate()` から差し替えられ、項目も `click()` も
+      取れる（Electron 43 で実測）。本シナリオは**本物を開かずに**
+      （ネイティブメニューはモーダルなトラッキングループに入るため）配線を見る:
+      右クリック -> Renderer が状況を送る -> Main が popup を呼ぶ -> 項目を
+      click すると既存の `AppAction` が流れて実際に分割される。
+      あわせて「1ペインでは『ペイン』という語を出さない」「選択が無ければ
+      コピーが無効」「右クリックしたペインがアクティブになる」も見る。
+      **項目・並び・語・有効/無効の正は `test/unit/context-menu.test.ts`。**

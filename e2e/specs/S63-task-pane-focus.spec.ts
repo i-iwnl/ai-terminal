@@ -34,9 +34,12 @@ async function sendSessionFocus(app: LaunchedApp['app'], agentSessionId: string)
  * **なぜタスク一覧の行クリックではなく OS 通知（session:focus）から検証するか**:
  * `claude agents --json` はハーネスが固定した agents.json を返す偽 CLI で、
  * そこに含まれる sessionId はアプリがこれから起動するセッションの UUID とは
- * 独立している（S15 が既に記録済みの制限。動的に差し替えられるハーネスが無い）。
- * そのため「タスク一覧の行が実際に owned/clickable になる」ケースはこの
- * ハーネス構成では再現できない。一方 `session:focus`（OS 通知クリック）と
+ * 独立している（S15 が既に記録済みの制限）。そのため**この spec の構成では**
+ * 「タスク一覧の行が実際に owned/clickable になる」ケースを再現できない。
+ * **かつてここには「動的に差し替えられるハーネスが無い」と書いてあったが、
+ * それは古い**（`setAgentEntries()` が実装済み。#160 の周6 で是正。
+ * 実際に使っているのは S89）。この spec は書き換えを使わずに済む経路を選んでいる、
+ * というだけのこと。一方 `session:focus`（OS 通知クリック）と
  * タスク一覧の行クリックは、どちらも App.tsx の同じ `focusPaneLocation`
  * （共通のペイン粒度解決）を通るため、`session:focus` を直接送ることで
  * 両方が共有するロジックを実際に検証できる。

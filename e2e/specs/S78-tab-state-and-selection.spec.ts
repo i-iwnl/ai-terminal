@@ -36,11 +36,12 @@ import { contrastRatio } from '../../src/shared/theme';
  * （`tabYourTurn.ts` の `tabHasYourTurn`）もデータ（`lib/agentTasksStore.ts`）も
  * 既にあり、**唯一の利用者が `Cmd+J` だけ**という状態だった。
  *
- * > **ドットが「出る」側は E2E では検証できない。** 偽 CLI の `agents.json` は
- * > 固定で、その `sessionId` と実際に開いたタブの `agentSessionId`（アプリが
- * > 採番した UUID）は一致しない。同じ制約で `Cmd+J` の成功経路も検証できておらず、
- * > 解くのは #120 の D-2（動的フィクスチャ）の担当。
- * > **ここでは「出ない側」と、出す仕組みが正しく組まれていることを見る。**
+ * > **ドットが「出る」側は S89 が見る。この spec は「出ない側」を担当する。**
+ * > かつてここには「E2E では検証できない。解くのは #120 D-2（動的フィクスチャ）」と
+ * > 書いてあったが、**その D-2 は実装済み**（`setAgentEntries()`）で、記述が
+ * > 古くなっていた（#160 の周6 で是正）。この spec 自体は `setAgentEntries()` を
+ * > 呼ばないので、**固定 `agents.json` の `sessionId` と実タブの `agentSessionId` は
+ * > 一致せず、ドットが出ないのが正しい**という結論は変わらない。
  * > 出る条件そのものは `test/unit/tab-your-turn.test.ts` が固定している。
  */
 test('S78 選択中タブに白い下辺の手がかりがあり、状態スロットが色だけに頼らない', async () => {
@@ -97,7 +98,7 @@ test('S78 選択中タブに白い下辺の手がかりがあり、状態スロ�
     // --- 2. 非選択タブには線が無い（線が「選択状態」を表していること） -----------
     // 2枚目を開いて1枚目を非選択にする。
     await window.locator('.tab-bar__new').click();
-    await window.locator('.tab-bar__new-menu-item', { hasText: '新しいシェル' }).click();
+    await window.locator('.tab-bar__new-menu-item', { hasText: 'シェル' }).click();
     await expect(window.locator('.tab-bar__tab')).toHaveCount(2, { timeout: 15_000 });
 
     const inactiveShadow = await window
@@ -107,8 +108,9 @@ test('S78 選択中タブに白い下辺の手がかりがあり、状態スロ�
     expect(inactiveShadow, '非選択タブに線が出ていてはいけない').not.toContain('inset');
 
     // --- 3. 状態スロット -------------------------------------------------------
-    // ハーネスの固定 agents.json の sessionId は実タブの agentSessionId と
-    // 一致しないので、**ドットは出ない**のが正しい（上のコメント参照）。
+    // この spec は `setAgentEntries()` を呼ばないので、固定 agents.json の
+    // sessionId は実タブの agentSessionId と一致せず、**ドットは出ない**のが正しい
+    // （上のコメント参照。出る側は S89）。
     const slots = await window.evaluate(() => {
       const all = [...document.querySelectorAll('.tab-bar__state-slot')];
       return {

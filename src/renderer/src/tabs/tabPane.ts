@@ -96,6 +96,35 @@ export function tabDisplayTitle(tab: TabState): string {
 }
 
 /**
+ * そのタブの**全ペインが終了しているか**（Issue #142。タブバーの終了表示用）。
+ *
+ * **確定仕様は `.claude/workspace/issue-56/design-review.md:81`**
+ * 「タブの終了バッジは全 leaf が終了したときだけ出す」。
+ *
+ * それまで `TabBar.tsx` は `tabLeaf(tab).exit`（＝いま選んでいるペイン）を見ており、
+ * `every` でも `some` でもない**第三の挙動**だった。木の中身が1つも変わらないのに、
+ * `Cmd+]` でアクティブなペインを移しただけでタブの終了表示が付いたり消えたりする。
+ *
+ * **`some`（いずれかが終了したら出す）にしてはいけない。** タブバーの状態スロットは
+ * 「終了 -> あなたの番 -> 無印」の三分岐で終了を優先するため（プロセスが終わっている
+ * タブに「あなたの番」のドットを出しても、押した先で入力できない）、`some` にすると
+ * 「claude があなたの番 + 隣の zsh を exit した」タブから**あなたの番のドットが消える**。
+ * 待たせている状態が分かるという原則を、分割中だけ壊す。
+ *
+ * 対になる `tabHasYourTurn`（`tabYourTurn.ts`）は木の全 leaf を `some` で見る。
+ * **同じ「木全体を見る」でも量化子が違う**のは、意味が違うから:
+ * あなたの番は「1つでも待っていれば待っている」、終了は「全部終わって初めて終わり」。
+ *
+ * `flattenPaneTree` は必ず1枚以上返すので `every` の vacuous truth は起きないが、
+ * 外部から回り込む可能性を考えて空配列を false に畳んでおく（鉄則5）。
+ */
+export function tabAllPanesExited(layout: PaneNode): boolean {
+  const leaves = flattenPaneTree(layout);
+  if (leaves.length === 0) return false;
+  return leaves.every((leaf) => leaf.exit !== undefined);
+}
+
+/**
  * ptyId からタブを探す（PTY の終了イベント・cwd 追従の突き合わせに使う）。
  *
  * **`tabLeaf(t)`（アクティブな leaf 1枚だけ）ではなく、木の全 leaf を見る。**

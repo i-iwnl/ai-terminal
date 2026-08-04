@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  SHELL_FALLBACK_LABEL,
   paneAccessibleLabel,
   paneHeaderLabel,
   paneKindLabel,
@@ -25,12 +26,13 @@ function leaf(overrides: Partial<PaneLeaf>): PaneLeaf {
     ptyId: 'pty-1',
     ptyKind: 'shell',
     title: 'zsh',
+    shellName: 'zsh',
     ...overrides,
   };
 }
 
 describe('paneHeaderLabel', () => {
-  it('シェルペインは種別 zsh + cwd の basename', () => {
+  it('シェルペインは実際のシェル名 + cwd の basename', () => {
     expect(paneHeaderLabel(leaf({ ptyKind: 'shell', cwd: '/Users/foo/work/demo-project' }))).toBe(
       'zsh・demo-project',
     );
@@ -137,7 +139,7 @@ describe('paneKindLabel', () => {
 describe('paneAccessibleLabel', () => {
   it('名前を付けていなければ、種別・cwd を1回だけ出す（同じ文字列を2回並べない）', () => {
     expect(paneAccessibleLabel(leaf({ ptyKind: 'shell', cwd: '/Users/foo/repo-a' }))).toBe(
-      'zsh・repo-a',
+      'zsh・repo-a、シェル',
     );
   });
 
@@ -166,7 +168,7 @@ describe('paneAccessibleLabel', () => {
   it('名前が無く終了しているペインも、種別・cwd を2回並べない', () => {
     expect(
       paneAccessibleLabel(leaf({ ptyKind: 'shell', cwd: '/Users/foo/repo-a', exit: { exitCode: 0 } })),
-    ).toBe('zsh・repo-a、終了');
+    ).toBe('zsh・repo-a、シェル、終了');
   });
 
   it('exitCode 0（正常終了）でも「終了」を出す（exit の有無で判定していて、コードの値では判定していない）', () => {
@@ -174,5 +176,81 @@ describe('paneAccessibleLabel', () => {
       leaf({ ptyKind: 'shell', cwd: '/repo', exit: { exitCode: 0 } }),
     );
     expect(label.endsWith('、終了')).toBe(true);
+  });
+});
+
+// Issue #137。ペインヘッダの種別ラベルは、実際に起動したシェルの実行ファイル名を出す。
+//
+// それまで `'zsh'` がハードコードされており、`$SHELL=/bin/fish` の人にも `zsh` と
+// 表示していた。決定順の唯一の正は Main の `buildShellPlan()`
+// （`config.shell -> $SHELL -> /bin/zsh`）で、Renderer は `AppConfig.shell` を
+// 読んでも既定が undefined なので `$SHELL` を知りえない。そのため
+// `SpawnPtyResult.shellName` -> `PaneLeaf.shellName` で値を運ぶ。
+describe('paneKindLabel のシェル名（Issue #137）', () => {
+  it('leaf.shellName をそのまま出す（zsh 決め打ちではない）', () => {
+    expect(paneKindLabel(leaf({ ptyKind: 'shell', shellName: 'fish', cwd: '/Users/foo/repo' }))).toBe(
+      'fish・repo',
+    );
+    expect(paneKindLabel(leaf({ ptyKind: 'shell', shellName: 'bash', cwd: '/Users/foo/repo' }))).toBe(
+      'bash・repo',
+    );
+  });
+
+  it('shellName が無ければ shell へ縮退する（**zsh へ戻さない**。鉄則5）', () => {
+    expect(
+      paneKindLabel(leaf({ ptyKind: 'shell', shellName: undefined, cwd: '/Users/foo/repo' })),
+    ).toBe(`${SHELL_FALLBACK_LABEL}・repo`);
+    // 空文字・空白だけも同じ扱い（外部から回り込む値を想定する）
+    expect(paneKindLabel(leaf({ ptyKind: 'shell', shellName: '   ', cwd: '/Users/foo/repo' }))).toBe(
+      `${SHELL_FALLBACK_LABEL}・repo`,
+    );
+  });
+
+  it('claude / gemini は shellName を持っていても無視する', () => {
+    // Main は kind !== 'shell' では shellName を埋めないが、万一入ってきても
+    // claude のペインが `tmux` などと名乗らないことを型で固定する。
+    expect(
+      paneKindLabel(leaf({ ptyKind: 'claude', shellName: 'tmux', cwd: '/Users/foo/repo' })),
+    ).toBe('claude・repo');
+  });
+
+  it('再開の表記はシェル名にも同じ形で乗る', () => {
+    expect(
+      paneKindLabel(leaf({ ptyKind: 'shell', shellName: 'fish', cwd: '/Users/foo/repo', isResume: true })),
+    ).toBe('fish (再開)・repo');
+  });
+});
+
+// Issue #137 の design-review（a11y）。分割中の非アクティブなペインは
+// screenReaderMode が渡らず WebGL で描かれるため、支援技術から見て中身が空。
+// そのペインについて届く情報は aria-label だけなので、**役割の語を必ず添える**。
+describe('paneAccessibleLabel の役割語（Issue #137）', () => {
+  it('シェルには「シェル」を添える（fish / nu が単独で読まれても、何かが分かる）', () => {
+    expect(paneAccessibleLabel(leaf({ ptyKind: 'shell', shellName: 'fish', cwd: '/Users/foo/repo' }))).toBe(
+      'fish・repo、シェル',
+    );
+  });
+
+  it('claude / gemini には添えない（実行ファイル名と同じことを言っているため）', () => {
+    expect(paneAccessibleLabel(leaf({ ptyKind: 'claude', cwd: '/Users/foo/repo' }))).toBe(
+      'claude・repo',
+    );
+    expect(paneAccessibleLabel(leaf({ ptyKind: 'gemini', cwd: '/Users/foo/repo' }))).toBe(
+      'gemini・repo',
+    );
+  });
+
+  it('名前を付けたシェルペインでは、名前 -> 種別・cwd -> 役割語 の順になる（WCAG 2.5.3）', () => {
+    expect(
+      paneAccessibleLabel(
+        leaf({
+          ptyKind: 'shell',
+          shellName: 'bash',
+          title: 'ビルド用',
+          cwd: '/Users/foo/repo',
+          renamed: true,
+        }),
+      ),
+    ).toBe('ビルド用、bash・repo、シェル');
   });
 });

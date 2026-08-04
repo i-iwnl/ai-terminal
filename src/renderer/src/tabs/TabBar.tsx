@@ -82,7 +82,13 @@ import {
 import { flattenPaneTree } from './paneTree';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
-import { tabDisplayTitle, tabLeaf, tabRepresentativeLeaf, type TabState } from './tabPane';
+import {
+  tabAllPanesExited,
+  tabDisplayTitle,
+  tabLeaf,
+  tabRepresentativeLeaf,
+  type TabState,
+} from './tabPane';
 import { providerLabel } from './tabProvider';
 // 「あなたの番」の判定は tabYourTurn.ts が唯一の正（Cmd+J と同じ関数を使う。
 // ここで独自に status を解釈すると、状態の意味が2箇所に散る）。
@@ -385,15 +391,14 @@ export default function TabBar({
             const isEditing = tab.id === editingTabId;
             const isActive = tab.id === activeTabId;
             // PTY のメタ（title / kind / exit）は leaf に持たせてある
-            // （design-review Q4）ので、タブ自体からではなく tabLeaf() で
-            // leaf を引いてから読む。木は常に leaf 1枚（PR 3）。
+            // （design-review Q4）ので、タブ自体からではなく leaf を引いてから読む。
             // **識別（何のタブか）と状態（終了・あなたの番）で引き先を分ける**
             // （Issue #131）。識別は木の先頭 leaf を代表として使い、`Cmd+]` で
-            // 動かないようにする。状態はそれぞれ別の意味が既に決まっているので
-            // ここでは触らない（`tabHasYourTurn` は木の全 leaf、`exit` は
-            // `issue-56/design-review.md:81` が「全 leaf が終了したときだけ」と
-            // 確定させている。実装がアクティブ leaf のままなのは別 Issue）。
-            const leaf = tabLeaf(tab);
+            // 動かないようにする。**状態はどちらも木の全 leaf を見る**（Issue #142）。
+            // 量化子だけが違う: あなたの番は `some`（1つでも待っていれば待っている）、
+            // 終了は `every`（`issue-56/design-review.md:81` の確定仕様）。
+            // **この行より下で `tabLeaf(tab)`（アクティブなペイン）を読まない。**
+            // 読むと `Cmd+]` を押しただけで表示が変わる（#131 / #142 で直した不具合）。
             const repLeaf = tabRepresentativeLeaf(tab);
             const displayTitle = tabDisplayTitle(tab);
             const provider = providerLabel(repLeaf.ptyKind);
@@ -407,11 +412,12 @@ export default function TabBar({
             // 「あなたの番」はドット（丸）だけでなく**語でも伝える**（原則2:
             // 色相の違いは手がかりに数えない）。終了マーク（四角）とは形も違う。
             const isYourTurn = tabHasYourTurn(tab.layout, yourTurnIds);
+            const allExited = tabAllPanesExited(tab.layout);
             const tabAccessibleLabel = [
               displayTitle,
               provider,
               isYourTurn ? 'あなたの番' : undefined,
-              leaf.exit ? '終了' : undefined,
+              allExited ? '終了' : undefined,
             ]
               .filter((part): part is string => part !== undefined && part !== '')
               .join('、');
@@ -419,7 +425,7 @@ export default function TabBar({
               <div
                 key={tab.id}
                 className={`tab-bar__tab tab-bar__tab--${repLeaf.ptyKind}${isActive ? ' is-active' : ''}${
-                  leaf.exit ? ' is-exited' : ''
+                  allExited ? ' is-exited' : ''
                 }`}
               >
                 {/* 先頭の固定幅スロット。状態専用（Issue #20 C）。プロバイダの区別は
@@ -429,11 +435,15 @@ export default function TabBar({
                     形が違うので、色に頼らずに区別できる（原則2）。
                     **終了を優先する**（プロセスが終わっているタブに「あなたの番」の
                     ドットを出しても、押した先で入力できない）。
+                    **この優先順位があるから、終了は `every` でなければならない**
+                    （Issue #142）。`some` にすると「claude があなたの番 + 隣の zsh を
+                    exit した」タブで終了が勝ち、押せば入力できるのに
+                    あなたの番のドットが消える。
                     装飾要素なので aria-hidden にする。語のほうは
                     tabAccessibleLabel が持つ（「終了」は末尾バッジも伝えている）。 */}
                 <span
                   className={`tab-bar__state-slot${
-                    leaf.exit
+                    allExited
                       ? ' tab-bar__state-slot--exited'
                       : isYourTurn
                         ? ' tab-bar__state-slot--your-turn'
@@ -523,7 +533,7 @@ export default function TabBar({
                     >
                       {displayTitle}
                     </span>
-                    {leaf.exit && <span className="tab-bar__exit-badge">終了</span>}
+                    {allExited && <span className="tab-bar__exit-badge">終了</span>}
                   </button>
                 )}
               </div>
@@ -561,7 +571,16 @@ export default function TabBar({
                 onClick={() => selectNewMenuItem(onNewShell)}
                 onKeyDown={(e) => handleNewMenuItemKeyDown(e, 0)}
               >
-                新しいシェル
+                {/* **「新しい」を付けない**（Issue #137）。トリガーが
+                    `aria-label="新しいタブを開く"`、メニュー自身が
+                    `aria-label="新しいタブの種類"` を既に持っているので、
+                    項目側で繰り返すと読み上げが「新しいタブの種類、新しいシェル」になる。
+                    同じメニューの `Claude` / `Gemini` は裸の名詞なので、
+                    ここだけ動詞的だと3択が同格に見えない。
+                    **アプリメニュー側（menu.ts の「新しいシェルタブ」）は縮めない。**
+                    あちらは直下に「右に分割」（これもシェルを作る）が並ぶので、
+                    「タブ」の2文字が分割との区別を担っている。 */}
+                シェル
               </button>
               <button
                 type="button"

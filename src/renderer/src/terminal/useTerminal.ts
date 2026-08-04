@@ -60,6 +60,19 @@ export interface TerminalHandle {
    * として比率だけのフォールバックに倒すため、ここで例外を投げる必要は無い。
    */
   getCellMetrics(): PaneCellMetrics;
+  /**
+   * 右クリックメニューを出してよい状況かと、そのときの選択の有無（Issue #135）。
+   *
+   * **マウス報告モード中は出さない。** `vim`（`set mouse=a`）/ `htop` /
+   * **既定で tmux にラップされるエージェントタブ**は、右ボタンを自分で受け取って
+   * 自前のメニューや操作に使う。そこへアプリのメニューを被せると、
+   * **いちばん使う画面でいちばん壊れる**（tmux 3.x の `MouseDown3Pane` は
+   * 既定で `display-menu`）。判定材料は xterm の公開 API
+   * （`term.modes.mouseTrackingMode`）にある。
+   *
+   * Terminal がまだ無い異常時は「出さない」に倒す（鉄則5）。
+   */
+  getContextMenuState(): { allowed: boolean; hasSelection: boolean };
 }
 
 export interface UseTerminalOptions {
@@ -296,6 +309,14 @@ export function useTerminal(
     },
     findNext: () => findInDirection('next'),
     findPrevious: () => findInDirection('previous'),
+    getContextMenuState: (): { allowed: boolean; hasSelection: boolean } => {
+      const term = termRef.current;
+      if (!term) return { allowed: false, hasSelection: false };
+      return {
+        allowed: term.modes.mouseTrackingMode === 'none',
+        hasSelection: term.hasSelection(),
+      };
+    },
     getCellMetrics: (): PaneCellMetrics => {
       const container = containerRef.current;
       const term = termRef.current;

@@ -62,10 +62,15 @@ import {
   tabLeaf,
   type PaneLocation,
 } from './tabs/tabPane';
-import { findNextYourTurnTab } from './tabs/tabYourTurn';
+import { findNextYourTurnPane } from './tabs/tabYourTurn';
 import { previousActiveTab, recordActiveTab, type TabHistory } from './tabs/tabHistory';
 import CloseTabConfirmDialog from './tabs/CloseTabConfirmDialog';
-import { closeTabCopy, summarizeClosingPanes, type CloseTabCopy } from './tabs/closeTabCopy';
+import {
+  closeTabCopy,
+  needsCloseConfirmation,
+  summarizeClosingPanes,
+  type CloseTabCopy,
+} from './tabs/closeTabCopy';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
@@ -193,7 +198,9 @@ export default function App(): ReactElement {
     startRenameRef.current = startRename;
   }, []);
   // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
-  // 2つ以上の PTY を一度に閉じるときだけ立つ（requestCloseTab 参照）。
+  // 確認が要ると判定されたときだけ立つ（条件は closeTabCopy.ts の
+  // `needsCloseConfirmation` が唯一の正。**「2つ以上のときだけ」ではない** —
+  // 1本でも回収できなくなるもの（tmux + gemini）があれば立つ）。
   //
   // **Issue #121 A-3: 文言は「開く時点の内訳」から作って持ち回る。** 表示中に
   // ペインの状態が変わっても、確認した内容と実行する内容がずれないようにするため。
@@ -302,25 +309,24 @@ export default function App(): ReactElement {
    * タブバーの x ボタン（TabBar.tsx）とメニュー / キーボード（`close-tab`
    * アクション）の両方がここを通る。
    *
-   * **2つ以上の PTY を一度に閉じるときだけ確認する。** 1ペインのタブ
-   * （PTY 1本）はそのまま閉じる。`Cmd+Shift+W` を新設していないため、
-   * タブバーの x ボタンがマウス経由の抜け穴にならないよう、ここで両方の
-   * 入口を合流させる。
+   * **確認を出す条件は `needsCloseConfirmation`（closeTabCopy.ts）が唯一の正。**
+   * 2つ以上の PTY を一度に閉じるとき、または1本でも閉じると回収できなくなる
+   * もの（tmux + gemini）があるときに確認する。それ以外はそのまま閉じる。
+   *
+   * `Cmd+Shift+W` を新設していないため、タブバーの x ボタンがマウス経由の
+   * 抜け穴にならないよう、ここで入口を合流させる。**`Cmd+W`（`close-pane`）が
+   * 最後の1枚を閉じる場合もここへ来る**（Issue #158。それまで `close-pane` は
+   * `closeActivePane` を直接呼び、この判定を1度も通らなかった）。
    */
   const requestCloseTab = useCallback(
     (tabId: string): void => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
       const leaves = tab ? flattenPaneTree(tab.layout) : [];
-      const summary = summarizeClosingPanes(leaves);
-      // **1ペインでも、閉じると回収できなくなるものがあるなら確認する**（Issue #121）。
-      //
-      // tmux でラップされた gemini は、タブを閉じた時点で tmux セッション名を
-      // 二度と再現できず、**アプリからは永久に拾い直せない**（src/main/pty/tmux.ts）。
-      // 実測でも、タブを閉じたあと tmux セッションと中のプロセスが生き残った。
-      // claude は履歴から resume すれば同じセッションに戻れるので、ここでは止めない
-      // （タブを閉じるのは1日に何十回もある操作なので、確認は不可逆なものだけに絞る）。
-      if (leaves.length >= 2 || summary.persistentOrphaned > 0) {
-        setCloseConfirmation({ tabId, copy: closeTabCopy(summary) });
+      // 判定の正は `closeTabCopy.ts` の `needsCloseConfirmation`（Issue #158 で
+      // ここから切り出した）。**`Cmd+W` の経路と同じ関数を共有させるため**で、
+      // 条件をこの場に書き戻さないこと。
+      if (needsCloseConfirmation(leaves)) {
+        setCloseConfirmation({ tabId, copy: closeTabCopy(summarizeClosingPanes(leaves)) });
         return;
       }
       void performCloseTab(tabId);
@@ -536,7 +542,24 @@ export default function App(): ReactElement {
           });
           break;
         }
-        case 'close-pane':
+        case 'close-pane': {
+          // **最後の1枚を閉じる = タブごと閉じる。** その場合は
+          // `requestCloseTab`（タブを閉じる唯一の入口）へ合流させる（Issue #158）。
+          //
+          // それまでこの経路は `closeActivePane` を直接呼んでおり、**確認の判定を
+          // 1度も通らなかった**。tmux + gemini のペインを `Cmd+W` で閉じると、
+          // 確認も通知も出ないまま、アプリからは二度と回収できない tmux セッションと
+          // プロセスが残る。`Cmd+W` は `Cmd+Option+W` より押しやすく、
+          // 実運用ではこちらが主要な経路になる。
+          //
+          // **手数は増やしていない。** `needsCloseConfirmation` は
+          // 「1枚 かつ 回収不能でない」なら false を返すので、シェル・claude・
+          // tmux 無効のペインでは従来どおり即座に閉じる。
+          const closingTab = api.tabs.find((t) => t.id === api.activeTabId);
+          if (closingTab && flattenPaneTree(closingTab.layout).length === 1) {
+            requestCloseTab(closingTab.id);
+            break;
+          }
           // 結果（ペインを閉じたのか、タブごと閉じたのか）を role="status" で
           // 告知する（design-review.md 提案 E'。視覚以外で区別する手段が
           // 現状ゼロだった）。
@@ -544,6 +567,7 @@ export default function App(): ReactElement {
             announce(outcome.kind === 'tab-closed' ? 'タブを閉じました' : 'ペインを閉じました');
           });
           break;
+        }
         case 'toggle-maximize-pane':
           api.toggleMaximizePane();
           break;
@@ -585,14 +609,21 @@ export default function App(): ReactElement {
         case 'jump-your-turn-tab': {
           // 状態の意味（あなたの番 = busy 以外）の判定は tabYourTurn.ts が
           // src/shared/agent-status.ts の toTaskState に委ねている（唯一の正）。
-          const target = findNextYourTurnTab(
+          //
+          // **着地はペイン粒度**（Issue #132）。`setActiveTabId` だけだと、
+          // 分割しているタブでは「タブは前に出たが、待っている claude は
+          // 裏のペインのまま」になり、飛んだ先で入力できない。
+          // 通知クリック・タスク一覧クリックと**同じ `focusPaneLocation` を通す**
+          // （着地の作法をアプリの中で1つにする。U4 で作った経路をここでも使う）。
+          const target = findNextYourTurnPane(
             api.tabs,
             api.activeTabId,
+            api.tabs.find((t) => t.id === api.activeTabId)?.activePaneId ?? null,
             agentTasksRef.current,
             action.direction,
           );
           if (target) {
-            api.setActiveTabId(target);
+            focusPaneLocation(target);
           } else {
             // 「あなたの番」のタブが1つも無いときに何も起きないまま終わらせない
             // （Issue #56 U4「画面が1pxも動かず壊れて見える」の再発防止）。

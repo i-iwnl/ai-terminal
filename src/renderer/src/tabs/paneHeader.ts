@@ -32,22 +32,46 @@
 
 import { basename } from '../lib/format';
 import type { PaneLeaf } from './paneTree';
+import { providerLabel } from './tabProvider';
+
+/**
+ * シェル名が分からないときに出す語（Issue #137）。
+ *
+ * **`'zsh'` に戻さない。** それがこの Issue で直した嘘そのもの。
+ * `claude` / `gemini` と同じ「実行ファイル名の系」に留めるため、役割語の
+ * `シェル` ではなく小文字の `shell` を使う。
+ */
+export const SHELL_FALLBACK_LABEL = 'shell';
 
 const PTY_KIND_LABEL: Record<PaneLeaf['ptyKind'], string> = {
-  shell: 'zsh',
+  shell: SHELL_FALLBACK_LABEL,
   claude: 'claude',
   gemini: 'gemini',
 };
 
 /**
- * そのペインで何が動いているかを表す文字列（例: `claude・my-repo` / `zsh・(不明)`）。
+ * そのペインで動いているものの名前（`fish` / `claude` / `claude (再開)`）。
+ *
+ * **シェルは実際に起動した実行ファイル名を出す**（Issue #137）。
+ * 決定順の唯一の正は Main の `buildShellPlan()`（`config.shell -> $SHELL -> /bin/zsh`）で、
+ * その結果が `SpawnPtyResult.shellName` -> `PaneLeaf.shellName` と運ばれてくる。
+ * 値が無いときだけ `SHELL_FALLBACK_LABEL` へ縮退する（鉄則5）。
+ */
+function kindName(leaf: PaneLeaf): string {
+  const name =
+    leaf.ptyKind === 'shell' ? (leaf.shellName?.trim() ?? '') : PTY_KIND_LABEL[leaf.ptyKind];
+  return name === '' ? SHELL_FALLBACK_LABEL : name;
+}
+
+/**
+ * そのペインで何が動いているかを表す文字列（例: `claude・my-repo` / `fish・(不明)`）。
  *
  * **`leaf.title` を参照しない。** `title` はユーザーが書き換えられるので、
  * これを混ぜると「何が動いているか」を示すものが画面から消えうる。
- * `ptyKind` / `isResume` / `cwd` から独立に組み立てる。
+ * `ptyKind` / `shellName` / `isResume` / `cwd` から独立に組み立てる。
  */
 export function paneKindLabel(leaf: PaneLeaf): string {
-  const kind = PTY_KIND_LABEL[leaf.ptyKind];
+  const kind = kindName(leaf);
   const kindLabel = leaf.isResume ? `${kind} (再開)` : kind;
   return `${kindLabel}・${basename(leaf.cwd)}`;
 }
@@ -91,7 +115,34 @@ export function paneHeaderLabel(leaf: PaneLeaf): string {
 export function paneAccessibleLabel(leaf: PaneLeaf): string {
   const visible = paneHeaderLabel(leaf);
   const kind = paneKindLabel(leaf);
-  return [visible, visible === kind ? undefined : kind, leaf.exit === undefined ? undefined : '終了']
+  return [
+    visible,
+    visible === kind ? undefined : kind,
+    roleWord(leaf),
+    leaf.exit === undefined ? undefined : '終了',
+  ]
     .filter((part): part is string => part !== undefined)
     .join('、');
+}
+
+/**
+ * 役割の語（`シェル` / `Claude` / `Gemini`）。**実行ファイル名と同じことを
+ * 言っているときは返さない**（`claude` に対する `Claude` など）。
+ *
+ * **なぜ要るか**（Issue #137 の design-review）。分割中の非アクティブなペインは
+ * `screenReaderMode` が渡らず WebGL で描かれるため、**支援技術から見て中身が空**。
+ * その状態でそのペインについて届く情報は、この `aria-label` だけ。
+ * それまでシェルの種別ラベルは `zsh` 固定で、タブ側には `providerLabel` の
+ * `シェル` が付いているのに**ペイン側には役割語が1つも無かった**。
+ *
+ * シェル名を実際の値にした結果、`fish` や `nu` が単独で読まれるようになるので、
+ * **それがシェルだと分かる手がかりを1つ足す**。実測では `fish、シェル`（0.824秒）は
+ * 従来の `zsh` 単独（1.270秒。英字3文字は1文字ずつ綴られる）より**短い**。
+ *
+ * `Cmd+D`（分割）は `announce()` を1回も呼んでいないので、新しく生えたペインの
+ * この名前が、分割操作の唯一のフィードバックでもある。
+ */
+function roleWord(leaf: PaneLeaf): string | undefined {
+  const role = providerLabel(leaf.ptyKind);
+  return role.toLowerCase() === kindName(leaf).toLowerCase() ? undefined : role;
 }

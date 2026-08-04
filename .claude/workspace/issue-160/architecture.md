@@ -30,8 +30,8 @@ Issue #160 における変更対象の構造。
 
 | チャンネル / 型 | 変更 | 内容 | 周 |
 |---|---|---|---|
-| `SpawnPtyResult` | **ALTER（候補）** | 解決済みシェル名を1フィールド追加。`kind === 'shell'` は tmux ラップ対象外なので `buildShellPlan()` の `basePlan.command` がそのまま使える。**採否は周4 の計画ゲートで決める**（選択肢2「語を揃える」を採るなら変更なし） | 4 |
-| — | なし | 周9（#135）で Main の `Menu.popup()` を採る場合はチャンネルが1本要るが、**Renderer の HTML メニューを採れば不要**。周9 の計画ゲートで決める | 9 |
+| `SpawnPtyResult` | **ALTER（実施済み・周4）** | `shellName?: string` を追加。**`kind === 'shell'` のときだけ埋まる**（claude / gemini は tmux ラップで `plan.command` が `tmux` になるため、汎用フィールドにしない）。値は `basePlan.command` の basename。Renderer 側は `PaneLeaf.shellName` として leaf に持つ（`wrappedInTmux` と同型 — spawn の瞬間に1回だけ決まる値を設定から導き直さない）。preload は**1行も変えていない**（`SpawnPtyResult` を `as` で通すだけなので型が自動で伝播する） | 4 |
+| `IpcSend.contextMenuShow` | **ADD（実施済み・周9）** | Renderer -> Main。ターミナル面の右クリックメニューを出す。**Renderer は状況（`paneCount` / `hasSelection`）だけを送り、項目表は `src/shared/context-menu.ts` が決める**。選ばれた結果は既存の `IpcEvent.menuAction` で戻る（新しい経路を作らない）。`IpcSend.menuPaneCount` と同型 | 9 |
 
 Contract を変更する周では [/electron-ipc](../../skills/electron-ipc/SKILL.md) を読み、この表を更新すること。
 

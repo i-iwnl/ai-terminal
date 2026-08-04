@@ -8,6 +8,8 @@
 // React の再レンダーや DOM から独立してテストできるようにする
 // （前例: terminal/resizeGate.ts, main/agents/yourTurnSince.ts）。
 
+import { isAbnormalExit, type PtyExitLike } from '@shared/pty-exit';
+
 export type NoticeSeverity = 'error' | 'info';
 
 export interface Notice {
@@ -28,13 +30,16 @@ export const MAX_NOTICES = 5;
  * PTY の終了イベントから通知の severity を決める。
  *
  * 正常終了（exitCode が 0 で、シグナルによる終了でもない）は「情報」、
- * それ以外（0 以外の終了コード、またはシグナルで終了）は「エラー」。
- * signal は 0 も「シグナル無し」を表しうる値として届くことがあるため、
- * `!== undefined && !== 0` で「実際にシグナルが立っている」ときだけ異常とみなす。
+ * それ以外は「エラー」。
+ *
+ * **「異常終了か」の判定はここに書かない。** 唯一の正は
+ * `src/shared/pty-exit.ts` の `isAbnormalExit()`（Issue #133 で切り出した）。
+ * Main も同じ判定で Dock を弾ませるので、ここに書き戻すと正が2つになり、
+ * 「バナーはエラーなのに Dock は鳴らない」という食い違いが起きる。
+ * **この関数が持つのは「異常 -> エラー」という表現の対応だけ。**
  */
-export function severityForExit(event: { exitCode: number; signal?: number }): NoticeSeverity {
-  const abnormal = event.exitCode !== 0 || (event.signal !== undefined && event.signal !== 0);
-  return abnormal ? 'error' : 'info';
+export function severityForExit(event: PtyExitLike): NoticeSeverity {
+  return isAbnormalExit(event) ? 'error' : 'info';
 }
 
 /**

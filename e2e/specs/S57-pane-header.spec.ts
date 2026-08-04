@@ -17,7 +17,11 @@ test.afterEach(async () => {
  * design-review.md 提案 G が明記している関門は次の3点:
  *
  * 1. **1ペインのときはヘッダを出さない。分割中だけ出す。**
- * 2. **`zsh` / `claude` / `claude (再開)` + cwd の basename** を表示する。
+ * 2. **シェル名 / `claude` / `claude (再開)` + cwd の basename** を表示する。
+ *    **この spec の `zsh` は「リテラルが zsh である」ことではなく
+ *    「ハーネスの `$SHELL` がたまたま `/bin/zsh` である」ことを見ている**
+ *    （Issue #137 でシェル名は動的になった）。**リテラルに戻しても、この spec は
+ *    green のまま**なので、その退行を守っているのは `S88` のほう。
  * 3. **ヘッダが xterm の内容を隠さないこと。**
  *
  * 3 は当初 `position: absolute` の重ね描きで実装したが、レビューで

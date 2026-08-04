@@ -28,6 +28,7 @@ import {
   type AppAction,
   type RendererApi,
 } from '@shared/ipc';
+import type { TerminalContextMenuState } from '@shared/context-menu';
 
 /**
  * Main -> Renderer の push イベントを購読する共通ヘルパ。
@@ -122,6 +123,9 @@ const api: RendererApi = {
       subscribe<AppAction>(IpcEvent.menuAction, listener),
     reportPaneCount: (count: number): void => {
       ipcRenderer.send(IpcSend.menuPaneCount, count);
+    },
+    showContextMenu: (state: TerminalContextMenuState): void => {
+      ipcRenderer.send(IpcSend.contextMenuShow, state);
     },
   },
   session: {

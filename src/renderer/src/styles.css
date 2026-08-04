@@ -127,8 +127,13 @@
      PR 8 で初版の提案色が1型色覚下でむしろ悪化した実例がある）。
      TabBar.tsx 側で title 属性（ツールチップ）と role="tab" のアクセシブル
      ネームにプロバイダ名（文字）を必ず添える。
-     対 --surface-1 / --surface-tab-active のいずれでも非テキスト 3:1 を
-     満たす（e2e/specs/S40-contrast-contract.spec.ts が実測する）。
+     **S40 が測っているのは対 --surface-1 だけ。** この線は border-top なので
+     contrast.ts の既定挙動が「親の実効背景」= .tab-bar（--surface-1）を採る。
+     以前ここには「対 --surface-tab-active でも 3:1 を満たす（S40 が実測する）」と
+     書いてあったが、**S40 はそちらを一度も測っていない**（Issue #134 の
+     design-review で発覚。styles.css:636 の 4.47 誤記と同じ型）。
+     実際には選択中タブの上で 3:1 を割っている（高コントラストではさらに悪い）。
+     **関門を作るところから必要なので別 Issue**（.claude/workspace/issue-160/known-issues.md）。
      **残る限界**: ツールチップは常時可視ではないため、色覚特性を持つ晴眼の
      ユーザーは、ホバーするまでプロバイダを色以外の手段で判別できない
      （.claude/workspace/issue-20/known-issues.md に記録）。 */
@@ -211,6 +216,13 @@
      揃えるのは Issue #119 の周5（PR 20）の担当で、この周では値を動かさない。
      現在の 40 / 36 は e2e/specs/S73-window-top-bars.spec.ts が固定している。 */
   --bar-height: 36px;
+  /* 分割中だけ出るペインヘッダの高さ（Issue #138）。
+     **`--bar-height`（タブバー）とは別のトークンにする。** 用途が違い、
+     揃える理由が無い（ヘッダは1ペインぶんの帯で、タブバーはウィンドウの帯）。
+     値を共有すると、片方を動かしたときにもう片方が黙って動く。
+     参照するのは `.pane-header` の flex / height と、その下へ検索バーを
+     逃がす `.pane-header ~ .terminal-search` の top（3箇所）。 */
+  --pane-header-height: 18px;
 
   /* -- 角丸と影 ---------------------------------------------------------- */
   --radius-sm: 2px;
@@ -246,6 +258,20 @@
     --border-section: var(--border-control);
     --surface-tab-active: #525252;
     --pane-active-accent: var(--focus-ring);
+
+    /* Issue #134。**面を明るくしたら、その面に乗る前景も数え直す。**
+       上の `--surface-tab-active` を #2e2e2e -> #525252 に上げたぶん、
+       選択中タブの上に乗るものは全部コントラストが落ちる。この2つは据え置くと
+       閾値を割っていた（実測の正は e2e/specs/S41-prefers-contrast.spec.ts）。
+
+       **この2つはセットで動かす。** 片方だけ上げると
+       「終了したタブが、あなたを待っているタブより明るい」という強調順序の逆転が
+       起きる（styles.css 冒頭の「強調するのは『あなたの番』の側」に反する）。
+       対 #525252 で 4.5:1 を満たす色は相対輝度が必ず 0.5547 以上になるので、
+       `--status-your-turn` を据え置いたまま `--status-exited` だけを直すことは
+       **原理的にできない**。 */
+    --status-exited: #f0b8b8;
+    --status-your-turn: #ffc266;
   }
 }
 
@@ -633,9 +659,16 @@ body {
 
 /* 終了したタブの印。「あなたの番」ドット（丸）と**形を変えて**、
    色だけに頼らないようにする（原則2）。こちらは角のある四角のまま。
-   色は既存の終了バッジ・文字色と同じ --status-exited を使う（対 --surface-1 で
-   5.49、対 --surface-tab-active で 4.47。非テキストの 3:1 はもちろんテキストの
-   4.5:1 も満たすため、装飾要素としての追加検証は不要）。 */
+   色は既存の終了バッジ・文字色と同じ --status-exited を使う。
+
+   **比の数値はここに書かない。実測の正は e2e/specs/S40-contrast-contract.spec.ts。**
+   ここには以前「対 --surface-tab-active で 4.47。テキストの 4.5:1 も満たす」と
+   書いてあったが、**4.47 < 4.5** で誤りだった。しかもその誤記のせいで
+   「もう満たしている」と読まれ、Issue #134 になるまで放置された。
+   **同じ規則は styles.css:73 / :96 が既に採っている**（数値を書かず S40 を参照する）。
+
+   このマークは選択の状態によって乗る面が変わる（非選択なら --surface-1、
+   選択中なら --surface-tab-active）。S40 が両方を測っている。 */
 .tab-bar__state-slot--exited {
   background: var(--status-exited);
 }
@@ -1033,8 +1066,8 @@ body {
    の値を1つ変えるだけ（design-review.md 提案 G が警戒した「余分な
    SIGWINCH」には当たらない）。 */
 .pane-header {
-  flex: 0 0 18px;
-  height: 18px;
+  flex: 0 0 var(--pane-header-height);
+  height: var(--pane-header-height);
   display: flex;
   align-items: center;
   padding: 0 var(--sp-2);
@@ -1052,7 +1085,7 @@ body {
    （調整するのは検索バーの見た目の位置だけで、xterm 側のレイアウトには
    影響しない。`.pane-header` は検索バーより DOM 順で先に来るので `~` で拾える）。 */
 .pane-header ~ .terminal-search {
-  top: calc(var(--sp-2) + 18px);
+  top: calc(var(--sp-2) + var(--pane-header-height));
 }
 
 /* ---------------------------------------------------------------------- */

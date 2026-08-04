@@ -14,14 +14,16 @@ test.afterEach(async () => {
 /**
  * Issue #20 J: `Cmd+J`（次の「あなたの番」のタブへジャンプ）。
  *
- * **このハーネスでは「実際にジャンプが成功するケース」までは検証できない。**
- * `claude agents --json` を模す偽 CLI のフィクスチャ（harness.ts の agents.json、
- * sessionId は `aaaaaaaa...` / `bbbbbbbb...` 固定）は、アプリが実際に起動する
- * セッションの agentSessionId（新規は起動時に生成される UUID、resume は
- * 履歴 JSONL 側の固定 UUID）とは独立しており、両者が一致する実タブを
- * このフィクスチャ構成では作れない（S15 / S63 が既に記録済みの同じ制限。
- * Issue #83 でハーネスの動的フィクスチャ化が解く予定）。
- * 探索そのもの（`findNextYourTurnTab`）は test/unit/tab-your-turn.test.ts が
+ * **成功するケースは `S89` が見る。** ここは「該当が1つも無い」側だけを担当する。
+ *
+ * **かつてここには「このハーネスでは成功経路を作れない（解くのは Issue #83）」と
+ * 書いてあったが、それは古かった**（#160 の周6 で是正）。#83 は CLOSED で
+ * `setAgentEntries()` は実装済み。S63 が使う「履歴 resume なら agentSessionId を
+ * 決め打てる」手法と組み合わせれば、偽 CLI の出力とアプリが実際に起動した
+ * セッションを一致させられる。**制約を書いたら、それを解く Issue の状態と
+ * 紐づけて見直すこと**（`.claude/workspace/issue-160/known-issues.md` の 1）。
+ *
+ * 探索そのもの（`findNextYourTurnPane`）は test/unit/tab-your-turn.test.ts が
  * 固定しており、実装の中核を revert すると赤くなることを実測済み。
  *
  * ここで検証するのは「あなたの番のタブが1つも無いときに何も起きないまま
