@@ -929,10 +929,56 @@ test('screenshots S56 分割表示', async () => {
   const panes = window.locator('.terminal-pane');
   await expect(panes).toHaveCount(2);
 
-  const activeScreen = window.locator('.terminal-pane.is-active .xterm-screen');
+  const activePane = window.locator('.terminal-pane.is-active');
+  const activeScreen = activePane.locator('.xterm-screen');
   await expect(activeScreen).toContainText(/[$%#>]/, { timeout: 20_000 });
   // ヘッダの文字列（種別 + cwd の basename）が実際に描画されるまで待つ。
   await expect(window.locator('.pane-header').first()).not.toBeEmpty();
+
+  // --- Issue #179 周1（#169）: 2枚目のペインが「落ち着いた」ことまで待つ -----------
+  //
+  // **この画像は `verify-screenshots.mjs` の画素比較から除外されていた。**
+  // `docs/images` 13枚のうちペインヘッダが写るのはこの1枚だけなので、除外している間は
+  // ペインヘッダの見た目に関門が1つも無かった（Issue #169）。
+  //
+  // **除外理由として記録されていた原因は、測り直したら違っていた。** 記録は
+  // 「zsh が部分行マーカー（反転表示の `%`）を出す」で、そこから
+  // 「シェルの出力内容そのものが非決定なので待っても無駄」と読める。実際に
+  // 8回ずつ撮って比べたところ（2026-08-04 実測）:
+  //
+  // | 条件 | 8枚が何種類になったか |
+  // |---|---|
+  // | 現状のまま | 2種類（プロンプトが1行下がる回が2回） |
+  // | `.zshrc` に `PROMPT_EOL_MARK=''` を足す | **2種類のまま**（消えるのは `%` の字だけ） |
+  // | 下の待ち合わせを足す（このコミット） | **1種類** |
+  //
+  // つまり**マーカーは原因ではなく、正体は素朴な競合だった**。上の
+  // `toContainText(/[$%#>]/)` は「画面のどこかにプロンプト文字がある」しか見ないので、
+  // 2枚目のペインの描画が先頭行に落ち着く前に撮れてしまう回があった。
+  // **落ち着いた状態を待てば決定的になる。** シェルの設定も撮影内容も変えなくてよい
+  // （事実、この待ち合わせで撮った画像はコミット済みの1枚と画素まで一致する）。
+  //
+  // **先頭行「全体」を突き合わせる。** `toContainText(cwdName)` では弱すぎる。
+  // 最初にそう書いたときは、`clear` の入力がエコーされた `demo-project % clear` の
+  // 状態でも素通りし、その画面が撮れた（loop.md の「検査は正しいが、その条件を
+  // 踏んでいない」に当たる）。完全一致なら、
+  //   - 先頭行がまだ空の回   -> '' で不一致
+  //   - 余分な語が乗った回   -> 不一致
+  // の両方で待ち続ける。
+  //
+  // ハーネスの workDir は `demo-project` 固定（`harness.ts`）。正規表現の
+  // 特殊文字を含まないので、S40 の escapeRegExp のような前処理は要らない。
+  const cwdName = launched.workDir.split('/').pop() as string;
+  await expect
+    .poll(
+      async () => {
+        const row = await activePane.locator('.xterm-rows > div').first().textContent();
+        // xterm は行を空白で右端まで埋める。折り畳んでから比べる
+        return (row ?? '').replace(/\s+/g, ' ').trim();
+      },
+      { timeout: 20_000 },
+    )
+    .toMatch(new RegExp(`^${cwdName} [%#]$`));
 
   await waitForTaskList(window);
 

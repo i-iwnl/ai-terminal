@@ -218,6 +218,96 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
     ).toBeGreaterThanOrEqual(4.5);
   }
 
+  // --- Issue #179 周1（#165 前半）: 選択中タブの上のプロバイダ色 ------------------
+  //
+  // **`@media` は `--surface-tab-active` を明るくするのに、その面に乗る
+  // `--tab-provider-*` 3本を1つも上書きしていない**（`--status-exited` と
+  // まったく同じ壊れ方。周3 で終了色を直したときに、隣の3本が漏れた）。
+  //
+  // **上の `targets` には入れない。** あちらは全項目に `high > normal` を要求する
+  // ループで、この3本は現時点で **下がる**（面だけ明るくなるので）。
+  // 同じループに入れると周1 の時点で赤くなり、`make e2e` を緑に保てない。
+  // ここは #160 と同じ作法で、**いまの値を characterization として固定し、
+  // 直った瞬間に赤くなる番人を付ける**（下の stale ガード）。
+  //
+  // 測り方は S40 の同名項目と揃える（`againstColor` でトークンから面を引く）。
+  // プロバイダ色は3種類あるのに選択中タブは1枚しか作れないため、
+  // 実際にタブを選択して `against` で引くことはできない。
+  await window.emulateMedia({ contrast: null });
+
+  const providerTargets: ContrastTarget[] = [
+    {
+      name: 'シェルタブの色相の枠（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--shell',
+      property: 'border-top-color',
+      againstColor: '--surface-tab-active',
+    },
+    {
+      name: 'claude タブの色相の枠（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--claude',
+      property: 'border-top-color',
+      againstColor: '--surface-tab-active',
+    },
+    {
+      name: 'gemini タブの色相の枠（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--gemini',
+      property: 'border-top-color',
+      againstColor: '--surface-tab-active',
+    },
+  ];
+
+  // claude / gemini のタブはこの spec ではまだ開いていない（S40 と違い、ここまで
+  // シェルタブしか作っていない）。**開かないと2本が静かに欠落する。**
+  await window.keyboard.press('Meta+Shift+C');
+  await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(1, { timeout: 15_000 });
+  await window.keyboard.press('Meta+Shift+E');
+  await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
+
+  const providerNormal = await measureContrast(window, providerTargets);
+  await window.emulateMedia({ contrast: 'more' });
+  const providerHigh = await measureContrast(window, providerTargets);
+
+  console.log(
+    '[S41] プロバイダ色 × 選択中タブの面（既定 -> 高コントラスト）:\n' +
+      Object.keys(providerNormal)
+        .map((k) => `  ${k}: ${providerNormal[k].toFixed(2)} -> ${providerHigh[k].toFixed(2)}`)
+        .join('\n'),
+  );
+
+  // 3本とも測れていること（セレクタが変わって静かに素通りしないように）
+  expect(Object.keys(providerHigh).sort()).toEqual(providerTargets.map((t) => t.name).sort());
+
+  // 既定側は S40 が押さえているので、ここでは高コントラスト側だけを固定する。
+  // **いまは3本とも非テキストの 3:1 を割っている**（Issue #165）。
+  const PROVIDER_HIGH_NOW: Record<string, number> = {
+    'シェルタブの色相の枠（選択中タブ上）': 2.4,
+    'claude タブの色相の枠（選択中タブ上）': 2.0,
+    'gemini タブの色相の枠（選択中タブ上）': 2.26,
+  };
+  for (const [name, ratio] of Object.entries(PROVIDER_HIGH_NOW)) {
+    expect(providerHigh[name], `${name} の高コントラスト時の比が記録から動いている`).toBeCloseTo(
+      ratio,
+      1,
+    );
+  }
+
+  // **番人。** 上の固定値だけだと、直したときに数字を書き換えて終わりになり、
+  // 「3:1 を満たすようになった」ことが以後どの閾値検査にも入らない
+  // （S40 の staleFail とまったく同じ壊れ方を防ぐ）。
+  // 直った瞬間にここが赤くなり、閾値 assert への切り替えを強制する。
+  const nowPassing = Object.keys(PROVIDER_HIGH_NOW).filter((name) => providerHigh[name] >= 3.0);
+  expect(
+    nowPassing,
+    'プロバイダ色が高コントラストで 3:1 を満たすようになった。' +
+      'PROVIDER_HIGH_NOW の固定をやめ、`toBeGreaterThanOrEqual(3.0)` と ' +
+      '`high > normal` の assert に切り替えること（Issue #179 周2）',
+  ).toEqual([]);
+
+  await window.emulateMedia({ contrast: null });
+
   // 既定側は**まだ 4.5 を割っている**（テキスト2件が 4.47）。
   // ここは値ではなく結合状態の規則（`.tab-bar__tab.is-active.is-exited` に
   // `--text-bright` を戻す）で解くのが筋、という design-review の結論に従い
