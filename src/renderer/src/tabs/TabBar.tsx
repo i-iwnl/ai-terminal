@@ -82,6 +82,7 @@ import {
 import { flattenPaneTree } from './paneTree';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
+import { tabExitCopy } from './tabExitCopy';
 import {
   tabExitState,
   tabDisplayTitle,
@@ -420,11 +421,13 @@ export default function TabBar({
             const exitState = tabExitState(tab.layout);
             const allExited = exitState !== 'running';
             const isAbnormal = exitState === 'exited-abnormal';
+            // 語（Issue #166）。可視バッジは4文字固定、生値は aria-label / title だけ。
+            const exitCopy = tabExitCopy(tab.layout);
             const tabAccessibleLabel = [
               displayTitle,
               provider,
               isYourTurn ? 'あなたの番' : undefined,
-              allExited ? '終了' : undefined,
+              exitCopy?.detail,
             ]
               .filter((part): part is string => part !== undefined && part !== '')
               .join('、');
@@ -544,7 +547,12 @@ export default function TabBar({
                     // プロバイダは色相だけに頼らない（原則2）。ツールチップに
                     // プロバイダ名を出し、アクセシブルネームにも含める
                     // （tabAccessibleLabel は可視テキストを先頭に持つ）。
-                    title={provider}
+                    //
+                    // ⛔ **終了の語で上書きしない（Issue #166）。** このツールチップは
+                    // 「プロバイダを色以外で判別する唯一の手段」（このファイル冒頭の
+                    // 「残る限界」）なので、置き換えると**タブが終了した瞬間に
+                    // プロバイダの非色手がかりが消える**。連結する。
+                    title={exitCopy ? `${provider}・${exitCopy.detail}` : provider}
                     aria-label={tabAccessibleLabel}
                   >
                     <span
@@ -556,7 +564,7 @@ export default function TabBar({
                     >
                       {displayTitle}
                     </span>
-                    {allExited && <span className="tab-bar__exit-badge">終了</span>}
+                    {exitCopy && <span className="tab-bar__exit-badge">{exitCopy.badge}</span>}
                   </button>
                 )}
               </div>

@@ -32,6 +32,7 @@
 
 import { basename } from '../lib/format';
 import type { PaneLeaf } from './paneTree';
+import { exitDetail } from './tabExitCopy';
 import { providerLabel } from './tabProvider';
 
 /**
@@ -119,7 +120,13 @@ export function paneAccessibleLabel(leaf: PaneLeaf): string {
     visible,
     visible === kind ? undefined : kind,
     roleWord(leaf),
-    leaf.exit === undefined ? undefined : '終了',
+    // Issue #166: タブ側と**同じ語彙**を使う（`終了済み` / `異常終了（コード 7）`）。
+    // ここだけ裸の `終了` のままにすると、同じ1つのイベントについて
+    // 「タブは異常終了と言い、ペインは終了と言う」という食い違いを新設することになる。
+    // **ここは leaf 単位なので集約が要らない**（タブ側は `some` で畳んでいる）。
+    // 分割中の非アクティブなペインが異常終了したことを支援技術が知る経路は
+    // ここしか無いので、severity を落とさない。
+    leaf.exit === undefined ? undefined : exitDetail(leaf.exit),
   ]
     .filter((part): part is string => part !== undefined)
     .join('、');

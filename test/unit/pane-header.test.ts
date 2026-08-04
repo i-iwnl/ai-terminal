@@ -151,7 +151,7 @@ describe('paneAccessibleLabel', () => {
     ).toBe('認証まわりの調査、claude・repo-a');
   });
 
-  it('終了したペインは「終了」を末尾に足す（WebGL 描画のため読み上げに届く唯一の経路）', () => {
+  it('異常終了したペインは「異常終了（コード N）」を末尾に足す（読み上げに届く唯一の経路）', () => {
     expect(
       paneAccessibleLabel(
         leaf({
@@ -162,20 +162,30 @@ describe('paneAccessibleLabel', () => {
           exit: { exitCode: 1 },
         }),
       ),
-    ).toBe('認証まわりの調査、claude・repo-a、終了');
+    ).toBe('認証まわりの調査、claude・repo-a、異常終了（コード 1）');
   });
 
   it('名前が無く終了しているペインも、種別・cwd を2回並べない', () => {
     expect(
       paneAccessibleLabel(leaf({ ptyKind: 'shell', cwd: '/Users/foo/repo-a', exit: { exitCode: 0 } })),
-    ).toBe('zsh・repo-a、シェル、終了');
+    ).toBe('zsh・repo-a、シェル、終了済み');
   });
 
-  it('exitCode 0（正常終了）でも「終了」を出す（exit の有無で判定していて、コードの値では判定していない）', () => {
+  // Issue #166: **「終了したか」と「異常だったか」は別の軸。**
+  // 出すか出さないかは `exit` の有無で決まり（コードの値では決まらない）、
+  // *どの語*を出すかだけが severity で決まる。ここは前者を固定する。
+  it('exitCode 0（正常終了）でも語を出す（exit の有無で判定していて、コードの値では判定していない）', () => {
     const label = paneAccessibleLabel(
       leaf({ ptyKind: 'shell', cwd: '/repo', exit: { exitCode: 0 } }),
     );
-    expect(label.endsWith('、終了')).toBe(true);
+    expect(label.endsWith('、終了済み')).toBe(true);
+  });
+
+  it('シグナルで終了したペインはシグナル番号を出す（ペイン本文と同じ語彙）', () => {
+    const label = paneAccessibleLabel(
+      leaf({ ptyKind: 'shell', cwd: '/repo', exit: { exitCode: 0, signal: 9 } }),
+    );
+    expect(label.endsWith('、異常終了（シグナル 9）')).toBe(true);
   });
 });
 
