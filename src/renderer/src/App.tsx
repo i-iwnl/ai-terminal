@@ -870,7 +870,6 @@ export default function App(): ReactElement {
       if (tab) {
         const exitedLeaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === event.ptyId);
         const title = exitedLeaf?.title ?? tabLeaf(tab).title;
-        announce(`${title} が終了しました（コード ${event.exitCode}）`);
         // 通知バナー側は severity で見た目を分ける。正常終了（コード 0・シグナル無し）は
         // 「情報」、異常終了（0 以外のコード・シグナルによる終了）は「エラー」。
         // statusAnnouncement（role="status"、常に1個・a11y 専用）とは別系統で、
@@ -880,6 +879,13 @@ export default function App(): ReactElement {
           severity === 'error'
             ? `${title} が終了しました（コード ${event.exitCode}）`
             : `${title} が終了しました`;
+        // **読み上げは可視バナーと同じ文言にする（Issue #166）。**
+        // 直す前はここだけ常に `（コード ${exitCode}）` を付けており、
+        // **`exit` と打つたびに「コード 0」と読み上げていた**（可視バナーは
+        // 正常終了でコードを出さない）。同じ1つのイベントについて、
+        // 可視と音声で言うことが違う状態だった。この Issue の原則
+        // 「正常終了で騒がない」が、視覚にだけ適用されていた形になる。
+        announce(message);
         setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity }));
       }
     },

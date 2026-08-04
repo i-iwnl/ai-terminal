@@ -69,7 +69,12 @@ test('S87 分割したタブの終了表示が、どのペインが終了して�
   const abnormalTab = window.locator('.tab-bar__tab.is-exited-abnormal');
   const exitedSlot = window.locator('.tab-bar__state-slot--exited');
   const exitedBadge = window.locator('.tab-bar__exit-badge');
-  const exitedInLabel = window.locator('.tab-bar__tab-button[aria-label*="終了"]');
+  // ⛔ **部分一致の `[aria-label*="終了"]` にしてはいけない（Issue #166）。**
+  // `終了済み` も `異常終了` も `強制終了` も、すべて `終了` に部分一致する。
+  // 語を severity で分けても**壊れずに恒真化する**ので、関門の役目を静かに失う
+  // （壊れないことが実害）。語ごとに完全一致で数える。
+  const normalInLabel = window.locator('.tab-bar__tab-button[aria-label$="終了済み"]');
+  const abnormalInLabel = window.locator('.tab-bar__tab-button[aria-label*="異常終了（"]');
 
   /**
    * 終了表示の出方を、**枚数で**見る。
@@ -98,7 +103,20 @@ test('S87 分割したタブの終了表示が、どのペインが終了して�
       counts.abnormal,
     );
     await expect(exitedBadge, `${what}: 可視の終了バッジ`).toHaveCount(counts.exited);
-    await expect(exitedInLabel, `${what}: 読み上げ（aria-label）`).toHaveCount(counts.exited);
+    // 読み上げは語ごとに数える。「終了したタブの枚数」ではなく
+    // 「正常終了と名乗っているタブ」「異常終了と名乗っているタブ」がそれぞれ何枚か。
+    await expect(normalInLabel, `${what}: 読み上げ「終了済み」`).toHaveCount(
+      counts.exited - counts.abnormal,
+    );
+    await expect(abnormalInLabel, `${what}: 読み上げ「異常終了（…）」`).toHaveCount(counts.abnormal);
+    // 可視のバッジとアクセシブルネームが食い違わない（WCAG 2.5.3 Label in Name）。
+    for (const [i, badge] of (await exitedBadge.allTextContents()).entries()) {
+      const label = await window
+        .locator('.tab-bar__tab.is-exited .tab-bar__tab-button')
+        .nth(i)
+        .getAttribute('aria-label');
+      expect(label, `${what}: バッジ「${badge}」がアクセシブルネームに含まれる`).toContain(badge);
+    }
   };
 
   const expectExitShown = async (shown: boolean, what: string): Promise<void> => {
