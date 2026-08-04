@@ -13,6 +13,7 @@
 // だけ。PR 3 の時点では木は常に leaf 1枚（`splitPane` を呼ぶ経路がまだ無い）ので、
 // `tabLeaf()` が返す値は実質そのタブの「PTY のメタ」そのものになる。
 
+import { isAbnormalExit } from '@shared/pty-exit';
 import { flattenPaneTree, resolveActiveLeaf, type PaneLeaf, type PaneNode } from './paneTree';
 
 export interface TabState {
@@ -122,6 +123,47 @@ export function tabAllPanesExited(layout: PaneNode): boolean {
   const leaves = flattenPaneTree(layout);
   if (leaves.length === 0) return false;
   return leaves.every((leaf) => leaf.exit !== undefined);
+}
+
+/**
+ * タブの終了状態（Issue #166。タブバーの終了表示を severity で分けるため）。
+ *
+ * それまでタブは `tabAllPanesExited()` の boolean しか見ておらず、
+ * **正常終了（`exit` と打つ）でも異常終了でも同じ赤**だった。
+ * 同じ1つのイベントに対して通知バナーは青/赤に分かれ、ペイン本文は
+ * コードを出し分けているのに、**タブだけが severity を捨てていた**。
+ * 初見ユーザーがこのアプリで最初に見る赤はほぼ確実に `exit` = 正常終了なので、
+ * そこで「赤 = 気にしなくていい」を学習すると本物のエラーが割り引かれて届く。
+ *
+ * **「異常か」の判定はここに書かない。** 唯一の正は `@shared/pty-exit` の
+ * `isAbnormalExit()`（Issue #133 で Main / Renderer 共通に切り出した）。
+ * `lib/notices.ts` の `severityForExit()` ではなく、そちらの素の判定を呼ぶ:
+ * `severityForExit()` が持つ `'info' | 'error'` は**通知バナーの表現**であって
+ * 事実ではない（`pty-exit.ts` の「1つの事実、2つの表現」）。
+ * タブがバナーの語彙を借りると、バナー側の表現を増やしたときにタブの色が動く。
+ *
+ * **量化子が2つ出てくるので、対象の違いに注意すること。**
+ *
+ * - 「終わったか」は `every`（上の `tabAllPanesExited`）。全ペインが終わって初めて終わり
+ * - 「異常があったか」は `some`。1枚でも異常なら、そのタブは「何かが失敗した」側に寄せる
+ *
+ * **上のコメントが禁じている `some` とは対象が違う。** あちらは「終了したか」を
+ * `some` で決めることの禁止（「あなたの番」のドットが消えるため）で、こちらは
+ * `every` の門をくぐった内側で severity だけを決めている。門の位置は動かない。
+ *
+ * `some` を選ぶ理由は誤りのコストが非対称だから: 偽陽性（正常なのに異常と出る）は
+ * 一瞥で済むが、偽陰性（片方が異常終了しているのに正常と出る）は**気づかれない**。
+ * Main 側の `shouldBounceOnExit`（`pty-exit.ts`）はペイン単位で発火するので、
+ * `every` にすると「Dock は弾んだのにタブは正常だと言う」という層の食い違いが出る。
+ */
+export type TabExitState = 'running' | 'exited' | 'exited-abnormal';
+
+export function tabExitState(layout: PaneNode): TabExitState {
+  if (!tabAllPanesExited(layout)) return 'running';
+  const abnormal = flattenPaneTree(layout).some(
+    (leaf) => leaf.exit !== undefined && isAbnormalExit(leaf.exit),
+  );
+  return abnormal ? 'exited-abnormal' : 'exited';
 }
 
 /**

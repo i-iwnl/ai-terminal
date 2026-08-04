@@ -18,6 +18,7 @@ import {
   previousTabId,
   tabAllPanesExited,
   tabDisplayTitle,
+  tabExitState,
   tabLeaf,
   tabRepresentativeLeaf,
   type TabState,
@@ -350,5 +351,68 @@ describe('tabAllPanesExited', () => {
       leaf({ paneId: 'b', exit: { exitCode: 0 } }),
     ]);
     expect(tabAllPanesExited(layout)).toBe(true);
+  });
+});
+
+// Issue #166（#179 周3）: タブの終了表示を severity で分ける。
+//
+// **門は `tabAllPanesExited`（every）のまま動かさない。** その内側で severity だけを
+// `some` で決める。2つの量化子が同じファイルに並ぶので、対象が違うことをここでも固定する:
+// 「終わったか」は every、「異常があったか」は some。
+//
+// **判定そのもの（isAbnormalExit）はここでは検査しない。** 唯一の正は
+// test/unit/pty-exit.test.ts。ここが固定するのは「木のどこを見て、どう畳むか」だけ。
+describe('tabExitState', () => {
+  const ok = { exitCode: 0 };
+  const ng = { exitCode: 1 };
+
+  it('1枚でも生きていれば running（severity 以前に門をくぐらない）', () => {
+    expect(tabExitState(leaf())).toBe('running');
+    // **異常終了した leaf があっても、生きている leaf が残っていれば running。**
+    // ここが 'exited-abnormal' に化けると、状態スロットの優先順位
+    // （終了 > あなたの番）が崩れて「あなたの番」のドットが消える。
+    expect(tabExitState(splitRow([leaf({ paneId: 'a', exit: ng }), leaf({ paneId: 'b' })]))).toBe(
+      'running',
+    );
+  });
+
+  it('全部が正常終了なら exited', () => {
+    expect(tabExitState(leaf({ exit: ok }))).toBe('exited');
+    expect(
+      tabExitState(splitRow([leaf({ paneId: 'a', exit: ok }), leaf({ paneId: 'b', exit: ok })])),
+    ).toBe('exited');
+  });
+
+  it('0 以外の終了コードなら exited-abnormal', () => {
+    expect(tabExitState(leaf({ exit: ng }))).toBe('exited-abnormal');
+    expect(tabExitState(leaf({ exit: { exitCode: 127 } }))).toBe('exited-abnormal');
+  });
+
+  it('シグナルで終了していれば、コードが 0 でも exited-abnormal', () => {
+    expect(tabExitState(leaf({ exit: { exitCode: 0, signal: 9 } }))).toBe('exited-abnormal');
+  });
+
+  it('signal: 0 は「シグナル無し」なので exited のまま', () => {
+    // pty-exit.ts の既知の罠。ここで取りこぼすと、正常終了が赤くなる
+    // ＝ この Issue が直そうとしているものを再生産する。
+    expect(tabExitState(leaf({ exit: { exitCode: 0, signal: 0 } }))).toBe('exited');
+  });
+
+  it('分割2枚: 片方だけ異常なら exited-abnormal（some）', () => {
+    // **左右どちらでも同じ。** アクティブなペインがどちらかにも依存しない。
+    expect(
+      tabExitState(splitRow([leaf({ paneId: 'a', exit: ng }), leaf({ paneId: 'b', exit: ok })])),
+    ).toBe('exited-abnormal');
+    expect(
+      tabExitState(splitRow([leaf({ paneId: 'a', exit: ok }), leaf({ paneId: 'b', exit: ng })])),
+    ).toBe('exited-abnormal');
+  });
+
+  it('入れ子の木: 奥の1枚が異常でも拾う', () => {
+    const layout = splitRow([
+      leaf({ paneId: 'a', exit: ok }),
+      splitRow([leaf({ paneId: 'b', exit: ok }), leaf({ paneId: 'c', exit: { exitCode: 0, signal: 15 } })]),
+    ]);
+    expect(tabExitState(layout)).toBe('exited-abnormal');
   });
 });
