@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { BrowserWindow, ipcMain } from 'electron';
 import { IpcSend } from '@shared/ipc';
 import { SURFACE } from '@shared/defaults';
+import { attachExternalLinkHandler } from './external-links';
 
 let settingsWindow: BrowserWindow | null = null;
 
@@ -49,6 +50,10 @@ export function openSettingsWindow(parent: BrowserWindow | null): void {
   });
 
   settingsWindow = win;
+
+  // 本体ウィンドウと同じ逃がし先を設置する（Issue #178 周1）。
+  // **生成点ごとに書かず1関数を呼ぶ。** 片方への付け忘れがそのまま穴になる。
+  attachExternalLinkHandler(win);
 
   win.once('ready-to-show', () => {
     win.show();

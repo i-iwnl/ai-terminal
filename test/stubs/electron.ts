@@ -22,6 +22,17 @@ export const Notification = {
 };
 
 /**
+ * external-links.ts / menu.ts がトップレベルで import する。
+ * **単体テストの対象はスキーム判定の純粋関数 `isSafeExternalUrl` だけ**で、
+ * 実際に開く経路は E2E（S92）が `shell.openExternal` を差し替えて観測する。
+ */
+export const shell = {
+  openExternal(): Promise<void> {
+    return Promise.resolve();
+  },
+};
+
+/**
  * data-dir.ts がトップレベルで参照する最小の値。関数は持たせない
  * （保存先の決定規則そのものは純粋関数 resolveDataDir で検証する）。
  */

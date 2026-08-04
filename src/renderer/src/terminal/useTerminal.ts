@@ -21,6 +21,7 @@ import { matchShortcut } from '../lib/shortcuts';
 import type { PaneCellMetrics } from '../tabs/paneTree';
 import { subscribePty } from './ptyStream';
 import { shouldSendResize, type ResizeDims } from './resizeGate';
+import { shouldActivateLink } from './linkActivation';
 
 /** unicode-graphemes アドオンが登録する Unicode バージョン文字列 */
 const GRAPHEME_UNICODE_VERSION = '15-graphemes';
@@ -174,8 +175,15 @@ export function useTerminal(
 
     term.loadAddon(new ClipboardAddon());
 
+    // リンクは **Cmd+クリックでだけ**開く（Issue #178 周2。iTerm2 / Ghostty と同じ作法）。
+    // `@xterm/addon-web-links` は修飾キーを見ずにハンドラを呼ぶので、門はここで作る
+    // （判定の正は `linkActivation.ts`）。
+    //
+    // `window.open` の行き先は Main の `setWindowOpenHandler` が横取りし、
+    // **アプリ内に窓を作らず**既定ブラウザへ渡す（`src/main/external-links.ts`）。
     term.loadAddon(
-      new WebLinksAddon((_event, uri) => {
+      new WebLinksAddon((event, uri) => {
+        if (!shouldActivateLink(event)) return;
         window.open(uri, '_blank', 'noopener,noreferrer');
       }),
     );

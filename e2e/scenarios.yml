@@ -1362,3 +1362,43 @@ scenarios:
       あわせて「1ペインでは『ペイン』という語を出さない」「選択が無ければ
       コピーが無効」「右クリックしたペインがアクティブになる」も見る。
       **項目・並び・語・有効/無効の正は `test/unit/context-menu.test.ts`。**
+
+  - id: S92
+    title: ターミナルのリンクは既定ブラウザへ渡り、アプリ内に窓が生まれない
+    spec: S92-external-link-opens-in-browser.spec.ts
+    readme: false
+    note: >-
+      Issue #178 周1（統合元 #174）。`setWindowOpenHandler` はアプリ全体に0件で、
+      `window.open()` に対して Electron が**アドレスバーも戻るボタンも無い
+      `BrowserWindow`** を自前で作っていた。その窓には Renderer 側の `Cmd+W`
+      （`close-pane`）が届かないので、剥がすには信号機をマウスで押すしかない。
+      エージェントは PR リンク・localhost・docs を1日中吐くため、誤爆1回あたり
+      8〜9手 × 3〜10回/日 の損失になっていた。
+      見るのは**逃がしの配線**: `window.open()` -> アプリ内に窓が増えない
+      （`{ action: 'deny' }`）-> `shell.openExternal` に URL が渡る。
+      `shell.openExternal` は `app.evaluate()` から差し替えて記録するだけにし、
+      **本物のブラウザを起動しない**（S91 の `Menu.prototype.popup` と同じ枠組みで、
+      production コードにテスト用のフックを入れていない）。
+      **どのスキームを弾くかの網羅は `test/unit/external-links.test.ts` が正**
+      （開いた先は Playwright から観測できないので、判定は純粋関数
+      `isSafeExternalUrl` に切り出してある）。ここでは**その門が実際に配線に
+      載っていること**を `file:` 1件で見る。
+      あわせて**設定ウィンドウ側にも同じ逃がし先が付いていること**を見る
+      （ウィンドウ生成点は2つあり、片方への付け忘れがそのまま穴になる）。
+
+  - id: S93
+    title: ターミナルのリンクは Cmd+クリックでだけ開き、素のクリックでは開かない
+    spec: S93-link-requires-cmd-click.spec.ts
+    readme: false
+    note: >-
+      Issue #178 周2（統合元 #174）。`@xterm/addon-web-links` は修飾キーを一切
+      見ずにハンドラを呼ぶ（`ILinkProviderOptions` は hover / leave / urlRegex
+      しか持たない）ため、**カーソルを置くつもりの素の左クリックでもリンクが
+      発火**していた。iTerm2 / Ghostty / Terminal.app はいずれも Cmd+クリックを
+      要求するので、同じ作法に寄せる。
+      **修飾キーの組み合わせの網羅は `test/unit/link-activation.test.ts` が正**で、
+      ここでは代表2ケースが**実際の xterm 上のクリックで**そう振る舞うことを見る。
+      ⛔ **Cmd+クリックを先に試す**（逆順だと座標がリンクから外れていても
+      「素のクリックで発火しない」が green になり、何も検証しない spec になる）。
+      さらに、クリックする前に**その座標で `cursor: pointer` になっていること**を
+      assert して、検査が意味を持つ条件を同じ spec の中で固定している。
