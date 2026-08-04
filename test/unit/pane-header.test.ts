@@ -1,13 +1,21 @@
-// ペインヘッダの表示文字列（src/renderer/src/tabs/paneHeader.ts の paneHeaderLabel）。
+// ペインヘッダの表示文字列（src/renderer/src/tabs/paneHeader.ts）。
 //
 // design-review.md 提案 G: 分割中のみ、各ペインの上に「zsh / claude /
 // claude (再開)」+ cwd の basename を出す。tabTitle.ts の resolveAgentTabTitle
 // （タブの見出し）とは目的が別（leaf.title は履歴の再開でユーザー由来の
 // 表示名に化けうるため、そちらではなく ptyKind / isResume / cwd から独立に
-// 組み立てる）。
+// 組み立てる）。この性質は `paneKindLabel` がそのまま引き継いでいる。
+//
+// Issue #130: そのうえで**ヘッダに実際に描く文字列は分岐する**
+// （`paneHeaderLabel`）。ユーザーが名前を付けたペインはその名前だけを出し、
+// 見えなくなった側は `paneAccessibleLabel`（title 属性と aria-label の両方）へ回す。
 
 import { describe, expect, it } from 'vitest';
-import { paneHeaderLabel } from '../../src/renderer/src/tabs/paneHeader';
+import {
+  paneAccessibleLabel,
+  paneHeaderLabel,
+  paneKindLabel,
+} from '../../src/renderer/src/tabs/paneHeader';
 import type { PaneLeaf } from '../../src/renderer/src/tabs/paneTree';
 
 function leaf(overrides: Partial<PaneLeaf>): PaneLeaf {
@@ -65,5 +73,106 @@ describe('paneHeaderLabel', () => {
     expect(paneHeaderLabel(leaf({ ptyKind: 'shell', cwd: '/repo', isResume: undefined }))).toBe(
       'zsh・repo',
     );
+  });
+});
+
+// --- Issue #130: 名前を付けたペイン -----------------------------------------
+
+describe('paneHeaderLabel（名前を付けたペイン）', () => {
+  it('renamed が立っていれば、その名前だけを出す', () => {
+    expect(
+      paneHeaderLabel(
+        leaf({ ptyKind: 'claude', title: '認証まわりの調査', cwd: '/Users/foo/repo-a', renamed: true }),
+      ),
+    ).toBe('認証まわりの調査');
+  });
+
+  it('分割で作った2枚は、名前を付けるまで同じ文字列になる（この Issue が解く問題そのもの）', () => {
+    // splitActivePane は必ず shell を spawn し、cwd を分割元から引き継ぐ。
+    // したがって名前を付けるまで、2枚のヘッダは必ず衝突する。
+    const left = leaf({ paneId: 'p1', ptyKind: 'shell', cwd: '/Users/foo/repo-a' });
+    const right = leaf({ paneId: 'p2', ptyKind: 'shell', cwd: '/Users/foo/repo-a' });
+    expect(paneHeaderLabel(left)).toBe(paneHeaderLabel(right));
+
+    // 片方に名前を付けると分かれる。
+    const named = { ...right, title: 'テスト実行', renamed: true };
+    expect(paneHeaderLabel(left)).not.toBe(paneHeaderLabel(named));
+    expect(paneHeaderLabel(named)).toBe('テスト実行');
+  });
+
+  it('**title が既定値のままでも renamed が無ければ種別・cwd を出す**（文字列比較で判定していない）', () => {
+    // resolveAgentTabTitle の既定は basename(cwd) なので、title に
+    // 'repo-a' が入っている状態が正常。これを「ユーザーが付けた名前」と
+    // 誤認しないこと。
+    expect(paneHeaderLabel(leaf({ ptyKind: 'claude', title: 'repo-a', cwd: '/Users/foo/repo-a' }))).toBe(
+      'claude・repo-a',
+    );
+  });
+
+  it('**ユーザーが既定値と同じ文字列を打った場合も、名前として扱う**（renamed が正）', () => {
+    expect(
+      paneHeaderLabel(
+        leaf({ ptyKind: 'claude', title: 'repo-a', cwd: '/Users/foo/repo-a', renamed: true }),
+      ),
+    ).toBe('repo-a');
+  });
+
+  it('renamed が立っていても title が空白だけなら種別・cwd へ縮退する（鉄則5）', () => {
+    expect(
+      paneHeaderLabel(leaf({ ptyKind: 'shell', title: '   ', cwd: '/Users/foo/repo-a', renamed: true })),
+    ).toBe('zsh・repo-a');
+  });
+});
+
+describe('paneKindLabel', () => {
+  it('renamed が立っていても、何が動いているかは title に影響されない', () => {
+    expect(
+      paneKindLabel(
+        leaf({ ptyKind: 'claude', title: '認証まわりの調査', cwd: '/Users/foo/repo-a', isResume: true }),
+      ),
+    ).toBe('claude (再開)・repo-a');
+  });
+});
+
+describe('paneAccessibleLabel', () => {
+  it('名前を付けていなければ、種別・cwd を1回だけ出す（同じ文字列を2回並べない）', () => {
+    expect(paneAccessibleLabel(leaf({ ptyKind: 'shell', cwd: '/Users/foo/repo-a' }))).toBe(
+      'zsh・repo-a',
+    );
+  });
+
+  it('名前を付けたら、可視テキストを先頭に置き、種別・cwd を後ろへ回す（WCAG 2.5.3）', () => {
+    expect(
+      paneAccessibleLabel(
+        leaf({ ptyKind: 'claude', title: '認証まわりの調査', cwd: '/Users/foo/repo-a', renamed: true }),
+      ),
+    ).toBe('認証まわりの調査、claude・repo-a');
+  });
+
+  it('終了したペインは「終了」を末尾に足す（WebGL 描画のため読み上げに届く唯一の経路）', () => {
+    expect(
+      paneAccessibleLabel(
+        leaf({
+          ptyKind: 'claude',
+          title: '認証まわりの調査',
+          cwd: '/Users/foo/repo-a',
+          renamed: true,
+          exit: { exitCode: 1 },
+        }),
+      ),
+    ).toBe('認証まわりの調査、claude・repo-a、終了');
+  });
+
+  it('名前が無く終了しているペインも、種別・cwd を2回並べない', () => {
+    expect(
+      paneAccessibleLabel(leaf({ ptyKind: 'shell', cwd: '/Users/foo/repo-a', exit: { exitCode: 0 } })),
+    ).toBe('zsh・repo-a、終了');
+  });
+
+  it('exitCode 0（正常終了）でも「終了」を出す（exit の有無で判定していて、コードの値では判定していない）', () => {
+    const label = paneAccessibleLabel(
+      leaf({ ptyKind: 'shell', cwd: '/repo', exit: { exitCode: 0 } }),
+    );
+    expect(label.endsWith('、終了')).toBe(true);
   });
 });

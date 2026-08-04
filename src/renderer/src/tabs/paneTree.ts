@@ -74,9 +74,23 @@ export interface PaneLeaf {
    * 使わずそのタイトルをそのまま採用するため、`title` の末尾が `(再開)` かどうかは
    * 「再開したか」の判定として使えない（明示タイトルがあるケースで false 判定に
    * 化ける）。`isResume` は spawn 時の `resumeOpts` から直接立てるので、
-   * タイトルの見た目（ユーザーが後から renameTab で変えた場合を含む）に依存しない。
+   * タイトルの見た目（ユーザーが後から renamePane で変えた場合を含む）に依存しない。
    */
   isResume?: boolean;
+  /**
+   * ユーザーが明示的に名前を付けたか（Issue #130）。ペインヘッダ
+   * （`tabs/paneHeader.ts`）が「そのペインの名前」と「種別・cwd」の
+   * どちらを出すかの判定に使う。
+   *
+   * **`title` から文字列で判定しない**（`isResume` と同じ理由）。既定の
+   * `title` は `resolveAgentTabTitle`（tabTitle.ts）が入れる `basename(cwd)` や
+   * 分割時のリテラル `'zsh'`（useTabs.ts の splitActivePane）で、**ユーザーが
+   * たまたま同じ文字列を打った場合と区別が付かない**。逆に履歴からの再開では
+   * 既定値のほうが履歴一覧の表示名（ユーザー由来に見える文字列）になるため、
+   * 「既定値と一致するか」の比較は両方向に化ける。`renamed` は rename の
+   * 経路でだけ立てるので、文字列の見た目に依存しない。
+   */
+  renamed?: boolean;
 }
 
 /** 分割ノード。子は必ず2つ（二分木）。`ratio` は最初の子（children[0]）の取り分。 */

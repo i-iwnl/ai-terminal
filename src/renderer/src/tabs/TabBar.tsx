@@ -82,7 +82,7 @@ import {
 import { flattenPaneTree } from './paneTree';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
-import { tabLeaf, type TabState } from './tabPane';
+import { tabDisplayTitle, tabLeaf, tabRepresentativeLeaf, type TabState } from './tabPane';
 import { providerLabel } from './tabProvider';
 // 「あなたの番」の判定は tabYourTurn.ts が唯一の正（Cmd+J と同じ関数を使う。
 // ここで独自に status を解釈すると、状態の意味が2箇所に散る）。
@@ -129,7 +129,25 @@ export interface TabBarProps {
    * 導線を追加する */
   onNewClaude: () => void;
   onNewGemini: () => void;
-  onRename: (id: string, title: string) => void;
+  /**
+   * タブ自身の名前の確定（Issue #131）。**タブのダブルクリックはこちらを呼ぶ。**
+   * 押した対象（タブ）と変わるもの（タブの名前）を一致させる
+   * （Issue #130 の時点では、タブを押しているのにペインが書き換わっていた）。
+   */
+  onRenameTab: (tabId: string, title: string) => void;
+  /**
+   * ペインの名前の確定（Issue #130）。**タブ名とは別物**で、こちらは
+   * メニューの「ペイン名を変更...」からだけ呼ばれる。
+   */
+  onRenamePane: (tabId: string, paneId: string, title: string) => void;
+  /**
+   * 外から（メニューの「ペイン名を変更...」）**ペイン名の**編集を始めるための購読登録。
+   *
+   * **編集中の下書き文字列は TabBar が持つ**（App へ持ち上げると、タブの
+   * 再描画のたびに入力途中の文字が失われる）。App 側はこの関数で
+   * 「編集を始めたい」を伝えるだけ。`Sidebar` の `registerPanelSwitcher` と同じ形。
+   */
+  registerRenameStarter?: (startRename: ((tabId: string) => void) | null) => void;
   onOpenSettings: () => void;
 }
 
@@ -142,7 +160,9 @@ export default function TabBar({
   onNewShell,
   onNewClaude,
   onNewGemini,
-  onRename,
+  onRenameTab,
+  onRenamePane,
+  registerRenameStarter,
   onOpenSettings,
 }: TabBarProps) {
   // 「+ ▾」分割ボタンのドロップダウンメニュー開閉状態（Issue #20 I-1）。
@@ -165,6 +185,20 @@ export default function TabBar({
   // editingTabId の state 更新は非同期なので、Enter -> blur のように同一ティック内で
   // 二重確定を防ぎたい箇所は、同期的に更新できるこの ref を見て判定する。
   const editingTabIdRef = useRef<string | null>(null);
+  // 編集を始めた時点のペイン ID（Issue #130）。
+  //
+  // **確定時に引き直さない。** `commitEditing` は `tab` を見ていないので
+  // `tabLeaf(tab)` を呼べないという実装上の都合もあるが、本質的な理由は別で、
+  // 編集中に別のペインへフォーカスが移りうる（メニュー・通知クリック経由）。
+  // 確定の瞬間のアクティブペインへ書くと、**入力欄に出ていた名前とは別の
+  // ペインの名前が書き換わる**。開始時点の対象を持ち回るのが正しい。
+  const editingPaneIdRef = useRef<string | null>(null);
+  // 何の名前を編集しているか（Issue #131）。**入力欄の見た目は同じでも、
+  // 確定先が違う。** タブのダブルクリックは 'tab'、メニューの
+  // 「ペイン名を変更...」は 'pane'。aria-label もこれで出し分ける
+  // （画面の語と、実際に変わるものを食い違わせない）。
+  const [editingTarget, setEditingTarget] = useState<'tab' | 'pane'>('tab');
+  const editingTargetRef = useRef<'tab' | 'pane'>('tab');
 
   // roving tabindex の「フォーカスされているタブ」（manual activation）。
   // 選択状態（activeTabId / aria-selected）とは独立に動く。矢印キーでの
@@ -181,6 +215,24 @@ export default function TabBar({
     editingTabIdRef.current = id;
     setEditingTabId(id);
   };
+
+  // メニューの「ペイン名を変更...」から編集を始める（Issue #130）。
+  // **アンマウント時に必ず解除する**（App 側が古い関数を掴んだままにしない。
+  // Sidebar の registerPanelSwitcher と同じ理由）。
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  useEffect(() => {
+    registerRenameStarter?.((tabId: string) => {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (tab === undefined) return;
+      startEditing(tab, 'pane');
+    });
+    // **依存配列は registerRenameStarter だけ（意図的）。** ここで捕まえる
+    // startEditing は毎レンダリングで作り直される素の関数だが、その中身は
+    // setState 群と ref だけで、可変な値は tabsRef 経由で常に最新を引く。
+    // tabs を依存に入れると、タブが1枚増減するたびに登録し直すことになる。
+    return () => registerRenameStarter?.(null);
+  }, [registerRenameStarter]);
 
   // 「+ ▾」メニューが開いている間だけ、外側クリックと Escape を監視して閉じる。
   // WAI-ARIA APG のメニューボタンパターン（開いたら最初の項目にフォーカス、
@@ -259,19 +311,38 @@ export default function TabBar({
     }
   }, [tabs, focusedTabId, activeTabId]);
 
-  const startEditing = (tab: TabState): void => {
+  const startEditing = (tab: TabState, target: 'tab' | 'pane'): void => {
     setEditing(tab.id);
-    setDraft(tabLeaf(tab).title);
+    setEditingTarget(target);
+    editingTargetRef.current = target;
+    if (target === 'tab') {
+      editingPaneIdRef.current = null;
+      // 下書きは**いま画面に出ている見出し**（導出値を含む）にする。
+      // 未設定のタブを編集し始めたとき、空欄ではなく既定値から直せる。
+      setDraft(tabDisplayTitle(tab));
+    } else {
+      const leaf = tabLeaf(tab);
+      editingPaneIdRef.current = leaf.paneId;
+      setDraft(leaf.title);
+    }
   };
 
   const commitEditing = (): void => {
-    if (editingTabIdRef.current === null) return;
-    onRename(editingTabIdRef.current, draft);
+    const tabId = editingTabIdRef.current;
+    if (tabId === null) return;
+    if (editingTargetRef.current === 'tab') {
+      onRenameTab(tabId, draft);
+    } else {
+      const paneId = editingPaneIdRef.current;
+      if (paneId !== null) onRenamePane(tabId, paneId, draft);
+    }
     setEditing(null);
+    editingPaneIdRef.current = null;
   };
 
   const cancelEditing = (): void => {
     setEditing(null);
+    editingPaneIdRef.current = null;
   };
 
   // 矢印キー / Home / End でタブ間の roving tabindex を進める（manual
@@ -316,8 +387,16 @@ export default function TabBar({
             // PTY のメタ（title / kind / exit）は leaf に持たせてある
             // （design-review Q4）ので、タブ自体からではなく tabLeaf() で
             // leaf を引いてから読む。木は常に leaf 1枚（PR 3）。
+            // **識別（何のタブか）と状態（終了・あなたの番）で引き先を分ける**
+            // （Issue #131）。識別は木の先頭 leaf を代表として使い、`Cmd+]` で
+            // 動かないようにする。状態はそれぞれ別の意味が既に決まっているので
+            // ここでは触らない（`tabHasYourTurn` は木の全 leaf、`exit` は
+            // `issue-56/design-review.md:81` が「全 leaf が終了したときだけ」と
+            // 確定させている。実装がアクティブ leaf のままなのは別 Issue）。
             const leaf = tabLeaf(tab);
-            const provider = providerLabel(leaf.ptyKind);
+            const repLeaf = tabRepresentativeLeaf(tab);
+            const displayTitle = tabDisplayTitle(tab);
+            const provider = providerLabel(repLeaf.ptyKind);
             // x ボタンが複数 PTY を一度に閉じる抜け穴にならないよう、押す前に
             // ペイン数が分かるようにする（design-review.md 提案 E'）。
             const paneCount = flattenPaneTree(tab.layout).length;
@@ -329,7 +408,7 @@ export default function TabBar({
             // 色相の違いは手がかりに数えない）。終了マーク（四角）とは形も違う。
             const isYourTurn = tabHasYourTurn(tab.layout, yourTurnIds);
             const tabAccessibleLabel = [
-              leaf.title,
+              displayTitle,
               provider,
               isYourTurn ? 'あなたの番' : undefined,
               leaf.exit ? '終了' : undefined,
@@ -339,7 +418,7 @@ export default function TabBar({
             return (
               <div
                 key={tab.id}
-                className={`tab-bar__tab tab-bar__tab--${leaf.ptyKind}${isActive ? ' is-active' : ''}${
+                className={`tab-bar__tab tab-bar__tab--${repLeaf.ptyKind}${isActive ? ' is-active' : ''}${
                   leaf.exit ? ' is-exited' : ''
                 }`}
               >
@@ -383,7 +462,11 @@ export default function TabBar({
                 {isEditing ? (
                   <input
                     className="tab-bar__title-input"
-                    aria-label="タブ名を編集"
+                    // **入力欄の見た目は同じでも、確定先が違う**（Issue #131）。
+                    // タブのダブルクリックはタブ名、メニューの
+                    // 「ペイン名を変更...」はアクティブなペインの名前を変える。
+                    // 画面の語と、実際に変わるものを食い違わせない。
+                    aria-label={editingTarget === 'tab' ? 'タブ名を編集' : 'ペイン名を編集'}
                     value={draft}
                     autoFocus
                     onFocus={(e: FocusEvent<HTMLInputElement>) => e.currentTarget.select()}
@@ -435,10 +518,10 @@ export default function TabBar({
                       className="tab-bar__title"
                       onDoubleClick={(e: MouseEvent<HTMLSpanElement>) => {
                         e.stopPropagation();
-                        startEditing(tab);
+                        startEditing(tab, 'tab');
                       }}
                     >
-                      {leaf.title}
+                      {displayTitle}
                     </span>
                     {leaf.exit && <span className="tab-bar__exit-badge">終了</span>}
                   </button>

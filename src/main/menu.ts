@@ -124,6 +124,18 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
     // ドラッグ 2〜5回/日 に対し最大化 10〜30回/日（ヘビーユーザーの実測）。
     // 木は一切変えない一時的な表示切り替えで、PTY も kill しない。
     actionItem(win, 'ペインを最大化', 'Cmd+Shift+Enter', { type: 'toggle-maximize-pane' }),
+    // ペイン名の変更（Issue #130）。
+    //
+    // **アクセラレータを割り当てない。** 想定頻度が低い操作に
+    // `Cmd+英数字` の名前空間を払わない（design-rules.md。「分割比を広げる /
+    // 狭める」と同じ扱い）。`actionItem` は accelerator に undefined を
+    // 受けられる。
+    //
+    // **この項目がキーボードからの唯一の到達手段。** それまでリネームは
+    // `TabBar.tsx` のダブルクリックだけで、`AppAction` にも当メニューにも
+    // 無く、キーボードから1手も届かなかった（WCAG 2.1.1）。Issue #22
+    // （ショートカットがメニューに載っておらず発見できない）と同型の穴。
+    actionItem(win, 'ペイン名を変更...', undefined, { type: 'rename-active-pane' }),
     { type: 'separator' },
     // ペイン間の移動（design-review.md 提案 B'）。Issue 本文の表は
     // 「次 / 前のペイン | Cmd+] / Cmd+[ を第一に、Cmd+Option+矢印 を併設

@@ -26,7 +26,7 @@
 import type { ReactElement } from 'react';
 import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import { flattenPaneTree, type PaneNode, type PanePath } from './paneTree';
-import { paneHeaderLabel } from './paneHeader';
+import { paneAccessibleLabel, paneHeaderLabel } from './paneHeader';
 import PaneSplitterHandle from './PaneSplitterHandle';
 import { pathKey, splitterAriaLabel, splitterValueText } from './paneSplitter';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
@@ -98,7 +98,11 @@ function renderNode(
     // （design-review.md 提案 G「分割中のみ」。1ペインのタブでは根が leaf 自身に
     // なるため常に false）。
     const showHeader = props.node.kind === 'split';
+    // ヘッダに描く可視文字列（単一スロット）と、その完全版（Issue #130）。
+    // 完全版は `title` 属性と `aria-label` の両方になるので、ヘッダの幅が
+    // 足りずに省略されても、見えなくなった情報がどこにも消えない。
     const label = paneHeaderLabel(node);
+    const fullLabel = paneAccessibleLabel(node);
     return (
       <TerminalPane
         key={node.paneId}
@@ -109,6 +113,7 @@ function renderNode(
         panelId={isRoot ? tabPanelId(props.tabId) : undefined}
         labelledBy={isRoot ? tabButtonId(props.tabId) : undefined}
         label={label}
+        fullLabel={fullLabel}
         wrappedInTmux={node.wrappedInTmux}
         showHeader={showHeader}
         fontFamily={props.fontFamily}

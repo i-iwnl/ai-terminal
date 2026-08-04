@@ -59,11 +59,22 @@ test('S26 タブタイトルをダブルクリックで編集できる', async (
   await expect(input).toHaveCount(0);
   await expect(titleSpan).toHaveText(renamedTitle);
 
-  // 空白のみを入力して確定しても、trim 後は空文字になるため元のタイトルが維持される。
+  // 空白のみを入力して確定すると、**タブ名が未設定に戻り、既定の見出しへ戻る**。
+  //
+  // **Issue #131 で挙動が変わった。** それまでは「trim 後は空文字なので
+  // 元のタイトルを維持する」だった。タブが名前という属性を持つようになり
+  // （`TabState.title`）、未設定が正常な状態になったため、「名前を消して
+  // 既定に戻す」経路が必要になった。既定の見出しは木の先頭 leaf から導出される
+  // （`tabDisplayTitle`）ので、編集前の値（originalTitle）に戻る。
+  //
+  // **ペインの名前（`renamePane`）とは非対称**である点に注意。あちらは
+  // spawn 時の既定（`zsh` / `basename(cwd)`）が常にあるので、空文字は
+  // 「変更しない」として無視する（消して戻す先が別に無い）。
   await titleSpan.dblclick();
   await expect(input).toBeVisible();
   await input.fill('   ');
   await input.press('Enter');
   await expect(input).toHaveCount(0);
-  await expect(titleSpan).toHaveText(renamedTitle);
+  await expect(titleSpan).toHaveText(originalTitle);
+  await expect(titleSpan).not.toHaveText(renamedTitle);
 });
