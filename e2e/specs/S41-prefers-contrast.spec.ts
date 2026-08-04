@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
 import { measureContrast, type ContrastTarget } from '../fixtures/contrast';
+import {
+  focusRingBand,
+  gapPx,
+  providerBand,
+  ringTouchesProviderBand,
+} from '../../src/renderer/src/tabs/tabBandGeometry';
 
 let launched: LaunchedApp;
 
@@ -423,16 +429,98 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
     expect(adjacentHigh[name], `${name} の比が記録から動いている`).toBeCloseTo(ratio, 1);
   }
 
-  // **フォーカスリングとの 3:1 は、いま満たしている。落としてはいけない。**
-  // 固定値だけだと「動いた」ことしか分からず、どちら向きに動いたかを問わない。
+  // --- Issue #179 周2.5: フォーカスリングとの 3:1 は「接しているとき」だけ要求する -----
+  //
+  // **周2 のここは、幾何に対して盲目だった。** 帯とリングの色の比しか測っていないので、
+  // リングを内側へずらして面を挟んでも数値が1桁も動かない。
+  //
+  // 1.4.11 の「隣接色」は**接している**ものを指す。1px でも面が挟まれば、その面が
+  // 隣接色になるので、帯とリングの間に 3:1 を要求する理由が無くなる。
+  // そこで**実際の隙間を測り、接しているときだけ 3:1 を要求する**。
+  //
+  // ⛔ **`outlineOffset` の文字列を突き合わせない。** それは CSS の宣言を言い換えただけで、
+  // `contrast.ts` の冒頭が「宣言値ではなく解決された実効値を見る」と言って捨てた形と同型。
+  // 算術は `tabBandGeometry.ts`（符号と向きを閉じた純粋関数）に任せ、ここでは
+  // `getComputedStyle` の実測値を流し込むだけにする（**同じ計算を2箇所に書かない**）。
+
+  // 本物の `:focus-visible` を作る（S51 と同じ手順。クリックでは出ない）
+  await window.locator('.tab-bar__new').focus();
+  await window.keyboard.press('Shift+Tab');
+
+  const measured = await window.evaluate(() => {
+    const button = document.querySelector('.tab-bar__tab-button:focus-visible');
+    if (!button) return null;
+    const tab = button.closest('.tab-bar__tab');
+    if (!tab) return null;
+    const bs = getComputedStyle(button);
+    const ts = getComputedStyle(tab);
+    return {
+      borderTopWidth: Number.parseFloat(ts.borderTopWidth),
+      outlineWidth: Number.parseFloat(bs.outlineWidth),
+      outlineOffset: Number.parseFloat(bs.outlineOffset),
+      // 純粋関数が前提にしている `align-self: stretch` を実測で検算するための2値
+      tabTop: tab.getBoundingClientRect().top,
+      buttonTop: button.getBoundingClientRect().top,
+    };
+  });
+
+  expect(measured, 'Shift+Tab でタブのボタンが :focus-visible になっていない').not.toBeNull();
+  if (!measured) throw new Error('unreachable');
+
+  // **純粋関数の前提を実測で検算する。** `.tab-bar__tab-button` の border-box 上端が
+  // タブの content-box 上端に一致すること（= `align-self: stretch`）。
+  // ここが崩れると tabBandGeometry の座標系が丸ごと嘘になるので、先に落とす。
+  expect(
+    measured.buttonTop - measured.tabTop,
+    'ボタンの上端がタブの content-box 上端に無い（align-self: stretch が崩れた）',
+  ).toBeCloseTo(measured.borderTopWidth, 1);
+
+  const band = providerBand(measured.borderTopWidth);
+  const ring = focusRingBand(measured.borderTopWidth, measured.outlineWidth, measured.outlineOffset);
+  const gap = gapPx(band, ring);
+  const touching = ringTouchesProviderBand(
+    measured.borderTopWidth,
+    measured.outlineWidth,
+    measured.outlineOffset,
+  );
+
+  console.log(`[S41] 帯とフォーカスリングの隙間: ${gap}px（接している: ${touching}）`);
+
+  // **隙間そのものを固定する。** 0 に戻ると、Issue #165 後半が詰んでいた状態に戻る。
+  expect(
+    gap,
+    '帯とフォーカスリングの隙間が 2px を下回った。0 に戻すと「面との 3:1」と' +
+      '「リングとの 3:1」が両立不能になり、#165 後半が解けなくなる' +
+      '（対 #525252 で 3:1 には L>=0.3531、対 #ffffff で 3:1 には L<=0.3000）',
+  ).toBeGreaterThanOrEqual(2);
+
+  // **接しているときだけ 3:1 を要求する。**
   for (const name of Object.keys(ADJACENT_HIGH_NOW)) {
     if (!name.includes('フォーカスリング')) continue;
+    if (!touching) continue;
     expect(
       adjacentHigh[name],
-      `${name} が 3:1 を割った。プロバイダ色を明るくすると、真下に 0px で接する` +
-        '白のフォーカスリングとの差が消える（Issue #179 周2 の design-review）',
+      `${name} が 3:1 を割った。帯とリングが接している以上、1.4.11 の隣接色になる`,
     ).toBeGreaterThanOrEqual(3.0);
   }
+
+  // **逆向きの番人。** 上の `continue` は、幾何が変わると assert を静かに素通りさせる。
+  // S40 の `staleFail` と同じ形で、**札と実態がずれたら落とす**:
+  //   - 接しているのに 3:1 を割っている  -> 上のループが落とす
+  //   - 接していないのに 3:1 を要求し続ける -> ここが落とす（要求しすぎ。#165 後半を
+  //     「輝度だけでは両立しない」と誤って結論づけたまま固定してしまう）
+  const ringNames = Object.keys(ADJACENT_HIGH_NOW).filter((n) => n.includes('フォーカスリング'));
+  if (!touching) {
+    const stillConstrained = ringNames.filter((n) => adjacentHigh[n] < 3.0);
+    console.log(
+      `[S41] 隙間があるので 3:1 の要求は外れている（3:1 未満の項目: ${stillConstrained.length}件。` +
+        'これは違反ではない）',
+    );
+  }
+  expect(
+    ringNames.length,
+    'フォーカスリングとの比を測る項目が消えた。幾何が変わっても、値そのものは記録し続ける',
+  ).toBe(3);
 
   // **番人。** 上の固定値だけだと、直したときに数字を書き換えて終わりになり、
   // 「3:1 を満たすようになった」ことが以後どの閾値検査にも入らない

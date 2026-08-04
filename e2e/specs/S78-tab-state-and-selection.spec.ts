@@ -144,6 +144,57 @@ test('S78 選択中タブに白い下辺の手がかりがあり、状態スロ�
     expect(shapes.yourTurn.radius, 'あなたの番は丸').toBe('50%');
     expect(shapes.exited.radius, '終了は角のある四角').not.toBe('50%');
     expect(shapes.yourTurn.bg).not.toBe(shapes.exited.bg);
+
+
+    // --- Issue #179 周2.5: 選択中 × フォーカス中の下辺 -----------------------------
+    //
+    // `.tab-bar__tab-button:focus-visible` の `outline-offset` を -2px から -4px にした
+    // （帯とフォーカスリングを引き離すため。S41 が隙間を測っている）。
+    // **その副作用として、選択中かつフォーカス中のタブは下辺が白 4px の塊になる。**
+    // リングの下辺が下から 2〜4px に来て、選択線（下から 0〜2px）と接するため。
+    //
+    // 承知して受けた変更なので、**事実として固定しておく**（黙って変わらないように）。
+    // なお -2px のときはリングの下辺と選択線が**完全に重なっていた**ので、
+    // 「選択は下辺のみ・フォーカスは4辺」という面積差での区別は、下辺については
+    // 元々付いていなかった（新たに失われるわけではない。左右と上の3辺で保たれる）。
+    await window.locator('.tab-bar__new').focus();
+    await window.keyboard.press('Shift+Tab');
+
+    const bottomEdge = await window.evaluate(() => {
+      const button = document.querySelector('.tab-bar__tab-button:focus-visible');
+      if (!button) return null;
+      const tab = button.closest('.tab-bar__tab');
+      if (!tab) return null;
+      const bs = getComputedStyle(button);
+      return {
+        isActive: tab.classList.contains('is-active'),
+        outlineOffset: Number.parseFloat(bs.outlineOffset),
+        outlineWidth: Number.parseFloat(bs.outlineWidth),
+        selectionShadow: getComputedStyle(tab).boxShadow,
+      };
+    });
+
+    expect(bottomEdge, 'Shift+Tab でタブのボタンが :focus-visible になっていない').not.toBeNull();
+    if (!bottomEdge) throw new Error('unreachable');
+
+    expect(bottomEdge.isActive, 'Shift+Tab で到達したのが選択中のタブではない').toBe(true);
+    expect(bottomEdge.selectionShadow, '選択線が下辺 2px の実線であること').toMatch(
+      /0px -2px 0px 0px/,
+    );
+
+    // 下から見た配置: 選択線が 0〜2px、リングの下辺が |offset| - width 〜 |offset| px。
+    // 両者が接していれば、連続した白帯の高さは 2 + outlineWidth。
+    const ringBottomStart = -bottomEdge.outlineOffset - bottomEdge.outlineWidth;
+    const whiteRunPx = ringBottomStart <= 2 ? 2 + bottomEdge.outlineWidth : 2;
+    console.log(
+      `[S78] 選択中 × フォーカス中の下辺: 白が連続 ${whiteRunPx}px` +
+        `（選択線 2px + リング下辺 ${bottomEdge.outlineWidth}px、リング開始 ${ringBottomStart}px）`,
+    );
+    expect(
+      whiteRunPx,
+      '選択中かつフォーカス中の下辺の白が 4px でなくなった。outline-offset を変えたなら、' +
+        'S41 の帯との隙間（>= 2px）と合わせて意図を確認すること（Issue #179 周2.5）',
+    ).toBe(4);
   } finally {
     await closeApp(launched);
   }
