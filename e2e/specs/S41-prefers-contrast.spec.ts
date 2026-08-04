@@ -294,16 +294,132 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
     );
   }
 
+  // --- Issue #179 周2: 面だけでなく「隣接色」も測る -----------------------------
+  //
+  // **周1 のここは、測る隣接色が1つでは足りなかった。** 1.4.11 が要求するのは
+  // 「隣接**色**（複数）に対して 3:1」で、この 2px の帯には3方向の隣がある:
+  //
+  //   下   -> タブの塗り（高コントラストで #525252）  <- 周1 はここだけ測っていた
+  //   下   -> フォーカスリング（白。**間に隙間 0px で接する**）
+  //   左右 -> 隣のタブの帯（帯どうしの区別 = この線の存在理由そのもの）
+  //
+  // 周2 の design-review で、5人中4人が独立に「面との 3:1 だけを見て色を明るくすると、
+  // 帯どうしの識別が壊れる」と指摘した。実際に案の色（#9ea2aa / #d99179 / #71a8d1）を
+  // 測ると、面との比は 3.05〜3.08 に改善する一方で
+  // **帯どうしが 1.06〜1.20 -> 1.00〜1.01（等輝度＝識別不能）**、
+  // **フォーカスリングとの比が 3.25〜3.90 -> 2.54〜2.56（3:1 割れ）** に落ちる。
+  //
+  // しかも a11y レビューが示したとおり、**この2つは同時には満たせない**:
+  //   対 #525252 で 3:1     -> L >= 0.3531
+  //   対 #ffffff  で 3:1    -> L <= 0.3000
+  // 区間が交わらないので、24bit の全色に解が無い。**輝度だけでは解けない。**
+  //
+  // したがって #165 後半は「色を明るくする」では終わらない。ここでは
+  // **現在値を固定して、色を動かした瞬間にこの2つが見えるようにする**。
+  const adjacentTargets: ContrastTarget[] = [
+    // フォーカスリングは高コントラストでも白のまま（--focus-ring は @media で不変）
+    {
+      name: 'シェルタブの色相の枠 対 フォーカスリング',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--shell',
+      property: 'border-top-color',
+      againstColor: '--focus-ring',
+    },
+    {
+      name: 'claude タブの色相の枠 対 フォーカスリング',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--claude',
+      property: 'border-top-color',
+      againstColor: '--focus-ring',
+    },
+    {
+      name: 'gemini タブの色相の枠 対 フォーカスリング',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--gemini',
+      property: 'border-top-color',
+      againstColor: '--focus-ring',
+    },
+    // 帯どうし。**この線の存在理由は「どのプロバイダか」を見せることなので、
+    // ここが 1.00 に潰れたら、面との比をいくら上げても目的を達していない。**
+    {
+      name: '色相の枠どうし（シェル 対 claude）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--shell',
+      property: 'border-top-color',
+      againstColor: '--tab-provider-claude',
+    },
+    {
+      name: '色相の枠どうし（シェル 対 gemini）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--shell',
+      property: 'border-top-color',
+      againstColor: '--tab-provider-gemini',
+    },
+    {
+      name: '色相の枠どうし（claude 対 gemini）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--claude',
+      property: 'border-top-color',
+      againstColor: '--tab-provider-gemini',
+    },
+  ];
+
+  const adjacentHigh = await measureContrast(window, adjacentTargets);
+
+  console.log(
+    '[S41] 高コントラスト時の隣接色:\n' +
+      Object.entries(adjacentHigh)
+        .map(([k, v]) => `  ${k}: ${v.toFixed(2)}`)
+        .join('\n'),
+  );
+
+  expect(Object.keys(adjacentHigh).sort()).toEqual(adjacentTargets.map((t) => t.name).sort());
+
+  // **いまの値**（プロバイダ色は @media で上書きされていないので既定と同じ）。
+  // フォーカスリングとは3本とも 3:1 を満たしており、帯どうしは元から弱い。
+  const ADJACENT_HIGH_NOW: Record<string, number> = {
+    'シェルタブの色相の枠 対 フォーカスリング': 3.25,
+    'claude タブの色相の枠 対 フォーカスリング': 3.9,
+    'gemini タブの色相の枠 対 フォーカスリング': 3.46,
+    '色相の枠どうし（シェル 対 claude）': 1.2,
+    '色相の枠どうし（シェル 対 gemini）': 1.06,
+    '色相の枠どうし（claude 対 gemini）': 1.13,
+  };
+  for (const [name, ratio] of Object.entries(ADJACENT_HIGH_NOW)) {
+    expect(adjacentHigh[name], `${name} の比が記録から動いている`).toBeCloseTo(ratio, 1);
+  }
+
+  // **フォーカスリングとの 3:1 は、いま満たしている。落としてはいけない。**
+  // 固定値だけだと「動いた」ことしか分からず、どちら向きに動いたかを問わない。
+  for (const name of Object.keys(ADJACENT_HIGH_NOW)) {
+    if (!name.includes('フォーカスリング')) continue;
+    expect(
+      adjacentHigh[name],
+      `${name} が 3:1 を割った。プロバイダ色を明るくすると、真下に 0px で接する` +
+        '白のフォーカスリングとの差が消える（Issue #179 周2 の design-review）',
+    ).toBeGreaterThanOrEqual(3.0);
+  }
+
   // **番人。** 上の固定値だけだと、直したときに数字を書き換えて終わりになり、
   // 「3:1 を満たすようになった」ことが以後どの閾値検査にも入らない
   // （S40 の staleFail とまったく同じ壊れ方を防ぐ）。
   // 直った瞬間にここが赤くなり、閾値 assert への切り替えを強制する。
+  //
+  // ⛔ **周1 はここに「`high > normal` の assert に切り替えること」と書いていたが、
+  // それは誤りだった**（周2 の design-review で4人が独立に指摘）。
+  // `providerTargets` は `againstColor: '--surface-tab-active'` で測っており、
+  // **その面自体が #2e2e2e -> #525252 と動く**。normal と high は別の面の上の値なので、
+  // 大小を比べても意味がない。実際、面が明るくなるぶん high は必ず下がる
+  // （3:1 を回復させても 3.05 < 4.18 のまま）。
+  // **`high > normal` が不変条件として意味を持つのは、面が動かない対象だけ。**
   const nowPassing = Object.keys(PROVIDER_HIGH_NOW).filter((name) => providerHigh[name] >= 3.0);
   expect(
     nowPassing,
     'プロバイダ色が高コントラストで 3:1 を満たすようになった。' +
-      'PROVIDER_HIGH_NOW の固定をやめ、`toBeGreaterThanOrEqual(3.0)` と ' +
-      '`high > normal` の assert に切り替えること（Issue #179 周2）',
+      'PROVIDER_HIGH_NOW の固定をやめ、`toBeGreaterThanOrEqual(3.0)` に切り替えること。' +
+      '**そのとき ADJACENT_HIGH_NOW（フォーカスリング / 帯どうし）も必ず見直す。** ' +
+      '面との 3:1 とフォーカスリングとの 3:1 は輝度だけでは両立しないので、' +
+      '位置か形の軸が要る（Issue #165 後半 / #179 周2 の design-review）',
   ).toEqual([]);
 
   await window.emulateMedia({ contrast: null });
