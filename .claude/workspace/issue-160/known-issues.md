@@ -76,6 +76,8 @@ P3
 
 ## 3. 選択中タブの「終了」テキストが、既定の配色で 4.5:1 を割ったまま残っている
 
+> **GitHub Issue**: [#164](https://github.com/i-iwnl/ai-terminal/issues/164)
+
 > **出典**: Issue #134 の design-review（2026-08-04、#160 の周3）
 
 ### 症状
@@ -116,6 +118,8 @@ P2
 
 ## 4. プロバイダ色3本が、高コントラストの選択中タブ上で 3:1 を割っている
 
+> **GitHub Issue**: [#165](https://github.com/i-iwnl/ai-terminal/issues/165)
+
 > **出典**: Issue #134 の design-review（3人が独立に指摘）
 
 ### 症状
@@ -154,6 +158,8 @@ P2
 ---
 
 ## 5. 正常終了（コード0）でもタブが赤い（severity をタブだけが捨てている）
+
+> **GitHub Issue**: [#166](https://github.com/i-iwnl/ai-terminal/issues/166)
 
 > **出典**: Issue #134 の design-review（IA / macOS が指摘）
 
@@ -198,6 +204,8 @@ P2
 
 ## 6. `WebglAddon` に `onContextLoss` ハンドラが無い
 
+> **GitHub Issue**: [#167](https://github.com/i-iwnl/ai-terminal/issues/167)
+
 > **出典**: Issue #134 の design-review（a11y が指摘。配色とは無関係）
 
 ### 症状
@@ -232,6 +240,8 @@ P2
 
 ## 7. `終了` バッジがタブ幅を食い、10枚時にタイトルが 0px になる
 
+> **GitHub Issue**: [#168](https://github.com/i-iwnl/ai-terminal/issues/168)
+
 > **出典**: Issue #134 の design-review（power-user / macOS が指摘）
 
 ### 症状
@@ -262,6 +272,8 @@ P3
 ---
 
 ## 8. `S56-split-pane.png` が画素比較の対象外で、ペインヘッダが写る唯一の画像
+
+> **GitHub Issue**: [#169](https://github.com/i-iwnl/ai-terminal/issues/169)
 
 > **出典**: Issue #137 の design-review（保守担当が発見）
 
@@ -301,6 +313,8 @@ P2
 
 ## 9. `docs/images/S06-new-tab.png` の「+ ▾」メニューが空箱で配布されている
 
+> **GitHub Issue**: [#170](https://github.com/i-iwnl/ai-terminal/issues/170)
+
 > **出典**: Issue #137 の design-review（macOS / 保守担当が独立に画素で確認）
 
 ### 症状
@@ -336,6 +350,8 @@ P2
 ---
 
 ## 10. シェルタブの見出しが cwd に追従しない（`Cmd+J` で行き先が分からない）
+
+> **GitHub Issue**: [#171](https://github.com/i-iwnl/ai-terminal/issues/171)
 
 > **出典**: Issue #137 の design-review（power-user が提案。**採用しなかった**）
 
@@ -378,6 +394,8 @@ P3
 
 ## 11. `Cmd+J` の空振り通知が「タブ」のままになっている
 
+> **GitHub Issue**: [#172](https://github.com/i-iwnl/ai-terminal/issues/172)
+
 > **出典**: #160 の周6（#132）で意図的に見送った判断
 
 ### 症状
@@ -409,6 +427,8 @@ P3
 ---
 
 ## 12. 複数ペインのうち1枚だけを閉じる場合は、まだ確認が出ない
+
+> **GitHub Issue**: [#173](https://github.com/i-iwnl/ai-terminal/issues/173)
 
 > **出典**: #160 の周7（#158）で意図的に対象外にした
 
@@ -447,6 +467,8 @@ P3
 ---
 
 ## 13. ターミナル内の URL をクリックすると、既定ブラウザではなく Electron の窓が開く
+
+> **GitHub Issue**: [#174](https://github.com/i-iwnl/ai-terminal/issues/174)
 
 > **出典**: Issue #135 の design-review（power-user が「#135 より優先すべき」と評価）
 
@@ -489,6 +511,8 @@ P3
 
 ## 14. `Cmd+F` が選択範囲を引き継がない（`Cmd+E` を奪ったまま代替が無い）
 
+> **GitHub Issue**: [#175](https://github.com/i-iwnl/ai-terminal/issues/175)
+
 > **出典**: Issue #135 の design-review（power-user）
 
 ### 症状
@@ -516,6 +540,8 @@ P2
 ---
 
 ## 15. ペイン名の編集欄がタブバーに出る（右クリックから始めると視線が飛ぶ）
+
+> **GitHub Issue**: [#176](https://github.com/i-iwnl/ai-terminal/issues/176)
 
 > **出典**: Issue #135 の design-review（macOS / power-user / IA の3人が指摘）
 
