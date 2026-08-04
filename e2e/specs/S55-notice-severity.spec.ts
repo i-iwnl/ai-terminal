@@ -111,4 +111,36 @@ test('S55 通知が複数同時に出ても、それぞれ独立に閉じられ�
   // 通知が無くなっても、アプリ本体・.app-status は健在であること。
   await expect(window.locator('.app')).toBeVisible();
   await expect(window.locator('.app-status')).toHaveCount(1);
+
+  // --- Issue #136: ペイン内の終了行 [プロセスは...] ---------------------------
+  //
+  // `useTerminal.ts` は PTY 終了時に、そのペインのスクロールバックへ
+  // `\r\n\x1b[2m[プロセスは...]\x1b[0m\r\n` を書いている。**これが現状ただ1つの
+  // 「ペイン単位で消えない終了表示」**（タブバーのバッジはアクティブな leaf しか
+  // 見ておらず、通知バナーは上で閉じたとおり消え、Dock バッジは exit を数えない）。
+  // つまり「裏のペインで claude が落ちたとき、そのペインを見れば分かる」という
+  // 唯一の手がかりなのに、**この行を検証している assert がリポジトリに1本も無かった**。
+  //
+  // ここに置く理由は、この spec が既に `exit`（コード0）と `exit 7` の**両方**を
+  // 打っているため。`label` の分岐（コード / シグナル）のうち、コード側2ケースを
+  // 追加のセットアップ無しで押さえられる（シグナル側は harness から起こせない）。
+  //
+  // **通知を全部閉じたあとに置いている。** バナーは消えるがこの行は消えない、
+  // という上の主張そのものを、同じ流れの中で示すため。
+  //
+  // `\x1b[2m`（dim）は SGR なので DOM のテキストには残らず、素の文字列でマッチできる。
+  const visibleScreen = window
+    .locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-screen')
+    .first();
+
+  // いま選択中の3枚目（`exit 7`）。
+  await expect(visibleScreen).toContainText('[プロセスは終了しました（コード 7）]', {
+    timeout: 15_000,
+  });
+
+  // 2枚目（`exit` = コード0）。**通知を閉じても、タブを離れて戻っても残ること。**
+  await window.keyboard.press('Meta+2');
+  await expect(
+    window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-screen').first(),
+  ).toContainText('[プロセスは終了しました（コード 0）]', { timeout: 15_000 });
 });

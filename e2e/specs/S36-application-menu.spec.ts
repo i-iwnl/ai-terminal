@@ -33,7 +33,16 @@ test.afterEach(async () => {
  * Cmd+T 一回でタブが2枚開く状態）。Playwright の keyboard.press() は Renderer に
  * 合成キーイベントを送るだけで、ネイティブメニューの accelerator 経路を通らない。
  * MenuItem の registerAccelerator もインスタンスからは読めない（実測で全項目 undefined）。
- * 確認手順は .claude/workspace/issue-22/known-issues.md を参照。
+ *
+ * **代わりに何で押さえているか**（Issue #144）:
+ *
+ * - `test/unit/menu-accelerators.test.ts` が menu.ts をテキストとして読み、
+ *   `accelerator:` を直接書いた項目に `registerAccelerator: false` があることと、
+ *   `actionItem()` を通さない項目が許可リストから増減していないことを検査する
+ * - **`role` が暗黙に持つ accelerator はそちらでは拾えない**（ソースに
+ *   `accelerator:` の文字が現れない）。それを見ているのが下の 1 / 1-b。
+ * - 人手の確認手順は
+ *   `.claude/skills/e2e/reference/limitations.md`「メニューとキーボードの二重発火の手動確認」
  */
 test('S36 アプリケーションメニューが定義され、再読み込みが含まれない', async () => {
   const { window } = launched;

@@ -30,13 +30,14 @@ test('S64 「+ ▾」で新しいシェル / Claude / Gemini を選んで開け�
   await expect(menu).toHaveCount(0);
   await expect(newButton).toHaveAttribute('aria-expanded', 'false');
 
-  // メニューを開くと3項目（新しいシェル / Claude / Gemini）が並ぶこと。
+  // メニューを開くと3項目（シェル / Claude / Gemini）が並ぶこと。
+  // **3つとも裸の名詞**（Issue #137。以前は1つ目だけ「新しいシェル」だった）。
   await newButton.click();
   await expect(menu).toBeVisible();
   await expect(newButton).toHaveAttribute('aria-expanded', 'true');
   const items = menu.locator('[role="menuitem"]');
   await expect(items).toHaveCount(3);
-  await expect(items.nth(0)).toHaveText('新しいシェル');
+  await expect(items.nth(0)).toHaveText('シェル');
   await expect(items.nth(1)).toHaveText('Claude');
   await expect(items.nth(2)).toHaveText('Gemini');
 

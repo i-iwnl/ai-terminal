@@ -276,6 +276,41 @@ describe('ウィンドウ上端の帯の高さ（Issue #119 周1）', () => {
     expect(body).not.toMatch(/\b36px\b/);
   });
 
+  // --- ペインヘッダの高さ（Issue #138。#160 の周5）-----------------------------
+  //
+  // 分割中だけ出る帯の高さが 18px のリテラルで3箇所に散っていた。
+  // **タブバーの --bar-height とは別のトークンにする**（用途が違い、揃える理由が無い。
+  // 値を共有すると片方を動かしたときにもう片方が黙って動く）。
+  //
+  // **この検査が無いと、リテラルへの逆戻りを誰も見ない。** `make css-substitution-check`
+  // は「置換で値が変わっていないこと」を証明するが、**次に誰かが 18px を
+  // 直接書き戻しても値は同じなので PASS する**。
+  it('--pane-header-height が宣言されている', () => {
+    expect(root).toMatch(/--pane-header-height:\s*\d+px;/);
+  });
+
+  it('.pane-header の高さが --pane-header-height を参照している（リテラルを残さない）', () => {
+    const body = ruleBody('.pane-header');
+    expect(body).toMatch(/flex:\s*0 0 var\(--pane-header-height\)/);
+    expect(body).toMatch(/height:\s*var\(--pane-header-height\)/);
+    expect(body).not.toMatch(/\b18px\b/);
+  });
+
+  it('ヘッダの下へ検索バーを逃がす top も同じトークンを参照している', () => {
+    // ここが取り残されると、ヘッダの高さを変えたときに検索バーだけがずれる
+    // （**同じ値に依存しているのに、依存が明示されていない**箇所だった）。
+    const body = ruleBody('.pane-header ~ .terminal-search');
+    expect(body).toMatch(/top:\s*calc\(var\(--sp-2\) \+ var\(--pane-header-height\)\)/);
+    expect(body).not.toMatch(/\b18px\b/);
+  });
+
+  it('`.notice-banner__icon` の 18px は別物なので、置換の対象にしない', () => {
+    // #138 の完了条件は「styles.css に 18px が残っていない」と書かれていたが、
+    // **達成不能**（アイコンの寸法は帯の高さとは無関係で、たまたま同じ値）。
+    // 「`.pane-header` 系の規則に残っていない」へ読み替えた、という判断をここに固定する。
+    // **たまたま同じ数値というだけの箇所を同じトークンに畳むと、意味の無い依存が生まれる。**
+    expect(ruleBody('.notice-banner__icon')).toMatch(/\b18px\b/);
+  });
 });
 
 describe('パネルの「範囲」と「区切り」の見た目（Issue #119 周3）', () => {

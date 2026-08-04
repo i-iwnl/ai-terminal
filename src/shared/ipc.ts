@@ -5,6 +5,8 @@
  * Main / preload / Renderer のいずれもここから import し、文字列リテラルを各所に散らさない。
  */
 
+import type { TerminalContextMenuState } from './context-menu';
+
 // ---------------------------------------------------------------------------
 // ターミナル / PTY
 // ---------------------------------------------------------------------------
@@ -49,6 +51,23 @@ export interface SpawnPtyResult {
   agentSessionId?: string;
   /** tmux でラップして起動したか */
   wrappedInTmux: boolean;
+  /**
+   * 実際に起動したシェルの実行ファイル名（`fish` / `bash` / `zsh`。basename）。
+   *
+   * **`kind === 'shell'` のときだけ埋まる。** 決定順は Main の `buildShellPlan()`
+   * （`config.shell -> $SHELL -> /bin/zsh`）で、そこが唯一の正。Renderer は
+   * `AppConfig.shell` を読んでも既定が `undefined` なので `$SHELL` を知りえず、
+   * これを返さないと画面に `zsh` をハードコードするしかなくなる（Issue #137）。
+   *
+   * **claude / gemini では埋めない。** それらは tmux でラップされうるので、
+   * ラップ後の `plan.command` は `tmux` になる。「起動したコマンド名」を
+   * 汎用フィールドにすると、そこに `tmux` が載る事故が起きる。
+   *
+   * **フルパスではなく basename。** 画面の幅が足りない（ペインヘッダの実幅は
+   * 最小ペインで約 148.6px）ほか、読み上げでも `/opt/homebrew/bin/fish` は
+   * `fish` の 1.87 倍の時間がかかる（Issue #137 の design-review で実測）。
+   */
+  shellName?: string;
 }
 
 /** PTY からの出力（Main -> Renderer の push） */
@@ -617,6 +636,14 @@ export const IpcSend = {
    * 見せる）。ペインの木そのものは Renderer だけが持つため、Main は数だけを受け取る。
    */
   menuPaneCount: 'menu:pane-count',
+  /**
+   * ターミナル面の右クリックメニューを出す（Issue #135）。
+   *
+   * **Renderer は「状況」だけを送り、項目表は `src/shared/context-menu.ts` が決める。**
+   * Main はそれを `MenuItemConstructorOptions` に変換して `Menu.popup()` するだけ。
+   * ペインの木は Renderer だけが持つので、`menuPaneCount` と同じく数だけを渡す。
+   */
+  contextMenuShow: 'context-menu:show',
   /** ウィンドウタイトルの設定（Issue #119 周5 / #20 の K-10） */
   windowSetTitle: 'window:set-title',
 } as const;
@@ -730,6 +757,11 @@ export interface RendererApi {
      * 「タブを閉じる（N ペイン）」のラベル更新にだけ使う（IpcSend.menuPaneCount 参照）。
      */
     reportPaneCount(count: number): void;
+    /**
+     * ターミナル面の右クリックメニューを出す（Issue #135。IpcSend.contextMenuShow 参照）。
+     * 項目が選ばれた結果は既存の `onAction` 経由で戻ってくる（新しい経路を作らない）。
+     */
+    showContextMenu(state: TerminalContextMenuState): void;
   };
   session: {
     /**

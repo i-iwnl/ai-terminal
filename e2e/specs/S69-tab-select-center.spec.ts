@@ -66,7 +66,7 @@ test('S69 タブの中央をクリックすると、そのタブが選択され�
   const tabs = window.locator('.tab-bar__tab');
   for (let i = 0; i < 2; i += 1) {
     await window.locator('.tab-bar__new').click();
-    await window.locator('.tab-bar__new-menu-item', { hasText: '新しいシェル' }).click();
+    await window.locator('.tab-bar__new-menu-item', { hasText: 'シェル' }).click();
     await expect(tabs).toHaveCount(i + 2, { timeout: 15_000 });
   }
 

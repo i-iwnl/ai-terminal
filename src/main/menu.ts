@@ -9,8 +9,19 @@
 // もう1つの役割は発見可能性。macOS でショートカットを見つける正規の場所はメニューバーで、
 // ここに載っていないキーは「存在しない」のと同じ（VoiceOver のメニュー走査でも辿れない）。
 
-import { app, ipcMain, Menu, shell, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import {
+  BrowserWindow,
+  app,
+  ipcMain,
+  Menu,
+  shell,
+  type MenuItemConstructorOptions,
+} from 'electron';
 import { IpcEvent, IpcSend, type AppAction } from '@shared/ipc';
+import {
+  terminalContextMenuItems,
+  type TerminalContextMenuState,
+} from '@shared/context-menu';
 import { openSettingsWindow } from './settings-window';
 
 const REPOSITORY_URL = 'https://github.com/i-iwnl/ai-terminal';
@@ -352,4 +363,55 @@ export function registerMenuHandlers(): void {
     if (typeof paneCount !== 'number') return;
     updateCloseTabLabel(paneCount);
   });
+
+  // ターミナル面の右クリック（Issue #135）。
+  //
+  // **項目表は `src/shared/context-menu.ts` が決める。ここは変換して出すだけ。**
+  // 実際に画面へ出たかは Playwright から観測できないので、項目・並び・語の正は
+  // 純粋関数側に置いて `test/unit/` で固定してある（`dock.bounce` と同じ扱い）。
+  //
+  // `role: 'copy'` / `role: 'paste'` は `webContents` のフォーカス中の要素へ効く。
+  // **ネイティブメニューは DOM フォーカスを動かさない**ので、xterm 本来の
+  // copy / paste 経路（bracketed paste を含む）にそのまま乗る。
+  ipcMain.on(IpcSend.contextMenuShow, (event, rawState: unknown) => {
+    if (!isContextMenuState(rawState)) return;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return;
+
+    const template: MenuItemConstructorOptions[] = terminalContextMenuItems(rawState).map((item) => {
+      if (item.kind === 'separator') return { type: 'separator' };
+      if (item.kind === 'role') {
+        return {
+          label: item.label,
+          role: item.role,
+          accelerator: item.accelerator,
+          // **`actionItem()` と同じ理由で必ず false。** 実際にキーを拾うのは
+          // Renderer の `matchShortcut` 1箇所（`menu.ts` 冒頭の原則）。
+          registerAccelerator: false,
+          enabled: item.enabled,
+        };
+      }
+      return {
+        label: item.label,
+        accelerator: item.accelerator,
+        registerAccelerator: false,
+        click: () => {
+          if (win.isDestroyed()) return;
+          win.webContents.send(IpcEvent.menuAction, item.action);
+        },
+      };
+    });
+
+    // **座標を渡さない。** 省略すると Electron が現在のカーソル位置に出す。
+    // 渡すと DIP と `titleBarStyle: 'hiddenInset'` のコンテンツ座標のずれを
+    // 自分で管理することになり、画面端での反転も自前になる。
+    Menu.buildFromTemplate(template).popup({ window: win });
+  });
+}
+
+/** Renderer から届いた状況が期待の形か（鉄則5。外から来る値は絞り込む）。 */
+function isContextMenuState(value: unknown): value is TerminalContextMenuState {
+  if (typeof value !== 'object' || value === null) return false;
+  const state = value as Record<string, unknown>;
+  return typeof state.paneCount === 'number' && typeof state.hasSelection === 'boolean';
 }

@@ -65,6 +65,19 @@ export interface PaneLeaf {
    */
   wrappedInTmux?: boolean;
   /**
+   * 実際に起動したシェルの実行ファイル名（`SpawnPtyResult.shellName`）。
+   * `ptyKind === 'shell'` のときだけ入る。
+   *
+   * **`wrappedInTmux` とまったく同じ理由で leaf に持つ。** どのシェルで起動したかは
+   * spawn の瞬間に1回だけ決まる（Main の `buildShellPlan()`）。設定
+   * （`AppConfig.shell`）を後から読み直すと、**設定を変えたあとに、既に走っている
+   * ペインについて嘘をつく**ことになる。
+   *
+   * **タブではなくペインの属性**であることも同じ。分割すれば1タブの中に
+   * 別々のシェルが同居しうる（設定を変えてから分割した場合）。
+   */
+  shellName?: string;
+  /**
    * 履歴からの再開（`--resume` / gemini の再開ターゲット）で起動したか。
    * ペインヘッダ（design-review.md 提案 G。`tabs/paneHeader.ts`）が
    * `claude` / `claude (再開)` を出し分けるために使う。
@@ -84,8 +97,10 @@ export interface PaneLeaf {
    *
    * **`title` から文字列で判定しない**（`isResume` と同じ理由）。既定の
    * `title` は `resolveAgentTabTitle`（tabTitle.ts）が入れる `basename(cwd)` や
-   * 分割時のリテラル `'zsh'`（useTabs.ts の splitActivePane）で、**ユーザーが
-   * たまたま同じ文字列を打った場合と区別が付かない**。逆に履歴からの再開では
+   * 分割時のシェル名（`fish` / `zsh` など。useTabs.ts の spawnLeaf が spawn 結果から
+   * 決める）で、**ユーザーがたまたま同じ文字列を打った場合と区別が付かない**。
+   * **既定値が環境によって変わるようになった（Issue #137）ぶん、文字列比較は
+   * ますます使えない。**逆に履歴からの再開では
    * 既定値のほうが履歴一覧の表示名（ユーザー由来に見える文字列）になるため、
    * 「既定値と一致するか」の比較は両方向に化ける。`renamed` は rename の
    * 経路でだけ立てるので、文字列の見た目に依存しない。

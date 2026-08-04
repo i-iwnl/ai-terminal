@@ -5,8 +5,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
+import { basename } from 'node:path';
 
-import { app, ipcMain } from 'electron';
+import { BrowserWindow, app, ipcMain } from 'electron';
 import type { IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
 import { spawn as spawnPty } from 'node-pty';
 import type { IPty } from 'node-pty';
@@ -24,6 +25,7 @@ import {
   type PtyCwdResult,
   type AppConfig,
 } from '@shared/ipc';
+import { shouldBounceOnExit } from '@shared/pty-exit';
 import { getConfig } from '../config';
 import { markOwnedSession } from '../agents/poller';
 import { readProcessCwd } from './cwd';
@@ -281,13 +283,37 @@ export function registerPtyHandlers(): void {
       proc.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
         const entry = entries.get(ptyId);
         disposeEntry(ptyId);
-        if (entry && !entry.sender.isDestroyed()) {
-          const payload: PtyExitEvent = { ptyId, exitCode, signal };
-          entry.sender.send(IpcEvent.ptyExit, payload);
+        // **`entry` が無いのは、アプリ側が `pty:kill` で殺した場合**
+        // （`ptyKill` のハンドラが先に `disposeEntry` する）。その終了は
+        // ユーザーが起こしたものなので、Renderer へも通知せず Dock も鳴らさない。
+        if (!entry || entry.sender.isDestroyed()) return;
+
+        const payload: PtyExitEvent = { ptyId, exitCode, signal };
+        entry.sender.send(IpcEvent.ptyExit, payload);
+
+        // Issue #133: **異常終了をアプリの外へ出す。**
+        //
+        // ウィンドウ内には層が3枚ある（通知バナー / タブバーの終了表示 /
+        // ペイン内の `[プロセスは終了しました…]`）が、**ウィンドウを見ていない
+        // 時間帯には1つも届かない**。「14:00 に落ちて 15:30 に気づく」を縮めるには
+        // 第0層（Dock）に出すしかない。
+        //
+        // 判定は `src/shared/pty-exit.ts` が唯一の正で、Renderer の
+        // `severityForExit`（通知バナーの色）と**同じ関数**を見ている。
+        // 条件は「異常終了 かつ ウィンドウが前に無い」（`poller.ts` の完了通知と同じ作法）。
+        const win = BrowserWindow.fromWebContents(entry.sender);
+        if (app.dock && shouldBounceOnExit({ exitCode, signal }, win?.isFocused() ?? false)) {
+          app.dock.bounce('informational');
         }
       });
 
-      return { ptyId, agentSessionId: plan.agentSessionId, wrappedInTmux };
+      // **`plan` ではなく `basePlan` から取る。** `plan` は tmux ラップ後なので
+      // claude / gemini では `command` が `tmux` になる。`kind === 'shell'` は
+      // 上の `maybeWrapWithTmux` が必ず素通しするので basePlan と一致するが、
+      // 取り違えの余地を残さないよう明示的に basePlan を読む（Issue #137）。
+      const shellName = req.kind === 'shell' ? basename(basePlan.command) : undefined;
+
+      return { ptyId, agentSessionId: plan.agentSessionId, wrappedInTmux, shellName };
     },
   );
 

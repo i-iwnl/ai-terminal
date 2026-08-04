@@ -200,6 +200,18 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       property: 'border-top-color',
     },
     {
+      // Issue #134 の design-review で見つかった穴: **S40 は --status-your-turn を
+      // 1件も測っていなかった**（`grep your-turn` が0件）。「無視してよい状態」
+      // （終了）には契約が2本あるのに、**このアプリの存在理由そのものである
+      // 「行動が必要な状態」には0本**、という非対称だった。
+      // 下の「作業中のドット」と同じ理由でホバー面（--surface-2）と比べる。
+      name: 'あなたの番のドット（対ホバー面）',
+      kind: 'non-text',
+      selector: '.task-item--your-turn .task-item__status-dot',
+      property: 'background-color',
+      againstColor: '--surface-2',
+    },
+    {
       // Issue #20 B（PR 8）で一覧は「あなたの番」グループが先頭になり、
       // busy（作業中）の行はもう先頭とは限らない。`.task-item--working` で
       // 明示的に絞り込み、DOM の並び順に依存しないようにする。
@@ -335,6 +347,75 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
 
   const main = await measureContrast(window, mainTargets);
 
+  // --- Issue #134（周1 characterization）: 「選択中かつ終了」のタブ --------------
+  //
+  // **上の mainTargets とは別のバッチにしてある。** ここで測りたい状態
+  // （終了したタブが選択されたまま）を作るには新しいタブを1枚足して選択を移すしかなく、
+  // それをすると直前に測ったスプリッタ・アクティブペインの枠線の前提
+  // （6枚目の分割タブが選択中であること）が崩れる。
+  //
+  // **既に終了させた2枚目では測れない。** あちらは claude / gemini を開いた時点で
+  // 非選択になっており、乗っている面は `.tab-bar`（--surface-1）。ここで問題に
+  // なっているのは **--surface-tab-active（#2e2e2e）の上**の値。
+  //
+  // `TabBar.tsx` は `is-active` と `is-exited` を同じ要素に並べて付け、両者は
+  // 詳細度が同じ (0,2,0) なので**後勝ちで `.is-exited` の color が
+  // `--text-bright` を上書きする**。つまり「選択中かつ終了」は実際に起きる状態で、
+  // そのときタブの文字と終了バッジの2箇所が --status-exited になる。
+  //
+  // **どちらも 4.47 で、テキストの 4.5:1 をわずかに割っている**（wcag: 'fail'）。
+  // いま値は直さない（周3 の担当）。ここでやるのは、直す前の値を固定して
+  // **値が動いたら必ず赤くなる状態を先に作る**こと。
+  // `styles.css` の `.tab-bar__state-slot--exited` 直上のコメントは、この 4.47 を
+  // 「テキストの 4.5:1 も満たす」と誤記している。それも周3 で直す。
+  await window.keyboard.press('Meta+t');
+  await expect(window.locator('.tab-bar__tab')).toHaveCount(7, { timeout: 15_000 });
+  const exitedActiveScreen = window
+    .locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-screen')
+    .first();
+  await expect(exitedActiveScreen).toContainText(promptPattern, { timeout: 20_000 });
+  await window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-helper-textarea').focus();
+  await window.keyboard.type('exit');
+  await window.keyboard.press('Enter');
+  // **選択されたまま終了していること**を先に固定する。ここが崩れると、下の2件は
+  // 別の面（--surface-1）の上を測ってしまい、静かに違う値を記録する。
+  await expect(window.locator('.tab-bar__tab.is-active.is-exited')).toHaveCount(1, {
+    timeout: 15_000,
+  });
+
+  const exitedActive = await measureContrast(window, [
+    {
+      // 要素自身が --surface-tab-active の不透明な塗りを持つので against は要らない
+      // （effectiveBackground は自分自身から始まる）。
+      name: '終了したタブの文字（選択中・対 --surface-tab-active）',
+      kind: 'text',
+      selector: '.tab-bar__tab.is-active.is-exited',
+      property: 'color',
+    },
+    {
+      // バッジ自身は背景を持たないので、祖先（選択中のタブ）まで遡って
+      // --surface-tab-active に行き着く。
+      name: '終了バッジの文字（選択中・対 --surface-tab-active）',
+      kind: 'text',
+      selector: '.tab-bar__tab.is-active .tab-bar__exit-badge',
+      property: 'color',
+    },
+    {
+      // Issue #134 の design-review で見つかった、**一度も測られていなかった箇所**。
+      // 上の「終了マークの塗り（先頭スロット・対タブバー）」は against が
+      // `.tab-bar`（--surface-1）で、しかも対象は claude / gemini を開いたあとに
+      // 非選択になった2枚目。**同じセレクタが、タブの選択状態で別の面に乗る**。
+      // 選択中タブの上では --surface-tab-active が実効背景になる。
+      // 高コントラストでは 2.57 まで落ちて**非テキストの 3:1 すら割っていた**
+      // （S41 が高コントラスト側を担当する）。
+      name: '終了マークの塗り（選択中タブ上・対 --surface-tab-active）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab.is-active .tab-bar__state-slot--exited',
+      property: 'background-color',
+      against: '.tab-bar__tab.is-active',
+    },
+  ]);
+
   // --- 設定ウィンドウ -----------------------------------------------------
   // **最も明るい面の上が一番厳しい。** 暗い面だけで測ると見落とす。
 
@@ -401,7 +482,7 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     'メタ情報の文字（サイドバー上）': { ratio: 6.07, wcag: 'pass' }, // 4.11 から。ようやく AA
     '状態ラベルの文字（あなたの番 / 作業中）': { ratio: 14.76, wcag: 'pass' },
     'CLI の生の値の文字（busy / idle）': { ratio: 6.07, wcag: 'pass' },
-    '一覧の主タイトルの文字': { ratio: 14.76, wcag: 'pass' },
+    一覧の主タイトルの文字: { ratio: 14.76, wcag: 'pass' },
     '非選択セグメントの文字（対トラック）': { ratio: 6.69, wcag: 'pass' },
     '選択中セグメントの文字（対ピル）': { ratio: 14.74, wcag: 'pass' },
     // **選択中タブの塗り（下の項目）と同じ、既知の限界。** --surface-2 と
@@ -411,7 +492,7 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     // ここにも当てはまるが、この PR のスコープ（K-6: 下線 -> セグメンテッド
     // コントロールへの置き換え）を超えるため次周の課題として残す。
     '選択中セグメントの塗り（対トラック）': { ratio: 1.08, wcag: 'fail' },
-    '非選択タブの文字': { ratio: 7.01, wcag: 'pass' },
+    非選択タブの文字: { ratio: 7.01, wcag: 'pass' },
     // **選択状態は、この塗りではなく Issue #119 周5 で足した下辺の線が担う。**
     // 塗りをどう選んでも 3:1 には届かない（明るくするとタブの文字が読めなくなる）ので、
     // 構造で解いた。白（--focus-ring）2px の `box-shadow: inset 0 -2px 0`。
@@ -421,6 +502,7 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     // ここは「塗りだけでは足りない」という事実の記録として残す。
     '選択中タブの塗り（対タブバー）': { ratio: 1.23, wcag: 'fail' },
     '検索欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.51 から（PR 5-4）
+    'あなたの番のドット（対ホバー面）': { ratio: 7.85, wcag: 'pass' },
     '作業中のドット（対ホバー面）': { ratio: 5.72, wcag: 'pass' },
     // Issue #20 PR 10（差し戻し後）: プロバイダの色相アクセントと終了マーク。
     //
@@ -441,6 +523,18 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     'claude タブの色相の枠（対タブバー）': { ratio: 4.27, wcag: 'pass' },
     'gemini タブの色相の枠（対タブバー）': { ratio: 4.82, wcag: 'pass' },
     '終了マークの塗り（先頭スロット・対タブバー）': { ratio: 5.49, wcag: 'pass' },
+    // Issue #134（周1 characterization）: 同じ --status-exited #d47b7b でも、
+    // **乗る面が --surface-tab-active #2e2e2e に変わると 5.49 -> 4.47 に落ちる。**
+    // テキスト用途なので閾値は 4.5 で、**わずかに割っている**（`wcag: 'fail'`）。
+    // 高コントラスト側はもっと悪い（#525252 の上で 2.57。S41 が固定している）。
+    // **周3 で --status-exited を上げると、ここの2行が動く。**
+    '終了したタブの文字（選択中・対 --surface-tab-active）': { ratio: 4.47, wcag: 'fail' },
+    '終了バッジの文字（選択中・対 --surface-tab-active）': { ratio: 4.47, wcag: 'fail' },
+    // **同じセレクタが、タブの選択状態で別の面に乗る**（非選択なら --surface-1 で
+    // 5.49、選択中なら --surface-tab-active で 4.47）。非テキストなので既定側は
+    // 3:1 を満たしているが、**高コントラストでは 2.57 まで落ちて割っていた**
+    // （Issue #134 の本体の1つ。周3 で直した。S41 が高コントラスト側を測る）。
+    '終了マークの塗り（選択中タブ上・対 --surface-tab-active）': { ratio: 4.47, wcag: 'pass' },
     // Issue #20 PR 11: 通知バナーの severity（情報 / エラー）。
     // 色相はエラー（赤系）と変えつつ、明度構成（暗い塗り・明るい文字・中間の枠）は
     // 揃えてある（design-rules.md の色覚シミュレーションの結論どおり、
@@ -463,12 +557,12 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     '設定の入力欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.30 から（PR 5-4）
     // 2.4.11。**アクセント色では 1.70 で満たせない**（PR 5-4 で枠を明るくしたため）
     'フォーカスリング（対 通常の枠）': { ratio: 4.29, wcag: 'pass' },
-    '設定の注記の文字': { ratio: 4.86, wcag: 'pass' }, // 3.29 から。**ここが一番厳しい面**
-    '設定の見出しの文字': { ratio: 11.81, wcag: 'pass' }, // 5.17 から（見出しを一段上げた）
-    '設定の値の文字': { ratio: 11.81, wcag: 'pass' }, // 9.18 から
+    設定の注記の文字: { ratio: 4.86, wcag: 'pass' }, // 3.29 から。**ここが一番厳しい面**
+    設定の見出しの文字: { ratio: 11.81, wcag: 'pass' }, // 5.17 から（見出しを一段上げた）
+    設定の値の文字: { ratio: 11.81, wcag: 'pass' }, // 9.18 から
   };
 
-  const measured = { ...main, ...settings, ...focused };
+  const measured = { ...main, ...exitedActive, ...settings, ...focused };
 
   // 期待値を較正するときに読む。落ちたときに「いくつだったか」が
   // レポートに残るので、記録の更新が推測にならない。
@@ -490,13 +584,32 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
 
   // 現時点で満たしているものが、こっそり悪化して閾値を割らないこと。
   // 満たしていないものは上の固定値で見張っているので、ここでは対象にしない。
+  const thresholdFor = (name: string): number =>
+    name.includes('塗り') || name.includes('枠') || name.includes('ドット')
+      ? NON_TEXT_MIN
+      : TEXT_MIN;
+
   for (const [name, { ratio, wcag }] of Object.entries(expected)) {
     if (wcag !== 'pass') continue;
-    const min =
-      name.includes('塗り') || name.includes('枠') || name.includes('ドット')
-        ? NON_TEXT_MIN
-        : TEXT_MIN;
+    const min = thresholdFor(name);
     expect(measured[name], `${name} が WCAG の閾値を割った`).toBeGreaterThanOrEqual(min);
     expect(ratio).toBeGreaterThanOrEqual(min);
   }
+
+  // **逆向きの検査。`wcag: 'fail'` の札が腐るのを防ぐ**（Issue #134 の design-review）。
+  //
+  // 上のループは `if (wcag !== 'pass') continue;` なので、値を直したときに
+  // `ratio` だけ更新して `wcag: 'fail'` を残すと、**その項目は緑のまま
+  // 閾値検査の外に出たきり戻ってこない**。是正したのに是正が守られない、という
+  // 一番気づきにくい壊れ方をする。
+  //
+  // 「fail と書いてあるのに実測が閾値を満たしている」= 札の更新漏れ、として落とす。
+  const staleFail = Object.entries(expected)
+    .filter(([name, { wcag }]) => wcag === 'fail' && measured[name] >= thresholdFor(name))
+    .map(([name]) => name);
+  expect(
+    staleFail,
+    'WCAG を満たすようになったのに `wcag: \'fail\'` のままの項目がある。' +
+      "'pass' に更新すること（そうしないと、この項目は以後どの閾値検査にも入らない）",
+  ).toEqual([]);
 });

@@ -88,8 +88,18 @@ test('S37 設定でターミナルをスクリーンリーダーから読める�
   // 状況を作る。PaneTreeView（App.tsx から呼ぶ）がアクティブな1ペインにしか
   // screenReaderMode を渡していなければ、ここでも1個のまま保たれるはず
   // （このコメントの上、63〜64行目のコメントが予告していたとおりの実測）。
+  //
+  // **`toHaveCount` の数は「タブ2枚 + 分割で増えた1枚」で 3。** ここは長らく 2 と
+  // 書かれており、**分割が反映される前の状態（タブ2枚 = ペイン2枚）で条件が
+  // 成立してしまうため、実質「分割していない状態」を測っていた**。
+  // `Meta+d` -> `spawnLeaf` は非同期（`await window.api.pty.spawn`）なので、
+  // 速いマシンでは新しいペインがマウントされる前に 2 で成立して素通りし、
+  // 遅いと 3 になって落ちる — という**両方向に flaky** な状態だった
+  // （Issue #160 の周4 で 3回中2回落ちることを実測）。
+  // loop.md の「検査は正しいが、その条件を踏んでいない」の実例。
+  // **分割が実際に起きたことを数で固定する。**
   await window.keyboard.press('Meta+d');
   const panes = window.locator('.terminal-pane');
-  await expect(panes).toHaveCount(2);
+  await expect(panes).toHaveCount(3, { timeout: 15_000 });
   await expect(a11y).toHaveCount(1);
 });

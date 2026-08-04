@@ -93,6 +93,11 @@ export interface TerminalPaneProps {
    * （矢印キーでのペイン間移動は別 PR。ここはマウス操作の最小限の配線）。
    */
   onActivate?: () => void;
+  /**
+   * そのタブのペイン数（Issue #135）。右クリックメニューの語と項目を
+   * 出し分けるためだけに使う（1枚のときは「ペイン」という語を出さない）。
+   */
+  paneCount: number;
 }
 
 /** ファイルドラッグ（Finder の files、または他アプリの text/uri-list）かどうか。 */
@@ -133,6 +138,7 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     screenReaderMode,
     onExit,
     onActivate,
+    paneCount,
   },
   ref,
 ) {
@@ -262,6 +268,25 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
       onFocusCapture={() => {
         if (!focusEchoGate.shouldActivate()) return;
         onActivate?.();
+      }}
+      // 右クリックメニュー（Issue #135）。**ネイティブの Menu.popup() を Main で出す。**
+      // 理由は `src/shared/context-menu.ts` の冒頭にまとめてある。
+      onContextMenu={(e) => {
+        const state = handle.getContextMenuState();
+        // **マウス報告モード中は、こちらのメニューを出さずに端末へ譲る。**
+        // vim / htop / tmux は右ボタンを自分で使う（tmux 3.x の既定バインドは
+        // `display-menu`）。エージェントのタブは既定で tmux にラップされるので、
+        // これは例外ケースではなく主要な経路。
+        if (!state.allowed) return;
+        e.preventDefault();
+        // **メニューを出す前に、このペインをアクティブにする。**
+        // `close-pane` / `rename-active-pane` / `split-pane` はすべて
+        // 「アクティブなペイン」に向かう（AppAction は対象を運ばない）。
+        // ここで揃えないと、**4分割で右下を右クリックして「閉じる」を選ぶと
+        // 左上の claude が死ぬ**。右クリックでは onFocusCapture が発火しないので、
+        // 明示的に呼ぶ必要がある。
+        onActivate?.();
+        window.api.menu.showContextMenu({ paneCount, hasSelection: state.hasSelection });
       }}
     >
       {showHeader && (

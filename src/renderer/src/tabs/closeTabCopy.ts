@@ -124,3 +124,33 @@ export function closeTabCopy(summary: ClosingPaneSummary): CloseTabCopy {
     confirmLabel: 'タブを閉じる',
   };
 }
+
+/**
+ * **確認ダイアログを出すべきか**（Issue #121 周5 / #158）。
+ *
+ * 引数は「その操作で**実際に閉じる**ペイン」。タブごと閉じるなら木の全 leaf、
+ * ペイン1枚を閉じるならその1枚。
+ *
+ * 判定は2つ:
+ *
+ * 1. **2本以上を一度に閉じる**（`Cmd+Shift+W` を新設していないので、
+ *    タブバーの x ボタンがマウス経由の抜け穴にならないようにする）
+ * 2. **1本でも、閉じると回収できなくなるものがある**（`persistentOrphaned > 0`）。
+ *    tmux でラップされた gemini は閉じた時点で tmux セッション名を二度と
+ *    再現できず、**アプリからは永久に拾い直せない**（`src/main/pty/tmux.ts`）。
+ *    claude は履歴から resume すれば同じセッションに戻れるので**止めない**
+ *    （閉じるのは1日に何十回もある操作。確認は不可逆なものだけに絞る）。
+ *
+ * **この関数がその判定の唯一の正。** それまで判定は `App.tsx` の
+ * `requestCloseTab` の中に直接書かれており、`Cmd+W`（`close-pane`）は
+ * `closeActivePane` を直接呼ぶ別経路で**その判定を1度も通らなかった**（Issue #158）。
+ * `Cmd+W` は `Cmd+Option+W` より押しやすく、実運用ではこちらが主要な経路になる。
+ *
+ * **`config.useTmux` を読み直さない。** ラップされたかは spawn の瞬間に決まり
+ * `leaf.wrappedInTmux` が持っている。設定を後から切った人に、既に tmux で
+ * 走っているペインについて嘘をつかないため。
+ */
+export function needsCloseConfirmation(closingLeaves: readonly PaneLeaf[]): boolean {
+  if (closingLeaves.length >= 2) return true;
+  return summarizeClosingPanes(closingLeaves).persistentOrphaned > 0;
+}

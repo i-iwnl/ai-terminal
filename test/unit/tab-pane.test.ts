@@ -16,6 +16,7 @@ import {
   findTabByPtyId,
   nextTabId,
   previousTabId,
+  tabAllPanesExited,
   tabDisplayTitle,
   tabLeaf,
   tabRepresentativeLeaf,
@@ -273,5 +274,81 @@ describe('tabDisplayTitle', () => {
   it('空文字・空白だけの名前は導出へ落とす（鉄則5）', () => {
     expect(tabDisplayTitle(tab({ layout: leaf({ title: 'my-repo' }), title: '' }))).toBe('my-repo');
     expect(tabDisplayTitle(tab({ layout: leaf({ title: 'my-repo' }), title: '   ' }))).toBe('my-repo');
+  });
+});
+
+// Issue #142。タブの終了表示は「全 leaf が終了したときだけ」出す
+// （確定仕様は .claude/workspace/issue-56/design-review.md:81）。
+//
+// それまで TabBar.tsx は tabLeaf(tab).exit（＝いま選んでいるペイン）を見ており、
+// **every でも some でもない第三の挙動**だった。木の中身が1つも変わらないのに、
+// Cmd+] でアクティブなペインを移しただけで終了表示が付いたり消えたりする。
+//
+// **some にしてはいけない**理由（TabBar.tsx のコメントが持つ）も、ここで型として
+// 固定する: 状態スロットは終了を優先するので、some だと「あなたの番 + 隣が exit」の
+// タブからあなたの番のドットが消える。下の「片方だけ終了」が false であることが
+// その担保で、**この1本が some への退行に赤くなる**。
+describe('tabAllPanesExited', () => {
+  const exited = { exitCode: 0 };
+
+  it('leaf 1枚: 終了していなければ false', () => {
+    expect(tabAllPanesExited(leaf())).toBe(false);
+  });
+
+  it('leaf 1枚: 終了していれば true', () => {
+    expect(tabAllPanesExited(leaf({ exit: exited }))).toBe(true);
+  });
+
+  it('分割2枚: どちらも生きていれば false', () => {
+    const layout = splitRow([leaf({ paneId: 'a' }), leaf({ paneId: 'b' })]);
+    expect(tabAllPanesExited(layout)).toBe(false);
+  });
+
+  it('分割2枚: 片方だけ終了なら false（some ではない）', () => {
+    // **アクティブなペインがどちらかに関係なく false。** 第三の挙動
+    // （tabLeaf(tab).exit）との差がここに出る。
+    expect(tabAllPanesExited(splitRow([leaf({ paneId: 'a', exit: exited }), leaf({ paneId: 'b' })]))).toBe(
+      false,
+    );
+    expect(tabAllPanesExited(splitRow([leaf({ paneId: 'a' }), leaf({ paneId: 'b', exit: exited })]))).toBe(
+      false,
+    );
+  });
+
+  it('分割2枚: 両方終了なら true', () => {
+    const layout = splitRow([
+      leaf({ paneId: 'a', exit: exited }),
+      leaf({ paneId: 'b', exit: exited }),
+    ]);
+    expect(tabAllPanesExited(layout)).toBe(true);
+  });
+
+  it('入れ子の木: 3枚のうち1枚でも生きていれば false、全部終了なら true', () => {
+    const alive = splitRow([
+      leaf({ paneId: 'a', exit: exited }),
+      splitRow([leaf({ paneId: 'b', exit: exited }), leaf({ paneId: 'c' })]),
+    ]);
+    expect(tabAllPanesExited(alive)).toBe(false);
+
+    const allDead = splitRow([
+      leaf({ paneId: 'a', exit: exited }),
+      splitRow([leaf({ paneId: 'b', exit: exited }), leaf({ paneId: 'c', exit: exited })]),
+    ]);
+    expect(tabAllPanesExited(allDead)).toBe(true);
+  });
+
+  it('シグナルで終了した leaf も「終了」として数える', () => {
+    // exit は { exitCode, signal? }。signal 付きでも undefined ではないので true。
+    expect(tabAllPanesExited(leaf({ exit: { exitCode: 0, signal: 9 } }))).toBe(true);
+  });
+
+  it('exitCode 0 を falsy として取りこぼさない', () => {
+    // `leaf.exit` は**オブジェクトの有無**で判定する。中身の exitCode が 0 でも
+    // 「終了した」であって「終了していない」ではない。
+    const layout = splitRow([
+      leaf({ paneId: 'a', exit: { exitCode: 0 } }),
+      leaf({ paneId: 'b', exit: { exitCode: 0 } }),
+    ]);
+    expect(tabAllPanesExited(layout)).toBe(true);
   });
 });

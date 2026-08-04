@@ -32,13 +32,13 @@ P3 の10件は #161（`.claude/workspace/issue-161/`）で扱う。**両者は `
 
 ## 2. 完成条件
 
-- [ ] 対象10件（#132 #133 #134 #135 #136 #137 #138 #142 #144 #158）がすべて close できる状態になっている
-- [ ] 各周で `make check` / `make e2e` / `make e2e-lint`（`FAIL=0`）が green
-- [ ] UI・CSS・DOM 構造を触った周は `make e2e-screenshots` を回し、`make e2e-screenshots-check` の差分を1枚ずつ説明できている
-- [ ] 追加した関門が、対象の不具合で**実際に赤くなる**ことを周ごとに確認した記録が `worklog.md` にある
-- [ ] 実機確認3件（#148 / #151 / #154）の手順書が `.claude/skills/e2e/reference/limitations.md` にある
-- [ ] 型チェック通過（`make check`）
-- [ ] Lintチェック通過（`make check`）
+- [x] 対象10件（#132 #133 #134 #135 #136 #137 #138 #142 #144 #158）がすべて close できる状態になっている
+- [x] 各周で `make check` / `make e2e` / `make e2e-lint`（`FAIL=0`）が green
+- [x] UI・CSS・DOM 構造を触った周は `make e2e-screenshots-check` を回した（周3 / 周5 / 周9。**いずれも画素差0**で、撮り直しは1枚も要らなかった）
+- [x] 追加した関門が、対象の不具合で**実際に赤くなる**ことを周ごとに確認した記録が `worklog.md` にある（**周9 では1本が空振りしていたのを見つけて作り直した**）
+- [x] 実機確認3件（#148 / #151 / #154）の手順書が `.claude/skills/e2e/reference/limitations.md` にある（**実施は人が行う**）
+- [x] 型チェック通過（`make check`）
+- [x] Lintチェック通過（`make check`）
 
 ---
 
@@ -48,16 +48,16 @@ P3 の10件は #161（`.claude/workspace/issue-161/`）で扱う。**両者は `
 
 | 周 | 内容 | 対象 | 完了条件（観測できる形） | 状態 |
 |---|---|---|---|---|
-| 1 | **関門を先に作る**（値・振る舞いを1つも変えない） | #136 / #144 / #134・#142 の characterization | 4本の新しい検査が green。かつ**それぞれ対象を壊すと赤くなる**ことを確認した記録がある。`git diff` に値の変更が1つも無い | 未着手 |
-| 2 | タブの終了表示を `every` にする | #142 | 「両方 exit で終了表示が出る / 片方だけなら出ない」の E2E が green。周1 で red だったことを確認済み | 未着手 |
-| 3 | 終了色のコントラストを直す | #134 | S40 / S41 の期待値が 4.47 → 4.56 以上に更新され green。`styles.css` の 4.47 を pass と書いたコメントが直っている | 未着手 |
-| 4 | ペインヘッダの語を1つの正に集める | #137 | `launchApp({ config: { shell: '/bin/bash' } })` でヘッダとタブの両方が追従する spec が green。README 2箇所が更新済み | 未着手 |
-| 5 | ペインヘッダ高のトークン化（**置換のみ**） | #138 | `make css-substitution-check` が PASS。`make e2e-screenshots-check` の差分が**0枚**。`css-tokens.test.ts` に `ruleBody('.pane-header')` の assert がある | 未着手 |
-| 6 | `Cmd+J` をペインまで着地させる | #132 | 「あなたの番のペインに着地する」E2E が green。S68 / S78 / S63 / `scenarios.yml` の古い注記4箇所が是正済み | 未着手 |
-| 7 | `Cmd+W` に回収不能ペインの確認を通す | #158 | `test/unit/` が「1 leaf・tmux+gemini / tmux+claude / tmux 無し」の3ケースを固定。判定が `requestCloseTab` と二重定義になっていない | 未着手 |
-| 8 | 異常終了を Dock に出す | #133 | `shouldBounceOnExit` 相当が `src/shared/` にあり unit で固定されている。bounce 呼び出し自体は手動確認として記録 | 未着手 |
-| 9 | ターミナル面のコンテキストメニュー | #135 | 新シナリオが `e2e/scenarios.yml` に登録され spec が green。`make e2e-lint` が FAIL=0 | 未着手 |
-| 10 | 実機確認3件の手順書 | #148 / #151 / #154 | `limitations.md` に3件の手順があり、ユーザーへ依頼済み | 未着手 |
+| 1 | **関門を先に作る**（値・振る舞いを1つも変えない） | #136 / #144 / #134・#142 の characterization | 4本の新しい検査が green。かつ**それぞれ対象を壊すと赤くなる**ことを確認した記録がある。`git diff` に値の変更が1つも無い | **完了**（#144 は close 可。`git diff --stat src/` は空） |
+| 2 | タブの終了表示を `every` にする | #142 | 「両方 exit で終了表示が出る / 片方だけなら出ない」の E2E が green。周1 で red だったことを確認済み | **完了**（#142 は close 可。S87 ケース1 が反転して green） |
+| 3 | 終了色のコントラストを直す（**design-review で「`@media` の追従漏れを塞ぐ周」に再定義**） | #134 | S40 / S41 の期待値が 4.47 → 4.56 以上に更新され green。`styles.css` の 4.47 を pass と書いたコメントが直っている | **完了**（#134 は close 可。あなたの番の色も組で上げた。切り出した5件は known-issues 3〜7） |
+| 4 | ペインヘッダの語を1つの正に集める | #137 | `launchApp({ config: { shell: '/bin/bash' } })` でヘッダとタブの両方が追従する spec が green。README 2箇所が更新済み | **完了**（#137 は close 可。S88 を新設。**画像は0枚変わらなかった** — 順序制約3の根拠が誤りだったため下記で訂正） |
+| 5 | ペインヘッダ高のトークン化（**置換のみ**） | #138 | `make css-substitution-check` が PASS。`make e2e-screenshots-check` の差分が**0枚**。`css-tokens.test.ts` に `ruleBody('.pane-header')` の assert がある | **完了**（#138 は close 可。比較先は `git stash create` のスナップショット） |
+| 6 | `Cmd+J` をペインまで着地させる | #132 | 「あなたの番のペインに着地する」E2E が green。S68 / S78 / S63 / `scenarios.yml` の古い注記4箇所が是正済み | **完了**（#132 は close 可。S89 を新設。タブの環ではなく**ペインの環**にした） |
+| 7 | `Cmd+W` に回収不能ペインの確認を通す | #158 | `test/unit/` が「1 leaf・tmux+gemini / tmux+claude / tmux 無し」の3ケースを固定。判定が `requestCloseTab` と二重定義になっていない | **完了**（#158 は close 可。S90 を新設。**偽 tmux レーンで E2E も作れた**） |
+| 8 | 異常終了を Dock に出す | #133 | `shouldBounceOnExit` 相当が `src/shared/` にあり unit で固定されている。bounce 呼び出し自体は手動確認として記録 | **完了**（#133 は close 可。`severityForExit` は移さず**述語だけ**を共有へ上げた） |
+| 9 | ターミナル面のコンテキストメニュー | #135 | 新シナリオが `e2e/scenarios.yml` に登録され spec が green。`make e2e-lint` が FAIL=0 | **完了**（#135 は close 可。**ネイティブ `Menu.popup()` を採った** — 「E2E で検証できない」が実測で覆った。S91 を新設） |
+| 10 | 実機確認3件の手順書 | #148 / #151 / #154 | `limitations.md` に3件の手順があり、ユーザーへ依頼済み | **完了**（手順書は書いた。**実施は人が行う**） |
 
 ### 見た目・文言を変える周（`/design-review` を差し込む）
 
@@ -67,7 +67,7 @@ P3 の10件は #161（`.claude/workspace/issue-161/`）で扱う。**両者は `
 
 1. **周1 → 他のすべて。** 10件とも関門が無いので、先に作らないと「`make e2e` が通る」が何の担保にもならない
 2. **#142（周2）→ #140（#161 の周2）。** どちらも `TabBar.tsx` の同じ4行（`leaf.exit` の参照）に触る。#142 が `leaf` を `allExited` に置き換えるので、逆順だと衝突する
-3. **#137（周4）と #138（周5）を混ぜない。** #137 は文字列を変えるので `docs/images/S56-split-pane.png` が必ず変わる。#138 の完了条件は「画像差分0枚」なので、混ぜるとどちらで画像が動いたか分離できない（CLAUDE.md の「置換と値の変更を混ぜない」と同じ理由）
+3. **#137（周4）と #138（周5）を混ぜない。** ~~#137 は文字列を変えるので画像が必ず変わる~~ -> **この根拠は誤りだった**（周4 の design-review で発覚）。E2E ハーネスは `SHELL: '/bin/zsh'` を固定しており、開発機の既定も zsh なので、**シェル名を動的にしても表示は `zsh` のまま = 画像は1枚も変わらない**（実測で確認済み）。周を分ける判断自体は「文言の変更」と「トークン置換」という別の軸だから正しく、維持する。**ただし周5 には別の問題がある**（`S56-split-pane.png` が画素比較の対象外で、ペインヘッダが写る唯一の画像。known-issues 8 を参照）
 4. **#158（周7）→ #157（#161 の周7）。** `App.tsx` / `CloseTabConfirmDialog.tsx` の古いコメント3箇所は #158 の PR に畳める
 
 ---
@@ -77,8 +77,8 @@ P3 の10件は #161（`.claude/workspace/issue-161/`）で扱う。**両者は `
 | 項目 | 状態 |
 |---|---|
 | 設計 | 完了（10件を実コードに当て直し、周を確定した） |
-| 実装 | 未着手 |
-| 検証 | 未着手 |
+| 実装 | **周1〜周10 完了。対象10件すべて close 可** |
+| 検証 | 各周で `make check` / `make e2e` / `make e2e-lint` を通過。周3・周5 は `e2e-screenshots-check` も |
 
 ---
 
@@ -86,6 +86,25 @@ P3 の10件は #161（`.claude/workspace/issue-161/`）で扱う。**両者は `
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | 周1 の計画ゲートを通す | 4本の関門（#136 の終了行 / #144 の accelerator 静的検査 / #134 の 4.47・2.57 characterization / #142 の片方・両方 exit）をどの spec に置くか決める。**#144 だけ Electron を起動しない静的検査**なので置き場が違う |
-| P1 | 周1 を実装し、4本すべてが「壊すと赤くなる」ことを確認する | 確認は `make e2e`（build 依存）で行う。`npx playwright test` の単体実行は `src/` を壊す検証に使えない |
-| P2 | 周2（#142）へ進む | 周1 で「両方 exit」が red だったことを確認してから |
+| **P0** | **実機確認3件を実施する（人の作業）** | #148（VoiceOver）/ #151（OS 通知のクリック）/ #154（tmux で閉じたタブへ resume）。手順は `.claude/skills/e2e/reference/limitations.md` の「実機確認の手順書」。**`make install-app` した成果物で行う**（`make dev` ではメニューの中身が違う） |
+| P1 | `known-issues.md` の 3〜15 を GitHub Issue に起こす | 13件。手順は `promote-known-issues.md`。**13（ターミナル内リンクのクリックで Electron の窓が開く）は P1** で、周9 の design-review が「#135 より効く」と評価した（25〜90手/日） |
+| P2 | #161（P3 の12件）へ進む | 順序の制約2（#142 -> #140）と4（#158 -> #157）は**こちら側が終わったので解けている** |
+
+---
+
+## 6. この束ねで新しく作った関門
+
+| 検査 | 何を守るか |
+|---|---|
+| `e2e/specs/S87` | 分割したタブの終了表示が、どのペインの終了で決まるか（3ケースで「現状 / `some` / `every`」を分離） |
+| `e2e/specs/S88` | 画面に出るシェル名が実際に起動したシェルを反映すること（`config.shell` でハーネスの `$SHELL` 固定を迂回） |
+| `e2e/specs/S89` | `Cmd+J` が「あなたの番」の**ペイン**まで着地すること |
+| `e2e/specs/S90` | `Cmd+W` が回収不能なペインの確認を通すこと（偽 tmux レーン） |
+| `e2e/specs/S91` | ターミナル面の右クリックメニューの配線（`Menu.prototype.popup` のスパイ） |
+| `test/unit/menu-accelerators.test.ts` | `accelerator` 付き項目が `registerAccelerator: false` を伴うこと（**周9 で実際に発火した**） |
+| `test/unit/context-menu.test.ts` | 右クリックメニューの項目・並び・語。**`menu.ts` をテキストで読んで語とキーの一致も見る** |
+| `test/unit/pty-exit.test.ts` | Dock を弾ませる条件。**Renderer の `severityForExit` と判定が一致すること**も見る |
+| `S40` / `S41` の追加ターゲット | 「選択中かつ終了」の色（**一度も測られていなかった**）と、あなたの番のドット |
+| `S40` の逆向き assert | `wcag: 'fail'` の札が腐る向き（値を直して `ratio` だけ更新した場合） |
+| `css-tokens.test.ts` の `.pane-header` | トークンからリテラルへの逆戻り（`css-substitution-check` は検出しない） |
+| `S55` の終了行 | ペイン内の `[プロセスは終了しました（コード N）]` |

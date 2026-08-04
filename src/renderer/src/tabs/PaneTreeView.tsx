@@ -125,6 +125,9 @@ function renderNode(
         screenReaderMode={active && props.screenReaderModeEnabled}
         onExit={props.onExit}
         onActivate={() => props.onActivate(node.paneId)}
+        // 右クリックメニューの語と項目の出し分けにだけ使う（Issue #135）。
+        // `showHeader` と同じく**タブの木の根**から数える。
+        paneCount={flattenPaneTree(props.node).length}
       />
     );
   }
