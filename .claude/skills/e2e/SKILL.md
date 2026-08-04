@@ -1,6 +1,6 @@
 ---
 name: e2e
-description: Playwright を使った Electron E2E テスト（e2e/ 配下）の追加・実行・デバッグで使う。通常レーン（out/ 起動）・撮影レーン（README 用の画像。make e2e にも第2 project として入っている）・パッケージ版スモークレーン（make e2e-packaged、install-app の関門）の3レーン構成。「E2E を追加したい」「テストが落ちた」「シナリオを増やしたい」「スクリーンショットを撮り直したい」「テストが不安定」「make e2e が失敗する」「隔離ハーネスの挙動を知りたい」といった依頼で読む。scenarios.yml を唯一の正とするシナリオ台帳、e2e/specs/ の spec ファイル、e2e/fixtures/harness.ts の隔離ハーネス（一時 HOME・偽 CLI・固定 JSONL フィクスチャ）、make e2e-lint による scenarios.yml と spec の1:1検査を扱う。ターミナル自体の描画・PTY の不具合調査は /terminal、claude / gemini CLI 出力のパースは /ai-cli、IPC 契約の変更は /electron-ipc を参照し、この skill では扱わない。
+description: Playwright を使った Electron E2E テスト（e2e/ 配下）の追加・実行・デバッグと、起動中のアプリを見る実機確認で使う。通常レーン（out/ 起動）・撮影レーン（README 用の画像。make e2e にも第2 project として入っている）・パッケージ版スモークレーン（make e2e-packaged、install-app の関門）の3レーンに加え、agent-browser を CDP でつないで実機を観測する手順を持つ。「E2E を追加したい」「テストが落ちた」「シナリオを増やしたい」「スクリーンショットを撮り直したい」「テストが不安定」「make e2e が失敗する」「隔離ハーネスの挙動を知りたい」「実機で動作確認したい」「実際の画面を見たい」「agent-browser で操作したい」「ホバー時の見た目を確かめたい」「計算後のスタイルを測りたい」といった依頼で読む。scenarios.yml を唯一の正とするシナリオ台帳、e2e/specs/ の spec ファイル、e2e/fixtures/harness.ts の隔離ハーネス（一時 HOME・偽 CLI・固定 JSONL フィクスチャ）、make e2e-lint による scenarios.yml と spec の1:1検査を扱う。ターミナル自体の描画・PTY の不具合調査は /terminal、claude / gemini CLI 出力のパースは /ai-cli、IPC 契約の変更は /electron-ipc を参照し、この skill では扱わない。
 ---
 
 # e2e
@@ -13,6 +13,7 @@ Playwright + Electron による E2E テスト基盤（`e2e/`）の運用知識�
 |---|---|
 | シナリオを1本追加する | [operations/add-scenario.md](operations/add-scenario.md) |
 | E2E を実行する・落ちたテストを調べる | [operations/run-e2e.md](operations/run-e2e.md) |
+| **実機のアプリを見て確かめる**（agent-browser + CDP） | [operations/verify-on-device.md](operations/verify-on-device.md) |
 | 隔離ハーネスの仕組み・ハマりどころを知る | [reference/isolation-harness.md](reference/isolation-harness.md) |
 | 自動テストで担保できないものを知る | [reference/limitations.md](reference/limitations.md) |
 

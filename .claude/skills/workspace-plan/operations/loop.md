@@ -16,7 +16,8 @@
 0. 復元    status で worklog の最新エントリを読む
 1. 計画    何を作るか・完了条件・触るファイルを列挙する   ← 確認ゲート
 2. 実装    近傍のパターンに合わせて書く
-3. 検証    make check（typecheck / lint / unit）→ make e2e
+3. 検証    make check → 実機確認（agent-browser）→ 近傍 spec
+           ※ フル make e2e は push / PR の直前に1回
 4. 文書    README / docs / skill を実態に合わせる
 5. 記録    update で worklog と overview を更新する
                                         ↓
@@ -111,17 +112,60 @@ design-review は「ペインヘッダを通常フローに入れるな（幾何
 
 ### 3. 検証
 
-順に通す。前が赤いまま次へ進まない。
+順に通す。前が赤いまま次へ進まない。**関門は2段に分かれている。**
+
+#### 毎周（実装を1つ終えるたび）
 
 | 段 | 通すもの | 見るもの |
 |---|---|---|
 | 型と規約 | `make check` | typecheck / lint / 単体テストが全て通る |
+| **実機** | **[/e2e verify-on-device](../../e2e/operations/verify-on-device.md)**（agent-browser + CDP） | **その周で変えたものを、実際の画面で見る** |
+| 近傍 | `npm run build && npx playwright test <その周が触った spec>` | 直近の変更が壊した近傍が green |
+
+⛔ **spec を単体で回すときは `npm run build` を必ず前置する。** `npx playwright test` が見るのは
+`out/` で `src/` ではない。**壊した実装がビルドに入っておらず緑になった**実例がある（下の表の5行目）。
+
+#### push / PR を出す前（フルセット）
+
+| 段 | 通すもの | 見るもの |
+|---|---|---|
 | 振る舞い | `make e2e` | 追加分・既存分ともに green |
 | 台帳 | `make e2e-lint` | `FAIL=0`（シナリオと spec が1:1） |
 | **撮影** | **`make e2e-screenshots`** | **UI・CSS・DOM 構造を触ったら必ず回す** |
 
+##### アプリに触れていない変更は `make e2e` を省いてよい（判定はパスで行う）
+
+**「関係なさそう」という判断で省かない。** 触ったパスで機械的に決める。
+
+```bash
+git diff --name-only origin/main...HEAD | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)' \
+  && echo "e2e 必須" || echo "e2e 省略可"
+```
+
+`.claude/**` / `docs/**` / `README.md` / `CLAUDE.md` **以外が1つでも入っていたら必須**。
+`src/` `e2e/` `test/` `package.json` `Makefile` `*.config.ts` `resources/` はすべて必須側。
+
+- ⛔ **比較対象は「最後のコミット」ではなく `origin/main...HEAD`（ブランチ全体）。**
+  途中で `src/` を触っていれば、最後が文書だけでも必須になる
+- ⛔ **`make check` は省略しない。** `README.md` は `test/unit/readme-commands.test.ts` が、
+  `CLAUDE.md` は `lint-skills.sh` が読んでいる。**文書だけの変更でも赤くなりうる**
+- **省いたら、省いたことと判定結果を報告に書く。** 黙って省くと、次に見た人が
+  「回して green だった」のか「回していない」のかを区別できない
+
+**この判定を人の目に委ねると必ず漏れる。** `loop.md` の計画ゲートに
+「計画書の前提が実コードとずれていた事例が7件」と書いてあるとおり、
+**「関係ないはず」が外れるのがこのリポジトリの繰り返してきた失敗**。だからコマンドで決める。
+
+**フル `make e2e` を毎周から push 前へ移したのは、2.2〜3.5分 × 周数の実測コストを避けるため。**
+代わりに毎周へ実機確認と近傍 spec を置いた。**この2つを省いてフルだけ push 前に回すと、
+落ちたときに何周ぶんも二分探索する羽目になり、節約した時間を一撃で失う。**
+
 **撮影レーンは `make check` にも `make e2e` にも含まれていない。** config が分かれているので、
 `make e2e` が全 green のまま `e2e/screenshots.spec.ts` が壊れて main に入った実例がある（Issue #90）。
+
+**実機確認とフル E2E は代替関係にない。** 検出する故障のクラスが違う。#119 では
+agent-browser にしか見えないもの（ホバー中の断ち切れ・注釈に隠れた下線・死んでいた vibrancy）が3件、
+`make e2e` にしか見えないもの（別 Issue の機能の回帰。S72 / S76）が1件、それぞれ出ている。
 
 **新しい振る舞いを足したら、テストも足す。** どちらに足すかの分かれ目:
 
@@ -215,6 +259,19 @@ README を更新したら、**書いた手順どおりに操作できるかを1�
 - 節目なら、`known-issues.md` の未対処項目を GitHub Issue に起こした -> [promote-known-issues.md](promote-known-issues.md)
 
 **周を閉じる前に、今周で気づいたことが1つも記録されていないなら、それは記録し忘れを疑う。** 検証で赤が出た・仮説が外れた・想定と違う挙動を見た、のいずれも無い周はほとんど無い。
+
+#### ⛔ ループの中で新規 Issue を立てない
+
+**このループを回している最中に見つけたものは、`known-issues.md` に書くだけにする。** GitHub Issue へ起こすのは
+[promote-known-issues.md](promote-known-issues.md) を明示的に呼んだときだけで、**周の副産物として起票しない。**
+
+- 「別 Issue に切り出す」という判断もしない。切り出したくなったら、**この Issue の周を1つ増やす**
+- 例外は1つだけ: **実機でしか確認できない不具合を実際に踏み、エージェントが検証を完了できないとき**。
+  その場合も `known-issues.md` に書き、起票するかはユーザーが判断する
+
+**なぜこの禁止が要るか。** 2026-08-04 に**1日で 46 件が作成され、close は 14 件**だった（差し引き +32）。
+周ごとに known-issues が増え、それが機械的に起票され、その Issue を潰す周がまた known-issues を増やす、
+という自己増殖が起きていた。**「1つ解消したら5つ立つ」の原因はエージェントの怠慢ではなく、この手順の側にある。**
 
 ## 停止条件
 
