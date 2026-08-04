@@ -34,6 +34,32 @@ const CSS = readFileSync(
  * - `root`: 先頭の `:root`（トークンの値の唯一の正。値の突き合わせはこれを見る）
  * - `rest`: **すべての** `:root` ブロックを取り除いた残り（= var() で書くべき場所）
  */
+/**
+ * ⛔ **ブロックの終わりは「対応する `}`」で探す。`'\n}'` の検索で代用しない。**
+ *
+ * 以前は `css.indexOf('\n}', start)` で閉じ括弧を探していたが、
+ * `@media (prefers-contrast: more)` の中の `:root` は**インデントされているので
+ * `\n  }` で閉じる**。`'\n}'` はそれを飛び越して **`@media` 自身の閉じ括弧**に当たっていた。
+ *
+ * 結果として、**`@media` 内の `:root` より後ろに書いた規則は `rest` から丸ごと消え、
+ * 「本体に色のリテラルを直書きしていない」検査も `var()` 参照の検査も素通りしていた**
+ * （Issue #179 周2.5 の design-review で保守担当が実証）。
+ *
+ * つまり `@media` の中は**リテラル直書きの死角**だった。高コントラスト側に
+ * セレクタ規則を足す周（#165 後半）は、まさにここを踏む。
+ */
+function findBlockEnd(css: string, openBraceIndex: number): number {
+  let depth = 0;
+  for (let i = openBraceIndex; i < css.length; i += 1) {
+    if (css[i] === '{') depth += 1;
+    else if (css[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return css.length;
+}
+
 function splitRoot(css: string): { root: string; rest: string } {
   let first = '';
   let rest = '';
@@ -44,10 +70,10 @@ function splitRoot(css: string): { root: string; rest: string } {
       rest += css.slice(cursor);
       break;
     }
-    const end = css.indexOf('\n}', start);
+    const end = findBlockEnd(css, css.indexOf('{', start));
     rest += css.slice(cursor, start);
     if (!first) first = css.slice(start, end);
-    cursor = end + 2;
+    cursor = end + 1;
   }
   return { root: first, rest };
 }
@@ -375,5 +401,61 @@ describe('パネルの「範囲」と「区切り」の見た目（Issue #119 �
     expect(memo).toMatch(/color:\s*var\(--text-primary\)/);
     expect(memo).toMatch(/margin:\s*0 0 var\(--sp-2\)/);
     expect(ruleBody('.panel-scope')).toMatch(/color:\s*var\(--text-secondary\)/);
+  });
+});
+
+describe('splitRoot が @media 内の規則を見落とさない（Issue #179 周2.5）', () => {
+  // **この describe は「検査そのものが効いているか」を検査する。**
+  //
+  // 以前の splitRoot は閉じ括弧を `'\n}'` の検索で代用していたため、
+  // インデントされた `@media` 内の `:root`（`\n  }` で閉じる）を飛び越して
+  // **`@media` 自身の閉じ括弧**に当たっていた。その結果、`@media` 内の `:root` より
+  // 後ろに書いた規則が `rest` から丸ごと消え、**リテラル直書きの検査が素通りしていた**。
+  //
+  // 上の「CSS 本体に色のリテラルが1つも残っていない」は、いま偶然
+  // `@media` 内にセレクタ規則が1本も無いので緑になる。**穴が開いていても緑になる。**
+  // だから穴のほうを直接固定する。
+
+  const sample = [
+    ':root {',
+    '  --a: #111111;',
+    '}',
+    '',
+    '@media (prefers-contrast: more) {',
+    '  :root {',
+    '    --a: #222222;',
+    '  }',
+    '',
+    '  .some-rule {',
+    '    color: #ff0000;',
+    '  }',
+    '}',
+    '',
+    '.tail-rule {',
+    '  color: #00ff00;',
+    '}',
+    '',
+  ].join('\n');
+
+  const split = splitRoot(sample);
+
+  it('先頭の :root だけを root として取り出す', () => {
+    expect(split.root).toContain('--a: #111111');
+    expect(split.root).not.toContain('#222222');
+  });
+
+  it('@media 内の :root は rest から除かれる（トークンの宣言なので検査対象外）', () => {
+    expect(split.rest).not.toContain('#222222');
+  });
+
+  it('**@media 内の :root より後ろに書いた規則が rest に残る**（これが直した穴）', () => {
+    // ここが以前は落ちた。`.some-rule` ごと `rest` から消えていた。
+    expect(split.rest).toContain('.some-rule');
+    expect(split.rest).toContain('#ff0000');
+  });
+
+  it('@media の外側の規則も従来どおり rest に残る（退行していない）', () => {
+    expect(split.rest).toContain('.tail-rule');
+    expect(split.rest).toContain('#00ff00');
   });
 });
