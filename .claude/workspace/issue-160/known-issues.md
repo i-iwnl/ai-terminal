@@ -7,6 +7,8 @@
 
 ## 1. E2E の「検証できない」注記が、解決後も残り続ける
 
+> **GitHub Issue**: [#177](https://github.com/i-iwnl/ai-terminal/issues/177)
+
 ### 症状
 
 制約を書いた spec のコメントが、その制約を解く Issue が closed になっても更新されない。**次に読む人が同じ調査をやり直す。**
@@ -17,6 +19,11 @@
 |---|---|---|
 | `e2e/specs/S68-your-turn-jump-empty.spec.ts` / `S78` / `S63` / `e2e/scenarios.yml` の4箇所 | 「成功経路はハーネスで作れない。解くのは Issue #83 / #120 D-2」 | **#83 は CLOSED**。`e2e/fixtures/harness.ts` の `setAgentEntries()` が実装済みで、S63 の「履歴 resume で `agentSessionId` を決め打つ」と組み合わせれば作れる |
 | `.claude/skills/e2e/reference/limitations.md` の `ownedByApp` の行 | 「肯定側を作れる。**未実装（#121 で扱う）**」 | `e2e/specs/S15-task-owned.spec.ts` に**実装済み**（#159 の棚卸しで発見） |
+| **`README.md` の tmux の節 / `/terminal` の `reference/pty-pitfalls.md`**（周10 で追加） | 「claude は履歴から resume すれば同じプロセスに戻れる」と**実測日なしで断定** | 名前が一致することまでしか確かめていない（`test/unit/pty-plan.test.ts`）。**周10 で「未実測」と明記した**。実測は #154 |
+
+**3つ目は向きが逆**（「解決済みの制約が残っている」ではなく「**未実測の断定が伝播している**」）だが、
+原因は同じ — **記述と、それを裏づける／覆す状態が紐づいていない**。
+そして**この形は `#N` の参照を持たないので、下の検査案では拾えない**。
 
 ### 原因（判明している場合）
 
