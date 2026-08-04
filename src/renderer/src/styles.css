@@ -630,7 +630,28 @@ body {
   box-shadow: inset 0 -2px 0 var(--focus-ring);
 }
 
-.tab-bar__tab.is-exited {
+/* **終了色は「非選択のときだけ」。** `:not(.is-active)` を付けて詳細度を (0,3,0) にし、
+   `.tab-bar__tab.is-active` (0,2,0) と競合しない位置へ動かす（Issue #164 / #179 周2）。
+
+   以前は `.tab-bar__tab.is-exited` (0,2,0) で、`.is-active` (0,2,0) と**詳細度が同じ**だった。
+   `TabBar.tsx` は両方を同じ要素に並べて付けるので、選択中かつ終了のタブでは
+   **宣言順の後勝ちだけで `--text-bright` が `--status-exited` に置き換わっていた**
+   （対 --surface-tab-active で 13.58 -> 4.47。テキストの 4.5:1 を割る）。
+   design-rules「単一プロパティで複数の状態を表すと、後の状態が前の状態を黙って消す」が
+   名指しで禁じている型そのもの。
+
+   **値は1つも変えていない。** 規則を書き足しただけで 4.47 が消える。
+
+   **`.is-active.is-exited { color: var(--text-bright) }` を足す形は採らなかった。**
+   そちらだと `--text-bright` が2箇所に散り、`.is-active` の色を将来変えたときに
+   結合状態の規則だけが古い色を握ったまま黙って残る（= #164 が直そうとしている
+   壊れ方の再生産）。`:not()` 側に倒せば `--text-bright` の出現は上の1箇所のままで済む。
+
+   **`color: inherit` の子孫も、このトークンの消費者として数える**（design-rules）。
+   この規則が届く先は4つ: タブ自身 / `.tab-bar__tab-button`（タイトル）/
+   `.tab-bar__close`（x。選択中は常時表示）/ `.tab-bar__title-input`（改名中）。
+   実測の正は S40 / S41。 */
+.tab-bar__tab.is-exited:not(.is-active) {
   color: var(--status-exited);
 }
 
@@ -803,9 +824,19 @@ body {
   outline: none;
 }
 
+/* **色を宣言しない。** バッジはタブの `color` を継承する
+   （`.tab-bar__tab-button` が `color: inherit`）ので、上の `:not(.is-active)` の
+   規則がそのままバッジにも効く: 非選択なら `--status-exited`、選択中なら `--text-bright`。
+
+   以前はここで `--status-exited` を直接読んでいたため、選択中タブの上でも赤いままで
+   4.47（テキストの 4.5:1 割れ）だった。**セレクタを足すのではなく宣言を1つ落とすことで、
+   タイトルとバッジが永久にずれない**（Issue #164 / #179 周2）。
+
+   終了の意味は、色を失っても四角（`.tab-bar__state-slot--exited`）・語・
+   `aria-label` が運ぶ。**四角は `aria-hidden` なので晴眼者専用**である点に注意
+   （支援技術に届いているのは `aria-label` の語だけ）。 */
 .tab-bar__exit-badge {
   font-size: var(--fs-xs);
-  color: var(--status-exited);
 }
 
 /* リーディング側（左）に置く。Terminal.app / Safari と同じ配置
