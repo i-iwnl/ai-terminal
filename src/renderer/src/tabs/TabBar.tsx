@@ -83,7 +83,7 @@ import { flattenPaneTree } from './paneTree';
 import { isCloseTabKey, isRovingTabindexKey, nextRovingTabindex } from './rovingTabindex';
 import { tabButtonId, tabPanelId } from './tabAriaIds';
 import {
-  tabAllPanesExited,
+  tabExitState,
   tabDisplayTitle,
   tabLeaf,
   tabRepresentativeLeaf,
@@ -412,7 +412,14 @@ export default function TabBar({
             // 「あなたの番」はドット（丸）だけでなく**語でも伝える**（原則2:
             // 色相の違いは手がかりに数えない）。終了マーク（四角）とは形も違う。
             const isYourTurn = tabHasYourTurn(tab.layout, yourTurnIds);
-            const allExited = tabAllPanesExited(tab.layout);
+            // Issue #166: 終了は「終わったか」と「異常だったか」の2軸になった。
+            // **`allExited` の意味は変えない**（全ペインが終了したか）。severity は
+            // `isAbnormal` が別に持つ。クラス名は下で1箇所だけ組み立てる
+            // （状態名をクラス文字列へ機械的に写すと、片方を改名したときに
+            // もう片方が黙って追随せず、TypeScript も何も言わない）。
+            const exitState = tabExitState(tab.layout);
+            const allExited = exitState !== 'running';
+            const isAbnormal = exitState === 'exited-abnormal';
             const tabAccessibleLabel = [
               displayTitle,
               provider,
@@ -426,7 +433,7 @@ export default function TabBar({
                 key={tab.id}
                 className={`tab-bar__tab tab-bar__tab--${repLeaf.ptyKind}${isActive ? ' is-active' : ''}${
                   allExited ? ' is-exited' : ''
-                }`}
+                }${isAbnormal ? ' is-exited-abnormal' : ''}`}
               >
                 {/* 先頭の固定幅スロット。状態専用（Issue #20 C）。プロバイダの区別は
                     タブ自体の色相に譲り、ここでは「あなたの番／通常／終了」だけを表す。
@@ -440,11 +447,27 @@ export default function TabBar({
                     exit した」タブで終了が勝ち、押せば入力できるのに
                     あなたの番のドットが消える。
                     装飾要素なので aria-hidden にする。語のほうは
-                    tabAccessibleLabel が持つ（「終了」は末尾バッジも伝えている）。 */}
+                    tabAccessibleLabel が持つ（「終了」は末尾バッジも伝えている）。
+
+                    **Issue #166: 正常終了はここに何も出さない。** severity を色の
+                    2値（中立 / 赤）で表す案は design-review で3人が独立に却下した。
+                    高コントラストでは面が明るくなるぶん両者が等輝度に潰れ
+                    （色覚特性下では既定でも潰れる）、しかも中立色は「あなたの番」の
+                    橙と輝度が並ぶ。**層を1つ減らすほうが、新トークン・@media の追随・
+                    コントラストの検算のすべてを同時に消せる。**
+                    正常終了を運ぶのは末尾バッジの語と aria-label で、
+                    macOS 純正のターミナルも正常終了にはピクセルを割いていない。
+
+                    ⛔ **`allExited` の分岐の中で畳むこと。** 素直に
+                    `isAbnormal ? ... : isYourTurn ? ...` と書くと、
+                    **正常終了したタブに「あなたの番」のドットが復活する**
+                    （上の優先順位そのものが壊れる）。 */}
                 <span
                   className={`tab-bar__state-slot${
                     allExited
-                      ? ' tab-bar__state-slot--exited'
+                      ? isAbnormal
+                        ? ' tab-bar__state-slot--exited'
+                        : ''
                       : isYourTurn
                         ? ' tab-bar__state-slot--your-turn'
                         : ''

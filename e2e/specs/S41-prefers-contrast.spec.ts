@@ -167,7 +167,11 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
     .first();
   await expect(exitedScreen).toContainText(/[%#]/, { timeout: 20_000 });
   await window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-helper-textarea').focus();
-  await window.keyboard.type('exit');
+  // **Issue #166 以降は `exit 7`（異常終了）でなければならない。** 正常終了では
+  // 状態スロットが塗られなくなり、下の `終了マークの塗り（選択中タブ上）` が
+  // 要素ごと消える。ここは `--status-exited` の `@media` 上書きが効いていることを
+  // 見張る唯一の番人なので、対象を失わせない（値・閾値は1つも変えていない）。
+  await window.keyboard.type('exit 7');
   await window.keyboard.press('Enter');
   await expect(window.locator('.tab-bar__tab.is-active.is-exited')).toHaveCount(1, {
     timeout: 15_000,
