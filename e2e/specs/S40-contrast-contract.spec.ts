@@ -186,6 +186,29 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       selector: '.tab-bar__tab:not(.is-active) .tab-bar__title',
       property: 'color',
     },
+    // --- Issue #166（#179 周3）: 終了の severity を分けたことの関門 -------------
+    //
+    // **この2件が無いと、この Issue の中核を守るものが1つも無い。**
+    // 直す前は「非選択かつ終了したタブの文字色」を測るターゲットが存在せず
+    // （上の『非選択タブの文字』は querySelector の最初 = 生きている1枚目を拾う）、
+    // `.tab-bar__tab.is-exited:not(.is-active) { color: var(--status-error) }` と
+    // 書き戻しても全 spec が緑のままだった（design-review で保守が指摘）。
+    {
+      // 正常終了は**赤くしない**。非選択タブの既定色（--text-secondary）のまま。
+      // ここが 5.49（--status-exited の値）に戻ったら、正常終了が再び赤くなっている。
+      name: '正常終了したタブの文字（非選択）',
+      kind: 'text',
+      selector: '.tab-bar__tab.is-exited:not(.is-exited-abnormal):not(.is-active)',
+      property: 'color',
+    },
+    {
+      // 異常終了は赤のまま。**値は1つも変えていない**ので、直す前に
+      // 「終了したタブ」が持っていた 5.49 がそのままこちらへ移る。
+      name: '異常終了したタブの文字（非選択）',
+      kind: 'text',
+      selector: '.tab-bar__tab.is-exited-abnormal:not(.is-active)',
+      property: 'color',
+    },
     {
       name: '選択中タブの塗り（対タブバー）',
       kind: 'non-text',
@@ -302,9 +325,14 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       // 終了マーク（先頭スロット）は塗り（background-color）なので border 系とは
       // 扱いが違う。既定の実効背景解決は「自分自身から」始まり、この要素は
       // 自分の塗りそのものが非透明なので**自分自身と比較する 1.0 になってしまう**
-      // （「選択中タブの塗り」と同じ理由で against が要る）。このマーク（2枚目の
-      // タブ）は claude / gemini を開いたあとで非選択になっているため、
-      // 実際に見えている背景は `.tab-bar` と同じ --surface-1。
+      // （「選択中タブの塗り」と同じ理由で against が要る）。
+      //
+      // **Issue #166 以降、このマークが出るのは異常終了したタブだけ**（正常終了は
+      // スロットを塗らない）。したがって最初に見つかるのは 2枚目（`exit` = コード 0）
+      // ではなく **5枚目（`exit 7`）**。そのタブは 6枚目を開いた時点で非選択に
+      // なっているため、実際に見えている背景は `.tab-bar` と同じ --surface-1 で、
+      // **比の値（5.49）は変わらない**（色も面も同じ。変わったのは測っている
+      // 対象がどのタブか、という1点だけ）。
       name: '終了マークの塗り（先頭スロット・対タブバー）',
       kind: 'non-text',
       selector: '.tab-bar__state-slot--exited',
@@ -419,7 +447,12 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     .first();
   await expect(exitedActiveScreen).toContainText(promptPattern, { timeout: 20_000 });
   await window.locator('.terminal-pane:not(.terminal-pane--hidden) .xterm-helper-textarea').focus();
-  await window.keyboard.type('exit');
+  // **Issue #166 以降は `exit 7`（異常終了）でなければならない。** 正常終了では
+  // 状態スロットが塗られなくなったので、下の「終了マークの塗り（選択中タブ上）」が
+  // 要素ごと消える（contrast.ts は見つからない要素を素通りするので、
+  // キーの過不足検査で落ちる）。文字色の2件（13.58）は --text-bright なので
+  // severity に関係なく同じ値になる。
+  await window.keyboard.type('exit 7');
   await window.keyboard.press('Enter');
   // **選択されたまま終了していること**を先に固定する。ここが崩れると、下の2件は
   // 別の面（--surface-1）の上を測ってしまい、静かに違う値を記録する。
@@ -574,6 +607,13 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     'claude タブの色相の枠（選択中タブ上）': { ratio: 3.48, wcag: 'pass' },
     'gemini タブの色相の枠（選択中タブ上）': { ratio: 3.93, wcag: 'pass' },
     '終了マークの塗り（先頭スロット・対タブバー）': { ratio: 5.49, wcag: 'pass' },
+    // Issue #166（#179 周3）: 終了の severity を分けたことの関門。
+    // **色の値は1つも変えていない。** 変えたのは「どの状態にその色が付くか」だけ。
+    // 正常終了は非選択タブの既定色（--text-secondary #a8a8a8）のままなので 7.01、
+    // 異常終了は従来の --status-exited #d47b7b がそのまま移って 5.49。
+    // **7.01 が 5.49 に戻ったら、正常終了がまた赤くなっている。**
+    '正常終了したタブの文字（非選択）': { ratio: 7.01, wcag: 'pass' },
+    '異常終了したタブの文字（非選択）': { ratio: 5.49, wcag: 'pass' },
     // Issue #134（周1 characterization）: 同じ --status-exited #d47b7b でも、
     // **乗る面が --surface-tab-active #2e2e2e に変わると 5.49 -> 4.47 に落ちる。**
     // テキスト用途なので閾値は 4.5 で、**わずかに割っている**（`wcag: 'fail'`）。
