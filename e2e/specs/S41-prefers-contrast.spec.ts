@@ -203,18 +203,52 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
   // 3項目とも測れていること（セレクタが変わって静かに素通りしないように）
   expect(Object.keys(exitedHigh).sort()).toEqual(exitedTargets.map((t) => t.name).sort());
 
-  for (const name of exitedTargets.map((t) => t.name)) {
-    // **向きが正しいこと。** 上の targets と同じ不変条件を、この状態でも要求する。
-    expect(
-      exitedHigh[name],
-      `${name} が高コントラストで上がっていない（--status-exited の @media 上書きを確認すること）`,
-    ).toBeGreaterThan(exitedNormal[name]);
+  // --- Issue #164（#179 周2）: 3件を「前景が動くもの / 天井に張り付いたもの」で分ける ---
+  //
+  // **以前はここが3件を一律に扱い、全件へ `high > normal` を課していた。**
+  // #164 で選択中タブの文字とバッジが `--text-bright`（白）になった結果、
+  // このループは**必ず落ちるようになった**。白は輝度の天井なので、面が
+  // `#2e2e2e` -> `#525252` と明るくなれば比は 13.58 -> 7.81 と必ず下がる。
+  // **前景が天井に達した項目に「高コントラストで上がる」を要求することはできない。**
+  //
+  // ⛔ **ここを「一律に緩める」で通してはいけない。** 緩めると、まだ本当に
+  // 追随が要る項目（終了マークの塗り。前景が `--status-exited` で実際に動く）の
+  // 番人まで一緒に消える。分けて、それぞれに正しい不変条件を課す。
+  // （周2 の design-review で、この4つ目の番人の存在を2人が独立に指摘した。
+  //   周1 が数えた「番人3箇所」は4箇所だった）
 
-    // **閾値そのものも見る。** `#f0b8b8` 対 `#525252` は 4.56 で、4.5 に対する
-    // 余裕が +1.3% しかない。固定値だけだと「上がったが足りない」に赤くならない。
+  // (a) 前景が `--status-exited` で実際に動く項目 -> 向きと閾値の両方を要求する
+  const movesWithMedia = '終了マークの塗り（選択中タブ上）';
+  expect(
+    exitedHigh[movesWithMedia],
+    `${movesWithMedia} が高コントラストで上がっていない（--status-exited の @media 上書きを確認すること）`,
+  ).toBeGreaterThan(exitedNormal[movesWithMedia]);
+  // `#f0b8b8` 対 `#525252` は 4.56 で、4.5 に対する余裕が +1.3% しかない。
+  // 固定値だけだと「上がったが足りない」に赤くならない。
+  // （なお非テキストなので 1.4.11 の要求は 3:1 だが、この四角は
+  //   終了を運ぶ唯一の色なので、あえて厳しい 4.5 側で見張り続ける）
+  expect(
+    exitedHigh[movesWithMedia],
+    `${movesWithMedia} が高コントラストで 4.5:1 を満たしていない`,
+  ).toBeGreaterThanOrEqual(4.5);
+
+  // (b) 前景が白（天井）に張り付いた項目 -> 向きは要求できない。
+  //     **代わりに「両方の面で 4.5 以上」と「実際に白であること」を要求する。**
+  //     白であることまで見るのは、`--text-bright` 以外の明るい色に差し替えられて
+  //     比だけ通る、という抜け方を塞ぐため。
+  const atCeiling = ['終了したタブの文字（選択中）', '終了バッジの文字（選択中）'];
+  const bright = await window.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--text-bright').trim(),
+  );
+  expect(bright.toLowerCase()).toBe('#ffffff');
+  for (const name of atCeiling) {
+    expect(
+      exitedNormal[name],
+      `${name} が既定の面で 4.5:1 を満たしていない`,
+    ).toBeGreaterThanOrEqual(4.5);
     expect(
       exitedHigh[name],
-      `${name} が高コントラストで 4.5:1 を満たしていない`,
+      `${name} が高コントラストの面で 4.5:1 を満たしていない`,
     ).toBeGreaterThanOrEqual(4.5);
   }
 
@@ -424,10 +458,11 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
 
   await window.emulateMedia({ contrast: null });
 
-  // 既定側は**まだ 4.5 を割っている**（テキスト2件が 4.47）。
-  // ここは値ではなく結合状態の規則（`.tab-bar__tab.is-active.is-exited` に
-  // `--text-bright` を戻す）で解くのが筋、という design-review の結論に従い
-  // 別 Issue に切り出した。**割っている事実は固定しておく**（黙って腐らせない）。
-  expect(exitedNormal['終了したタブの文字（選択中）']).toBeCloseTo(4.47, 1);
-  expect(exitedNormal['終了バッジの文字（選択中）']).toBeCloseTo(4.47, 1);
+  // **Issue #164（#179 周2）で是正済み。** ここは長らく「既定側はまだ 4.5 を割っている
+  // （テキスト2件が 4.47）」を固定していた箇所で、値ではなく結合状態の規則で解く、という
+  // design-review の結論どおりに直った（`.tab-bar__tab.is-exited` に `:not(.is-active)` を
+  // 付けて詳細度を上げ、バッジは `color` の宣言を落として継承させた）。
+  // **--status-exited の値は1つも変えていない。**
+  expect(exitedNormal['終了したタブの文字（選択中）']).toBeCloseTo(13.58, 1);
+  expect(exitedNormal['終了バッジの文字（選択中）']).toBeCloseTo(13.58, 1);
 });
