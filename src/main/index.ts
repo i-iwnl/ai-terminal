@@ -15,6 +15,7 @@ import { registerAppPathHandlers } from './app-paths';
 import { registerApplicationMenu, registerMenuHandlers } from './menu';
 import { registerAccessibilityHandlers } from './accessibility';
 import { registerSettingsWindowHandlers } from './settings-window';
+import { attachExternalLinkHandler } from './external-links';
 import { ensureLoginShellPath } from './shell-path';
 import { applyFullScreenState, trackWindowState, windowStateOptions } from './window-state';
 
@@ -89,6 +90,11 @@ function createWindow(): BrowserWindow {
       sandbox: false,
     },
   });
+
+  // ターミナルに出た URL のクリックを既定ブラウザへ逃がす（Issue #178 周1）。
+  // 設置しないと Electron がアドレスバーの無い `BrowserWindow` を自前で作る。
+  // 理由と判定は `external-links.ts` が正。
+  attachExternalLinkHandler(win);
 
   // 前回フルスクリーンで終了していたら、**見せる前に**その状態へ戻す
   // （見せたあとに切り替えると、通常サイズのウィンドウが一瞬映る）。
