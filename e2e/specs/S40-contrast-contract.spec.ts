@@ -254,6 +254,50 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       selector: '.tab-bar__tab--gemini',
       property: 'border-top-color',
     },
+    // --- Issue #179 周1（#165 前半）: 色相アクセントが「選択中タブの上」でどう見えるか ---
+    //
+    // **上の3件は、この線を一度も選択中タブの上で測っていない。**
+    // `contrast.ts` の既定挙動（border 系は親の実効背景と比べる）に任せると、
+    // 親を辿った先は常に `.tab-bar`（--surface-1）になる。タブ自身が
+    // `--surface-tab-active` の塗りを持っていても、その塗りは「親」ではないので
+    // 計測に現れない。**どのタブを選択していても上の3件の値は変わらない。**
+    //
+    // `styles.css` の --tab-provider-* のコメントは、以前ここに
+    // 「対 --surface-1 / --surface-tab-active の**いずれでも** 3:1 を満たす
+    // （S40 が実測する）」と書いていたが、**S40 はそちらを一度も測っていなかった**
+    // （Issue #134 の design-review で発覚）。その穴をここで塞ぐ。
+    //
+    // **`against` ではなく `againstColor` を使う。** プロバイダ色は3種類
+    // （shell / claude / gemini）あるのに、選択中のタブは同時に1枚しか作れない。
+    // 3本を1回のセットアップで測るには、乗る面をトークンから引くしかない。
+    // 副次的な利点として、`@media` がトークンを差し替えれば同じ記述のまま
+    // 高コントラスト側にも追従する（S41 がその側を担当する）。
+    //
+    // なお #165 の対処方針は「`contrast.ts` に `against` を明示できる口を足す」と
+    // 書いていたが、**`against` / `againstColor` はどちらも実装済みだった**。
+    // 欠けていたのはハーネスの API ではなく、この計測対象のほう
+    // （`.claude/workspace/issue-179/known-issues.md` 1番に訂正を記録した）。
+    {
+      name: 'シェルタブの色相の枠（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--shell',
+      property: 'border-top-color',
+      againstColor: '--surface-tab-active',
+    },
+    {
+      name: 'claude タブの色相の枠（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--claude',
+      property: 'border-top-color',
+      againstColor: '--surface-tab-active',
+    },
+    {
+      name: 'gemini タブの色相の枠（選択中タブ上）',
+      kind: 'non-text',
+      selector: '.tab-bar__tab--gemini',
+      property: 'border-top-color',
+      againstColor: '--surface-tab-active',
+    },
     {
       // 終了マーク（先頭スロット）は塗り（background-color）なので border 系とは
       // 扱いが違う。既定の実効背景解決は「自分自身から」始まり、この要素は
@@ -522,6 +566,13 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     'シェルタブの色相の枠（対タブバー）': { ratio: 5.13, wcag: 'pass' },
     'claude タブの色相の枠（対タブバー）': { ratio: 4.27, wcag: 'pass' },
     'gemini タブの色相の枠（対タブバー）': { ratio: 4.82, wcag: 'pass' },
+    // Issue #179 周1（#165 前半）: 同じ3本を --surface-tab-active（#2e2e2e）の上で。
+    // **既定の配色では3本とも非テキストの 3:1 を満たしている**（4.18 / 3.48 / 3.93）。
+    // 割っているのは高コントラスト側（#525252 の上で 2.40 / 2.00 / 2.26）で、
+    // そちらは S41 が固定する。**この周では値を1つも変えない。**
+    'シェルタブの色相の枠（選択中タブ上）': { ratio: 4.18, wcag: 'pass' },
+    'claude タブの色相の枠（選択中タブ上）': { ratio: 3.48, wcag: 'pass' },
+    'gemini タブの色相の枠（選択中タブ上）': { ratio: 3.93, wcag: 'pass' },
     '終了マークの塗り（先頭スロット・対タブバー）': { ratio: 5.49, wcag: 'pass' },
     // Issue #134（周1 characterization）: 同じ --status-exited #d47b7b でも、
     // **乗る面が --surface-tab-active #2e2e2e に変わると 5.49 -> 4.47 に落ちる。**
