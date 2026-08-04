@@ -5,7 +5,26 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. 設定ウィンドウにメニューの操作が効かない | **生きている → #152** | `actionItem()` は今も `win` を閉包で掴んで無条件に送る。`grep -rn "getFocusedWindow" src/` は 0件。`actionItem(win, ...)` の呼び出しは37箇所。**キーボード経路は無害**（`registerAccelerator: false` により、Esc / `Cmd+W` は `SettingsPanel.tsx` の window keydown が捌く）。再現するのはマウスでメニューをクリックした場合だけ。ただし「実害は小さい」という当時の評価より重い — `close-pane` / `close-tab` など**破壊的なアクションが増えた** |
+| 2. 設定ウィンドウの位置・サイズが保存されない | **生きている → #153** | `openSettingsWindow()` は今もリテラル固定。**ただし「#20 の K-9 で一緒に扱う」は外れた** — K-9 は `715f4e0` で `src/main/window-state.ts` として本体ウィンドウ専用に着地し、設定ウィンドウは対象外のまま。`settings-window.ts` は `window-state` を import すらしていない。**待つ理由は消えており、いま着手できる** |
+| 3. `FALLBACK_CONFIG` と `DEFAULT_CONFIG` の二重化 | **解決済み** | `26128bb`。`src/renderer/src/lib/defaults.ts` は削除済み、`FALLBACK_CONFIG` という識別子は定義が存在しない（`App.tsx` にもう存在しない名前を指すコメントが1行残るのみ）。`DEFAULT_CONFIG` の定義は `src/shared/defaults.ts` の1箇所だけ。※「#20 の PR 1 で扱う」ではなく `26128bb` で直った |
+
+**記述のずれ**: 2 番の「毎回既定の位置とサイズで出る」— **横幅は仕様として固定**（`minWidth === maxWidth === 520`）。保存対象は x / y / height の3つ。
+
+---
+
+
 ## 1. 設定ウィンドウにメニューの操作が効かない
+
+> **GitHub Issue**: [#152](https://github.com/i-iwnl/ai-terminal/issues/152)
 
 ### 症状
 
@@ -37,6 +56,8 @@ P3
 ---
 
 ## 2. 設定ウィンドウの位置・サイズが保存されない
+
+> **GitHub Issue**: [#153](https://github.com/i-iwnl/ai-terminal/issues/153)
 
 ### 症状
 

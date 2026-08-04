@@ -5,6 +5,22 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. PR #6 が未マージのコミットを巻き込んでいる | **解決済み** | `3caf03c` の内容は `21217e3` として main に取り込まれた（`git diff 3caf03c 21217e3` が空でツリー一致）。名指しされた `S27` / `S28` の spec は現存。再発防止は CLAUDE.md の「スタック PR を作らない」で恒久化済み |
+| 10. タスク一覧の cwd 絞り込みが効いていなかった | **解決済み** | `1500064`。その後 Renderer 側は `TaskList.tsx` から `src/renderer/src/lib/agentTasksStore.ts` へ移り（`04308be`）、`agents.list({ cwd: getSharedCwd() })` を渡すのはリポジトリ内でこの1箇所だけ。Main 側の `poller.ts` は初期値が `process.cwd()` から `getAppPaths().cwd` へ強化された。`S34` / `S35` が現存 |
+
+2〜9 は起票済み（#9〜#14 / #17 / #18）。**記述のずれ**: 10 番の「残っている注意」が `TaskList.tsx` を現在地として指しているが、実際は `agentTasksStore.ts`。
+
+---
+
+
 ## 1. PR #6 が、未マージのまま残っていたコミットを巻き込んでいる
 
 ### 症状

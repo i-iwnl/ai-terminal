@@ -9,6 +9,26 @@ Issue #121（P3）の実装中に発見された未解決のバグ・先送り�
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. #121 本文に実態と食い違う記述が6件 | **解決済み。Issue 化しない** | 2026-08-03 に [#121 のコメント](https://github.com/i-iwnl/ai-terminal/issues/121#issuecomment-5167427517) としてずれ6件が表で書き戻され、#121 は CLOSED。**新しい作業は残っていない**（これは #121 本文の誤りの記録であって課題ではない） |
+| 2. 撮影漏れを機械で検査していない | **解決済み** | `d7a4db1`。`scripts/verify-screenshots.mjs` の **check1**（`readme: true` + `screenshot` 指定のシナリオが実際に撮影されているか）。`KNOWN_NONDETERMINISTIC` による除外は check3 にしか効かず、check1 / check2 は除外しないとコメントで明示されている |
+| 3. 「13枚」という手書きの枚数が残っている | **解決済み**（「対処しない」判断が有効） | 3ファイル（`run-e2e.md` 3箇所 / `limitations.md` 1箇所 / `loop.md` 3箇所）に残存しているのは記述どおり。**更新トリガー（枚数が実際に変わる周）はまだ発火していない** — `e2e/scenarios.yml` の `readme: true` は13件、`docs/images/*.png` も13枚で一致。#130/#131 でも増減なし |
+| 4. `CloseTabConfirmDialog` が既定構成で嘘をつく | **解決済み** | `d7a4db1`。`src/renderer/src/tabs/closeTabCopy.ts` に `summarizeClosingPanes()`（`exiting` / `persistentResumable` / `persistentOrphaned` に数え分け）と `closeTabCopy()`（3分岐）が切り出され、ダイアログは文言を自分で持たなくなった。`test/unit/close-tab-copy.test.ts` 16件。「閉じる瞬間に `config.useTmux` を読み直さない」も守られている（判定は `leaf.wrappedInTmux` のみ） |
+| 5. README / PLAN.md / pty-pitfalls.md の tmux の記述が実測と逆 | **解決済み** | `d7a4db1`。3箇所とも**実測日 2026-08-03 と tmux 3.7b を併記**して書き換え済み。旧記述（「`ptyExit` は発火しない」等）は3ファイルとも残っていない |
+| 6. 1ペインのタブを閉じる経路が無言で孤児プロセスを作る | **一部が生きている → #158** | `requestCloseTab` は直ったが、**`Cmd+W`（`close-pane`）が同じ穴を素通しで残している**。詳細は下記の項目6の追記を参照 |
+
+**記述のずれ**: 4 番の解決に伴い `CloseTabConfirmDialog.tsx` の冒頭コメントと `App.tsx` の `requestCloseTab` の JSDoc が実装と矛盾している（「2つ以上の PTY を一度に閉じるときだけ」のまま）。#157 で扱う。
+
+---
+
+
 ## 1. Issue #121 の本文に、実装済み・実態と食い違う記述が6件ある（着手前の実測で判明）
 
 ### 内容
@@ -193,6 +213,8 @@ claude タブを閉じるボタンで閉じた後:
 
 ## 6. 1ペインのタブを閉じる経路は、いまも無言で孤児プロセスを作る
 
+> **GitHub Issue**: [#158](https://github.com/i-iwnl/ai-terminal/issues/158)
+
 ### 症状
 
 確認ダイアログは `paneCount >= 2` のときだけ出る（`App.tsx` の `requestCloseTab`）。
@@ -218,3 +240,22 @@ claude タブを閉じるボタンで閉じた後:
 （`persistentOrphaned > 0` なら1ペインでも確認する = tmux + gemini）。
 claude は履歴から戻れるので止めない。**タブを閉じるのは1日に何十回もある操作なので、
 確認は不可逆なものだけに絞る。** 判定に使う内訳は `test/unit/close-tab-copy.test.ts` が固定。
+
+### 優先度
+
+P2（2026-08-04 の棚卸しで補記）
+
+### 追記（2026-08-04・棚卸し）— 直したのは片方の経路だけだった
+
+**「対処済み」は `requestCloseTab` についてだけ正しい。** この見出し（「1ペインのタブを閉じる経路」）
+としては未完で、**`Cmd+W`（`close-pane`）が同じ穴を素通しで残している**。
+
+- `App.tsx` の `runAction` の `case 'close-pane'` は `api.closeActivePane()` を直接呼ぶ
+- `useTabs.ts` の `closeActivePane` は、`closePane()` が `null`（最後の1枚）なら `closeTab(tabId)` して
+  そのまま返す。**`summarizeClosingPanes` も `persistentOrphaned` も参照していない**
+- `requestCloseTab` を通るのは `TabBar.tsx` の x ボタンと `case 'close-tab'`（`Cmd+Option+W`）だけ
+- **`Cmd+W` のほうが押しやすいので、実運用ではこちらが主要な経路になりうる**
+- 複数ペインのタブで gemini のペインだけを `Cmd+W` で閉じる場合も同じ（`requestCloseTab` の設計対象外）
+
+また、この項目の症状節の「確認ダイアログは `paneCount >= 2` のときだけ出る」は**もう正しくない**
+（周5 で `|| summary.persistentOrphaned > 0` が入った）。

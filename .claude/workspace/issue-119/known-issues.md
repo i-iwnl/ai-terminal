@@ -5,6 +5,30 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. `.history-item__action` に `pointer-events: none` が無い | **解決済み** | `715f4e0`。ただし修正が入ったのは `.history-item__action`（単数）ではなく **`.history-item__actions`（複数・入れ物）**。`:hover` / `:focus-within` で `auto` に戻す構造。`e2e/specs/S74-history-row-hit-area.spec.ts` が `elementFromPoint()` で9点を撃って固定 |
+| 2. `chromeSafeToApply === false` が前回のインライン値を消していない | **解決済み** | `715f4e0`。`App.tsx` に `SURFACE_VARS`（4本）を宣言し、`if (!chromeSafeToApply) { for (const name of SURFACE_VARS) root.removeProperty(name); return; }`。`S80` の「既定へ戻せる」節が assert |
+| 3. vibrancy が一度も見えていない疑い | **調査完了・コメント訂正済み** | `715f4e0`。事実（見えていない）は真だが、`src/main/index.ts` と `styles.css` の両コメントが実測結果（不透明な層が2枚。`transparent: true` か `backgroundColor: '#00000000'` が要る）に書き換わり、食い違いは解消。**透明化そのものは意図的な非目標**として宣言済み |
+| 4. サイドバー上端の見出しの正が4箇所に散りうる | **解決済み（畳まず分離）** | `715f4e0`。`.history-list__heading` は CSS から消え、`.panel-scope` / `.task-group__heading` / `.memo-panel__heading` の3種に整理。`test/unit/css-tokens.test.ts` の4件が「互いに別物であること」を固定 |
+| 5. `.notice-list` が 36px をリテラル複製している | **解決済み** | `715f4e0`。`:root` に `--bar-height: 36px`、参照は `.sidebar__drag-region` / `.tab-bar` / `.notice-list` の3箇所。`src/shared/windowChrome.ts` の `BAR_HEIGHT_PX` との一致を含め `test/unit/css-tokens.test.ts` の5件が固定。`S73` が実行時にも追従を見る |
+| 6. `docs/images/` が古くなっても検出されない | **解決済み** | `d7a4db1`。`scripts/verify-screenshots.mjs`（`make e2e-screenshots-check`）の check3 が撮り立てとコミット済みを画素比較する |
+| 7. S40 に未較正の期待値が4件残っている | **解決済み** | `8d5e77f`（#120 周6）。4件とも実走で較正され、**小数第2位まで手計算値と一致**。spec のコメントが「較正のために意図的に落とす必要は無い」「`console.log` は成否に関わらず毎回実測値を出す」と明記 |
+| 8. 撮影レーンの非決定性3種類 | **解決済み** | `5910aca`（経過時間の固定化 / 空状態を待つ `waitForTaskList()`）+ `d7a4db1`（偽 claude が UUID を `<session-id>` へ置換して発生源で断つ）。`KNOWN_NONDETERMINISTIC` に残るのは S56 の1枚だけで、理由は zsh の部分行マーカー `%`（別種） |
+
+**記述のずれ**: 7 番の「`e2e/scenarios.yml` と S40 に」— scenarios.yml の S40 エントリに数値は**最初から1件も無い**（note は方針文のみ）。同じく 7 番の「落ちて初めて実測値がログに出る仕組み」も誤りで、S40 の spec コメントがこの known-issues.md を名指しで訂正している。
+
+**6 / 7 / 8 のステータス欄は「未対処」「別 Issue へ委譲」のままだが、実コードでは解決済み。**
+
+---
+
+
 ## 1. `.history-item__action` に `pointer-events: none` が無い
 
 ### 症状

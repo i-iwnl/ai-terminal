@@ -5,7 +5,26 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. 実際の読み上げ品質は自動検証できない | **生きている → #148** | 構造上の限界であることは不変（S37 の冒頭コメント）。加えて**手動確認も未実施**。`.claude/workspace/` 全体を検索しても「VoiceOver で確認した」記録は無く、#119 / #120 / #121 で行われた手動確認は D-3（D&D）と vibrancy だけ。`README.md` にも TUI での実用限界の警告が無い |
+| 2. 検知で有効化してもユーザーに何も見えない | **生きている → #149** | `SettingsPanelProps` は `{ config, onChange, onClose }` の3つのみで `accessibilitySupport` は渡っていない。節の説明文は #23 本体（`613f2f8`）から変わっておらず、静的な一般論 |
+| 3. 読み上げラベルが英語の既定のまま | **生きている → #150** | `promptLabel` / `.strings` はリポジトリ全体で**参照0件**。`new Terminal({...})` に渡すオプションは7つでラベル系は無い。textarea に `aria-label` も付いていない |
+
+**記述のずれ**: 2 番の「実効値を Renderer 側で計算しており」— 設定は `226b04e` で独立した BrowserWindow に移っており、値を渡すだけでは済まない（Main の送信先を増やす判断が要る）。3 番の `Terminal.strings` は**静的プロパティ**なので、インスタンス単位では設定できない。
+
+---
+
+
 ## 1. 実際の読み上げ品質は自動検証できない
+
+> **GitHub Issue**: [#148](https://github.com/i-iwnl/ai-terminal/issues/148)
 
 ### 症状
 
@@ -40,6 +59,8 @@ P2
 
 ## 2. 支援技術で検知して有効化しても、ユーザーには何も見えない
 
+> **GitHub Issue**: [#149](https://github.com/i-iwnl/ai-terminal/issues/149)
+
 ### 症状
 
 VoiceOver が動いていると設定に関わらず `screenReaderMode` が有効になるが、
@@ -71,6 +92,8 @@ P3
 ---
 
 ## 3. ターミナルの読み上げラベルが英語の既定のまま
+
+> **GitHub Issue**: [#150](https://github.com/i-iwnl/ai-terminal/issues/150)
 
 ### 症状
 

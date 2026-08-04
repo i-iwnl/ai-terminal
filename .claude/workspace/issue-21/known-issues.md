@@ -5,6 +5,20 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. 未知の status で UI と通知の判断が食い違う | **解決済み**（記述どおり） | `9b92d23`。`src/shared/agent-status.ts` が `TaskState` / `toTaskState()` / `countYourTurn()` / `becameYourTurn()` を持ち、実 import は `TaskList.tsx` / `poller.ts` / `yourTurnSince.ts` / `tabYourTurn.ts` の4箇所。`poller.ts` に生の `status === 'busy'` 分岐は残っていない。Dock バッジも同じ判定を共有。`test/unit/agent-status.test.ts` あり |
+| 2. 掲載スクリーンショットの中身が古いことを検出できない | **解決済み** | ステータスの「未対処（先送り）」は古い。`d7a4db1` で `scripts/verify-screenshots.mjs`（`make e2e-screenshots-check`）が入り、check3 が**撮り立てとコミット済みを画素比較**する（`MAX_CHANNEL_DELTA = 2`）。原因節の「`lint-e2e` が `screenshots.spec.ts` を検査対象に含めていない」も check10 が覆っている |
+
+---
+
+
 ## 1. 未知の status について、UI と通知ロジックの判断が食い違う
 
 ### 症状

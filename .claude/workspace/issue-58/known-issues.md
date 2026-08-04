@@ -5,6 +5,23 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. tmux ラップ時の cwd が実態と違いうる | **解決済み**（技術的事実は不変。「決めて明文化する」が完了） | `2814ca4` のコード側コメントと `538cb2b` の README（「tmux 経由で起動している場合、追跡できる cwd は tmux クライアント側のものになる」）。判断は #121 のクロージングコメントで「**追跡を足さない判断。実害のある経路が無いので OSC 7 も tmux 用の pid 解決も入れない**」と書き戻し済み |
+| 2. ポーリング前提が分割表示（#56）で崩れる | **解決済み** | `e968aed`（#56 のマージと同時に対処）。`refreshTabCwd(tabId, ptyId)` が tabId と ptyId を別引数で取り、`flattenPaneTree(tab.layout).find(l => l.ptyId === ptyId)` で引き直す。依存配列に `activePaneIdForCwdPolling` が入っており、分割でアクティブペインが変わると張り直される。`setInterval` は1本のまま（lsof がペイン数に比例しない） |
+| 3. 他セッションの git worktree を eslint が拾う | **解決済み** | `7d6d703`。`eslint.config.js` の `ignores` に `.claude/worktrees/**` が入っている（`e2e/report/**` と同型のコメント付き） |
+
+**記述のずれ**: 1 番の「ポーリング対象を `kind === 'shell'` に限定しているため、この値は読まれない」は不正確。`newAgentTab()` は kind を問わず `pty.cwd()` を呼ぶ。ただし返る値が spawn 時 cwd と一致するため、結論（実害なし）は変わらない。
+
+---
+
+
 ## 1. tmux でラップしたエージェントタブの cwd は、実態と違う値になりうる
 
 ### 症状

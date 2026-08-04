@@ -5,7 +5,26 @@
 
 ---
 
+## 棚卸し（2026-08-04）
+
+**実コードで1件ずつ現状を測り直した結果**（main = 61edbe5 時点）。
+`.claude/skills/workspace-plan/operations/promote-known-issues.md` の手順による。
+**元の記述は観察の記録として残す。** 状態の唯一の正は GitHub Issue。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 1. メニューとキーボードの二重発火を検出できない | **生きている → #144** | `actionItem()` の `registerAccelerator: false` はここ1箇所のまま。`accelerator` を持つのに `actionItem()` を通らない項目は「設定...」（`Cmd+,`）の1件のみで、これは自前で `false` を書いている正当な例外。**部分的な進展**: S36 が `roles` を小文字正規化して `zoomin` / `zoomout` / `resetzoom` などの不在を検査するようになり、`role` 経由の亜種だけは固定された。一般則は誰も見ていない |
+| 2. 開発起動と本番起動でメニューの中身が違う | **生きている → #145** | `isDev()` の分岐は現存。S36 が本番側を守っているのも記述どおり。ただし**この注意がリポジトリ内のどこにも書かれていない**（`limitations.md` にメニューの記述なし）ことが実質的な課題 |
+| 3. `Cmd+Opt+*` が構造的に登録できない | **解決済み** | `6fa849a`（`altKey` ガードを矢印限定で緩める）→ `bbd1d76`（全面解禁）。`shortcuts.ts` の現在のガードは `passesModifierGate()` の `if (!e.metaKey || e.ctrlKey) return false;` で `|| e.altKey` は消えている。`Cmd+Option+S`（サイドバー = この項目が名指しした割り当てそのもの）/ `+W` / `+矢印` / `+数字` が実在。対処方針2つ目の単体テスト分割も `test/unit/renderer-lib.test.ts` で完了 |
+
+**記述のずれ**（1 番の手動確認手順）: `Cmd+Shift+G` は現在「前を検索」で、Gemini タブは `Cmd+Shift+E`。`Cmd+R` は本番メニューに存在しない。手順をそのまま実行すると誤った期待になる。
+
+---
+
+
 ## 1. メニューとキーボードの二重発火が、自動テストでは検出できない
+
+> **GitHub Issue**: [#144](https://github.com/i-iwnl/ai-terminal/issues/144)
 
 ### 症状
 
@@ -41,6 +60,8 @@ P2
 ---
 
 ## 2. 開発起動と本番起動でメニューの中身が違う
+
+> **GitHub Issue**: [#145](https://github.com/i-iwnl/ai-terminal/issues/145)
 
 ### 症状
 
