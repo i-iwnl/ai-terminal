@@ -30,7 +30,7 @@ Claude Code の設定・skill を管理するディレクトリ。
 | [/ai-cli](skills/ai-cli/SKILL.md) | claude / gemini CLI の起動と出力パース。`claude agents --json`、`~/.claude/projects` の JSONL、`--session-id` / `--resume`、CLI 更新でパースが壊れたときの修復 |
 | [/terminal](skills/terminal/SKILL.md) | xterm.js と node-pty まわり。PTY が起動しない、日本語 IME、文字幅のずれ、vim / htop の表示崩れ、tmux ラップ時の終了検知、GUI 手動検証の手順 |
 | [/workspace-plan](skills/workspace-plan/SKILL.md) | 作業コンテキストの保持と開発ループ。`.claude/workspace/issue-<番号>/` の作成（init）、進捗の追記と Issue への同期（update）、一覧と Issue の突合（status）、計画 -> 実装 -> 検証 -> 文書 -> 記録を1周回す（loop）、known-issues を GitHub Issue に起こしてラベルを付ける（promote-known-issues） |
-| [/e2e](skills/e2e/SKILL.md) | Playwright による Electron の E2E テスト。シナリオの追加、実行とデバッグ、隔離ハーネス（一時 HOME と偽 CLI）の仕組み、自動テストで担保できない領域 |
+| [/e2e](skills/e2e/SKILL.md) | Playwright による Electron の E2E テスト。シナリオの追加、実行とデバッグ、隔離ハーネス（一時 HOME と偽 CLI）の仕組み、**実機確認（agent-browser を CDP でつないで観測する）**、自動テストで担保できない領域 |
 | [/design-review](skills/design-review/SKILL.md) | UI デザイン案の5ペルソナ並列レビュー。レビューの実施と統合（run-review）、結果の Issue 起票（file-proposal）、UI を書くとき常に守る規約・閾値・却下済みの案（reference/design-rules.md） |
 
 3本は責務が隣接しているため、SKILL.md の末尾で相互に境界をリンクしている。**どれを読むか迷ったら**「プロセス間の配線」なら `/electron-ipc`、「外部 CLI の出力」なら `/ai-cli`、「画面と子プロセス」なら `/terminal`。

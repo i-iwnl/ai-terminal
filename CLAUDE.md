@@ -52,6 +52,8 @@ make docker-verify # typecheck + lint + build を Docker コンテナ内で実�
 
 **README の画像が古くなっていないかは `make e2e-screenshots-check` が画素で見る。** `make e2e`（または `make e2e-screenshots`）で撮った直後に回すと、`docs/images/` の中身が実装とずれていれば落ちる。**画面を意図的に変えたときだけ落ちてよい**ので `make e2e` には含めていない（`css-substitution-check` と同じ扱い）。落ちたら `make e2e-screenshots` で撮り直し、**変わった画像1枚ずつについて「この画面にこの変更が波及するはずがあるか」を言えるまでコミットしない**。
 
+**検証の関門は2段。実装を1つ終えるたびに `make check` + 実機確認、push / PR の前にフル `make e2e`。** 実機確認は起動中のアプリに `agent-browser` を CDP でつないで見る（手順は `/e2e` の `operations/verify-on-device.md`）。**E2E も撮影レーンもホバー状態を作らないので、ホバー中の見た目・計算後のスタイル・再起動後の永続化はここでしか確認できない。** 逆に回帰（自分が触っていない場所が壊れたこと）は `make e2e` でしか出ない。**代替関係にない。**
+
 **テストの置き場は「外部に触れるか」で決める。** 入力から出力が閉じた純粋関数は `test/unit/`（vitest）、画面・PTY・IPC を跨ぐ振る舞いは `e2e/specs/`（Playwright）。Electron を起動する必要があるなら後者。
 
 ## 作業分担の既定方針
@@ -102,6 +104,8 @@ skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` 
 
 **複数セッションにまたがる作業は、着手時に `/workspace-plan init <Issue番号>` でワークスペースを作る。** Issue 本文をコピーせず、リンクと要約に留めること（二重化の禁止）。
 
+**⛔ 作業の途中で新規 Issue を立てない。** 周の中で見つけたものは `known-issues.md` に書くだけにし、切り出したくなったら**その Issue の周を1つ増やす**。GitHub Issue へ起こすのは `/workspace-plan promote-known-issues` を明示的に呼んだときだけで、**その手順自身が open 件数の上限（20件）で止まる**。放置すると「1つ潰すと5つ増える」ポンプになる（2026-08-04 に1日で 46 件作成 / 14 件 close の実績）。
+
 作業のたびに `worklog.md` へ追記する。**各エントリの「次に再開するとき最初に読むべきこと」は省略しない。** セッションが切れても文脈を復元できることが、このディレクトリの存在理由。
 
 再開時は `.claude/workspace/issue-<番号>/worklog.md` の最新エントリから読む。
@@ -109,6 +113,8 @@ skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` 
 ## Git 操作
 
 **commit / push / PR 作成は、ユーザーが明示的に指示したときのみ行う。** エージェントが自発的にコミットしてはいけない。
+
+**push / PR の前に `make e2e` フルセットと `make e2e-lint` を通す。** UI・CSS・DOM 構造を触っていれば `make e2e-screenshots` も回す。**赤いまま push しない。** 落ちたら push を止めて報告する（この関門は CI ではなく人とエージェントが守る。CI は無い）。
 
 **スタック PR を作らない。** base 側を `gh pr merge --delete-branch` でマージすると、そこに積んだ子 PR は**自動クローズされ、しかも再オープンできない**（base ブランチが存在しない PR は `reopenPullRequest` が失敗する）。実際に1本失って立て直した。**すべて `main` から生やし、順にマージする。**
 

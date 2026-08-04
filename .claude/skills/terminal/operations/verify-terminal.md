@@ -2,6 +2,8 @@
 
 xterm.js + node-pty の組み合わせが「普段使いのターミナル」として成立しているかを人手で確認する手順。**GUI 操作が必須のため自動テストでは代替できない。** Phase 1（docs/PLAN.md）の受け入れ基準をそのまま使う。
 
+**agent-browser（[/e2e](../../e2e/operations/verify-on-device.md)）でも代替できない。** あちらが見るのは Renderer の DOM と計算後のスタイルで、ここで確認するのは**描画の崩れ・OS の IME・実際のキー入力**という、値では判定できないものばかり。**両方要る。**
+
 ## 事前準備
 
 起動コマンドの唯一の正はルート [CLAUDE.md](../../../../CLAUDE.md) と Makefile。この skill 側では手順を再掲しない。
