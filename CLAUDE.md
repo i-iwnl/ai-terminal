@@ -116,6 +116,8 @@ skill や agent の md を編集したら `bash .claude/scripts/lint-skills.sh` 
 
 **push / PR の前に `make e2e` フルセットと `make e2e-lint` を通す。** UI・CSS・DOM 構造を触っていれば `make e2e-screenshots` も回す。**赤いまま push しない。** 落ちたら push を止めて報告する（この関門は CI ではなく人とエージェントが守る。CI は無い）。
 
+**ただし `.claude/**` / `docs/**` / `README.md` / `CLAUDE.md` しか触っていないブランチは `make e2e` を省いてよい。** 判定は「関係なさそう」という主観ではなく、`git diff --name-only origin/main...HEAD` を上のパス集合と突き合わせて機械的に行う（コマンドと注意点は `/workspace-plan` の `operations/loop.md`）。**`make check` は省略しない**（`README.md` と `CLAUDE.md` は単体テストと lint が読んでいる）。
+
 **スタック PR を作らない。** base 側を `gh pr merge --delete-branch` でマージすると、そこに積んだ子 PR は**自動クローズされ、しかも再オープンできない**（base ブランチが存在しない PR は `reopenPullRequest` が失敗する）。実際に1本失って立て直した。**すべて `main` から生やし、順にマージする。**
 
 ## コーディング規約
