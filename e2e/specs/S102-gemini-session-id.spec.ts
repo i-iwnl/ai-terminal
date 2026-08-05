@@ -74,7 +74,13 @@ test('S102 gemini の tmux セッション名が新規起動と履歴 resume で
 
   // --- 2. 履歴から resume ----------------------------------------------------
   await window.locator('.sidebar__tabs button', { hasText: '履歴' }).click();
-  await window.locator('.history-list__providers button', { hasText: 'Gemini' }).click();
+  const geminiToggle = window.locator('.history-list__providers button', { hasText: 'Gemini' });
+  // ⛔ **選択状態が支援技術に露出していること。** 閉じたときの告知が
+  // 「サイドバーの『履歴』から再開できます」と言う以上、その行き先のトグルが
+  // 読めないと導線が切れる（見た目は文字色と枠だけで、状態は伝わっていなかった）。
+  await expect(geminiToggle).toHaveAttribute('aria-pressed', 'false');
+  await geminiToggle.click();
+  await expect(geminiToggle).toHaveAttribute('aria-pressed', 'true');
 
   const items = window.locator('.history-item');
   await expect(items).toHaveCount(2);
