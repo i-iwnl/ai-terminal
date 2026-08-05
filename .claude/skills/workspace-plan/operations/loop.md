@@ -138,12 +138,27 @@ design-review は「ペインヘッダを通常フローに入れるな（幾何
 **「関係なさそう」という判断で省かない。** 触ったパスで機械的に決める。
 
 ```bash
-git diff --name-only origin/main...HEAD | grep -qvE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)' \
-  && echo "e2e 必須" || echo "e2e 省略可"
+# 出力が1行でもあれば make e2e 必須。何も出なければ省略可。
+git diff --name-only origin/main...HEAD | command grep -vE '^(\.claude/|docs/|README\.md$|CLAUDE\.md$)'
 ```
 
 `.claude/**` / `docs/**` / `README.md` / `CLAUDE.md` **以外が1つでも入っていたら必須**。
 `src/` `e2e/` `test/` `package.json` `Makefile` `*.config.ts` `resources/` はすべて必須側。
+
+⛔ **`grep -qv` の終了ステータスで判定しない。`command` を外さない。**（2026-08-05 実測）
+
+Claude Code のシェルでは `grep` が **ugrep のラッパ関数に差し替わっている**ことがあり、
+**`ugrep -qv` は非マッチ行があっても 1 を返す**（`-cv` は正しく 1 と数えるので、`-q` との併用だけが壊れる）。
+
+```
+printf 'x\ny\n' | grep -qv 'x'          -> 1   # ugrep ラッパ
+printf 'x\ny\n' | command grep -qv 'x'  -> 0   # BSD grep
+```
+
+以前ここに書いてあった `grep -qvE ... && echo 必須 || echo 省略可` は、
+**この環境で必ず「e2e 省略可」を出す**。`e2e/specs/` を2ファイル触ったブランチで
+実際に「省略可」と出た（2026-08-05・周4-0）。**外れ方が「関門を飛ばす側」に倒れる**ので、
+終了ステータスに頼らず**ファイル名を目で見る**形にした。
 
 - ⛔ **比較対象は「最後のコミット」ではなく `origin/main...HEAD`（ブランチ全体）。**
   途中で `src/` を触っていれば、最後が文書だけでも必須になる

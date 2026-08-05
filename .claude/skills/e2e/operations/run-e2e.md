@@ -24,7 +24,7 @@
 **撮影レーンが `make e2e` に入ったのは Issue #120 D-1（周5）から。** それまでは
 `e2e/` 直下にあって `testDir: './e2e/specs'` から外れており、**`make e2e` 全 green のまま
 壊れた状態がマージされた**実例がある（Issue #90）。経緯と、採らなかった代案
-（CSS セレクタの静的検査）は [reference/limitations.md](../reference/limitations.md) が正。
+（CSS セレクタの静的検査）は [reference/spec-writing-traps.md](../reference/spec-writing-traps.md) が正。
 
 **`make e2e` は `docs/images/` を書き換えない。** 同じコードで2回撮っても
 13枚中13枚がバイト差になるため、出力先を `AI_TERMINAL_E2E_IMAGES_DIR` で
