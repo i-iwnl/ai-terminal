@@ -86,21 +86,38 @@ export function isVisibleOnSomeDisplay(
   });
 }
 
-export function readWindowState(): WindowState {
+/**
+ * 保存ファイルを素の連想配列として読む。
+ *
+ * **書き手が2つある**（本体ウィンドウと設定ウィンドウ）ので、保存の前に
+ * 必ずこれで既存の中身を読む。読まずに書くと**後から保存したほうが相手のキーを消す**
+ * （`S98` がそれを固定している）。
+ */
+function readRaw(): Record<string, unknown> {
   try {
-    return coerceWindowState(JSON.parse(readFileSync(STATE_PATH, 'utf8')) as unknown);
+    const parsed = JSON.parse(readFileSync(STATE_PATH, 'utf8')) as unknown;
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
   } catch {
-    return { ...DEFAULT_STATE };
+    return {};
+  }
+}
+
+export function readWindowState(): WindowState {
+  return coerceWindowState(readRaw());
+}
+
+function writeRaw(value: Record<string, unknown>): void {
+  try {
+    mkdirSync(dataDir(), { recursive: true });
+    writeFileSync(STATE_PATH, JSON.stringify(value, null, 2), 'utf8');
+  } catch {
+    // 保存できなくても起動と操作は続けられる（次回起動で既定に戻るだけ）。
   }
 }
 
 function write(state: WindowState): void {
-  try {
-    mkdirSync(dataDir(), { recursive: true });
-    writeFileSync(STATE_PATH, JSON.stringify(state, null, 2), 'utf8');
-  } catch {
-    // 保存できなくても起動と操作は続けられる（次回起動で既定に戻るだけ）。
-  }
+  const { settings } = readRaw();
+  writeRaw(settings === undefined ? { ...state } : { ...state, settings });
 }
 
 /**
@@ -131,8 +148,6 @@ export function windowStateOptions(): {
  * （`SidebarResizeHandle` がドラッグ中に `configSet` を呼ばないのと同じ理由）。
  */
 export function trackWindowState(win: BrowserWindow): void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-
   const save = (): void => {
     if (win.isDestroyed()) return;
     // **フルスクリーン中の bounds は画面いっぱいの値**なので保存しない
@@ -148,6 +163,16 @@ export function trackWindowState(win: BrowserWindow): void {
     });
   };
 
+  trackBounds(win, save);
+  // フルスクリーンの出入りは1回きりのイベントなので、待たずに保存する。
+  win.on('enter-full-screen', save);
+  win.on('leave-full-screen', save);
+}
+
+/** `resize` / `move` / `close` を購読して、デバウンス付きで保存を仕掛ける共通部分。 */
+function trackBounds(win: BrowserWindow, save: () => void): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
   const scheduleSave = (): void => {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
@@ -158,9 +183,6 @@ export function trackWindowState(win: BrowserWindow): void {
 
   win.on('resize', scheduleSave);
   win.on('move', scheduleSave);
-  // フルスクリーンの出入りは1回きりのイベントなので、待たずに保存する。
-  win.on('enter-full-screen', save);
-  win.on('leave-full-screen', save);
   win.on('close', () => {
     if (timer !== null) clearTimeout(timer);
     save();
@@ -175,4 +197,95 @@ export function applyFullScreenState(win: BrowserWindow): void {
 /** 保存先のパス（テストとトラブルシューティング用）。 */
 export function windowStatePath(): string {
   return STATE_PATH;
+}
+
+// --- 設定ウィンドウ（Issue #153） -------------------------------------------
+//
+// **同じ `window-state.json` に `settings` キーとして相乗りする。** 別ファイルに
+// しなかったのは、置き場が増えるだけで得るものが無いため（どちらも Main 内で
+// 完結し、Renderer は読まない）。**既存のファイルは根の直下が本体ウィンドウの
+// 状態という形のままなので、`settings` が無い古いファイルもそのまま読める。**
+//
+// ⚠ **書き手が2つになる。** 保存の前に必ず `readRaw()` で相手のキーを読み、
+// 持ち越すこと（`S98` が固定している）。
+
+/** 設定ウィンドウの幅。`settings-window.ts` の `minWidth` / `maxWidth` と揃える。 */
+const SETTINGS_WINDOW_WIDTH = 520;
+
+/** 設定ウィンドウの既定の高さ。復元できないときの縮退先。 */
+export const DEFAULT_SETTINGS_WINDOW_HEIGHT = 640;
+
+/** 設定ウィンドウの `minHeight`。これを下回る高さは保存されていても採らない。 */
+const SETTINGS_WINDOW_MIN_HEIGHT = 360;
+
+/**
+ * 設定ウィンドウの永続化対象。
+ *
+ * **横幅を持たない。** `minWidth === maxWidth === 520` で仕様として固定されており、
+ * 保存しても復元しても同じ値にしかならない。
+ */
+export interface SettingsWindowState {
+  x?: number;
+  y?: number;
+  height: number;
+}
+
+/** 外部 JSON を安全に `SettingsWindowState` へ寄せる（鉄則5）。 */
+export function coerceSettingsWindowState(raw: unknown): SettingsWindowState {
+  if (typeof raw !== 'object' || raw === null) return { height: DEFAULT_SETTINGS_WINDOW_HEIGHT };
+  const src = raw as Record<string, unknown>;
+  const num = (key: string): number | undefined =>
+    typeof src[key] === 'number' && Number.isFinite(src[key]) ? (src[key] as number) : undefined;
+
+  return {
+    x: num('x'),
+    y: num('y'),
+    height: Math.max(
+      SETTINGS_WINDOW_MIN_HEIGHT,
+      num('height') ?? DEFAULT_SETTINGS_WINDOW_HEIGHT,
+    ),
+  };
+}
+
+export function readSettingsWindowState(): SettingsWindowState {
+  return coerceSettingsWindowState(readRaw().settings);
+}
+
+function writeSettings(state: SettingsWindowState): void {
+  writeRaw({ ...readWindowState(), settings: state });
+}
+
+/**
+ * 設定ウィンドウを作るときに渡すオプション断片。
+ *
+ * 位置がいまのディスプレイ構成で見えないときは `x` / `y` を落とす
+ * （本体ウィンドウと同じ判定を、幅 520 の矩形として通す）。
+ */
+export function settingsWindowStateOptions(): { x?: number; y?: number; height: number } {
+  const state = readSettingsWindowState();
+  const asRectangle: WindowState = {
+    x: state.x,
+    y: state.y,
+    width: SETTINGS_WINDOW_WIDTH,
+    height: state.height,
+    fullScreen: false,
+  };
+  if (!isVisibleOnSomeDisplay(asRectangle, screen.getAllDisplays())) {
+    return { height: state.height };
+  }
+  return { x: state.x, y: state.y, height: state.height };
+}
+
+/**
+ * 設定ウィンドウの位置・高さの変化を購読して保存する。
+ *
+ * **フルスクリーンは購読しない。** 設定ウィンドウは横幅が固定されており、
+ * フルスクリーンにも最大化にもならない。
+ */
+export function trackSettingsWindowState(win: BrowserWindow): void {
+  trackBounds(win, () => {
+    if (win.isDestroyed()) return;
+    const bounds = win.getNormalBounds();
+    writeSettings({ x: bounds.x, y: bounds.y, height: bounds.height });
+  });
 }
