@@ -16,9 +16,17 @@
 import { useEffect, useState } from 'react';
 import type { AppConfig, SoundOption, WebhookConfig, WebhookTarget } from '@shared/ipc';
 import { THEME_NAME_CUSTOM, THEME_NAME_UNSET, THEME_PRESETS } from '@shared/themes';
+import { DETECTED_NOTICE_TEXT, shouldShowDetectedNotice } from '@shared/screen-reader-mode';
 
 export interface SettingsPanelProps {
   config: AppConfig;
+  /**
+   * OS 側で支援技術が動いているか（Issue #149）。
+   *
+   * **`config` とは別に受け取る。** これは設定ではなく実行時の状態で、
+   * 設定ファイルには入らない。取得と購読は `SettingsWindow` の仕事。
+   */
+  accessibilitySupport: boolean;
   /** 変更を Main へ反映する。適用後の設定が返る */
   onChange: (patch: Partial<AppConfig>) => void;
   onClose: () => void;
@@ -42,6 +50,15 @@ const IDLE: TestStatus = { state: 'idle' };
 const NOTIFY_DEPENDENCY_NOTE_ID = 'settings-notify-dependency-note';
 
 /**
+ * 「支援技術を検知したので、設定に関わらず有効になっている」を出す行の id
+ * （Issue #149）。チェックボックスから `aria-describedby` で参照する。
+ *
+ * **参照はいつでも張る。** 注記が出ていないときは要素が空になるだけで、
+ * dangling な IDREF にはならない（要素そのものは常に描く。下記）。
+ */
+const SCREEN_READER_DETECTED_ID = 'settings-screen-reader-detected';
+
+/**
  * Webhook 設定のパッチを組み立てる。
  * 計算プロパティ（`{ [target]: ... }`）だと Partial<AppConfig> に収まらないため、
  * 送信先ごとに明示的に分岐する。
@@ -50,7 +67,12 @@ function webhookPatch(target: WebhookTarget, next: WebhookConfig): Partial<AppCo
   return target === 'slack' ? { slack: next } : { discord: next };
 }
 
-export default function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps) {
+export default function SettingsPanel({
+  config,
+  accessibilitySupport,
+  onChange,
+  onClose,
+}: SettingsPanelProps) {
   // `themeName` が未設定（既存の config.json を手で書いていた利用者）でも、
   // 保存済みの4色がたまたま既定と同じなら「既定（ダーク）」を選択済みに見せる。
   // **違っていれば「カスタム」**（勝手に既定へ寄せて、その人の設定を
@@ -361,10 +383,29 @@ export default function SettingsPanel({ config, onChange, onClose }: SettingsPan
               <input
                 type="checkbox"
                 checked={config.screenReaderMode}
+                // 設定が off でも実効では有効、という食い違いを AT へ伝える
+                // （Issue #149）。参照先は下の行で、NOTIFY_DEPENDENCY_NOTE_ID と同じ形。
+                // **これが無いと、この機能の対象者は「オフ」としか聞けない。**
+                aria-describedby={SCREEN_READER_DETECTED_ID}
                 onChange={(e) => onChange({ screenReaderMode: e.target.checked })}
               />
               <span>ターミナルの内容をスクリーンリーダーから読めるようにする</span>
             </label>
+            {/* ⛔ **この行を <label> の中に入れない。** 中に入れると
+                (1) チェックボックスのアクセシブル名にこの文が連結されて
+                    WCAG 2.5.3（Label in Name）を割り、
+                (2) .settings__row は 2 列グリッドなので 3 つ目の子が
+                    2 行目に落ちて崩れる（同じ罠が上の「更新間隔」にも注記してある）。
+                インデントもしない（macOS では入れ子が「親が off なら無効」を含意する。
+                NOTIFY_DEPENDENCY_NOTE_ID と同じ判断）。
+
+                **要素は常に描き、中身だけを出し入れする。** 条件付きで要素ごと
+                生やすと、live region が中身と同時に現れることになり読み上げが
+                飛ぶことがある（App.tsx の .app-status と同じ形にする）。
+                空のときは行ボックスを作らないので、見た目は「何も出ない」まま。 */}
+            <span className="settings__status" role="status" id={SCREEN_READER_DETECTED_ID}>
+              {shouldShowDetectedNotice(config, accessibilitySupport) ? DETECTED_NOTICE_TEXT : ''}
+            </span>
           </section>
         </div>
     </main>

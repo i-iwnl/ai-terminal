@@ -33,3 +33,33 @@ export function isScreenReaderModeEffective(
 ): boolean {
   return config.screenReaderMode || accessibilitySupport;
 }
+
+/**
+ * 設定ウィンドウに「いま自動で有効になっている」の注記を出すか。
+ *
+ * **出すのは「設定と実効値が食い違っているとき」だけ。** 利用者が自分で
+ * チェックを入れているなら、有効なのは本人の設定が理由なので説明する必要が無い
+ * （チェックを入れた瞬間に注記が消えるのが、そのままフィードバックになる）。
+ *
+ * 検知していない既定の状態で「無効です」を常時出すことはしない。
+ * 全利用者にノイズを増やすだけで、運ぶ情報が無い。
+ */
+export function shouldShowDetectedNotice(
+  config: ScreenReaderModeInput,
+  accessibilitySupport: boolean,
+): boolean {
+  return accessibilitySupport && !config.screenReaderMode;
+}
+
+/**
+ * 上の注記の文言。**「VoiceOver を検知した」と断定しない**（この判定の由来である
+ * `app.accessibilitySupportEnabled` は支援技術全般で立つ）。
+ *
+ * **状態を先頭に置く。** この文はチェックボックスの `aria-describedby` から
+ * 参照され、読み上げでは「…読めるようにする、チェックボックス、**オフ**」の
+ * 直後に読まれる。矛盾を最短で打ち消せる語順がこれになる。
+ *
+ * **括弧とコロンを使わない。** VoiceOver は句読点の読み上げ設定によって
+ * 「かっこ」「コロン」を発話しうるので、まさにこの文を読む人にとってノイズになる。
+ */
+export const DETECTED_NOTICE_TEXT = 'いま有効です。VoiceOver などの支援技術を検知しています';

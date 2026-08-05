@@ -597,6 +597,16 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
       selector: '.settings__row',
       property: 'color',
     },
+    {
+      // Issue #149 で「いま自動で有効になっている」の行がここに増えた。
+      // それまで .settings__status は Webhook のテスト送信直後にしか出ず、
+      // **一度も測られていなかった**（design-review で2人が指摘）。
+      // 要素は常に描かれる（中身が空になるだけ）ので、検知していなくても測れる。
+      name: '設定の状態行の文字',
+      kind: 'text',
+      selector: '.settings__status',
+      property: 'color',
+    },
   ];
 
   const settings = await measureContrast(dialog, settingsTargets);
@@ -763,6 +773,9 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     設定の注記の文字: { ratio: 4.86, wcag: 'pass' }, // 3.29 から。**ここが一番厳しい面**
     設定の見出しの文字: { ratio: 11.81, wcag: 'pass' }, // 5.17 から（見出しを一段上げた）
     設定の値の文字: { ratio: 11.81, wcag: 'pass' }, // 9.18 から
+    // Issue #149 で足した状態行（`--text-secondary` 対 `--surface-3`）。
+    // すぐ上の注記（4.86）より1段明るく、状態 > 説明の階層をコントラストでも作る。
+    設定の状態行の文字: { ratio: 6.2, wcag: 'pass' },
   };
 
   const measured = { ...main, ...newTabMenu, ...exitedActive, ...settings, ...focused };

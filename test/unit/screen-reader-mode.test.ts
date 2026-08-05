@@ -8,7 +8,11 @@
 // 「置き換える前と同じ真理値表になっていること」。
 
 import { describe, expect, it } from 'vitest';
-import { isScreenReaderModeEffective } from '../../src/shared/screen-reader-mode';
+import {
+  DETECTED_NOTICE_TEXT,
+  isScreenReaderModeEffective,
+  shouldShowDetectedNotice,
+} from '../../src/shared/screen-reader-mode';
 
 describe('isScreenReaderModeEffective', () => {
   it('設定が on なら、支援技術を検知していなくても有効', () => {
@@ -29,3 +33,56 @@ describe('isScreenReaderModeEffective', () => {
     expect(isScreenReaderModeEffective({ screenReaderMode: false }, false)).toBe(false);
   });
 });
+
+describe('shouldShowDetectedNotice（設定ウィンドウの注記を出すか）', () => {
+  it('検知していて、設定が off のときだけ出す（食い違っている状態）', () => {
+    expect(shouldShowDetectedNotice({ screenReaderMode: false }, true)).toBe(true);
+  });
+
+  it('自分でチェックを入れているなら出さない（有効な理由が本人の設定なので説明が要らない）', () => {
+    expect(shouldShowDetectedNotice({ screenReaderMode: true }, true)).toBe(false);
+  });
+
+  it('検知していなければ出さない（設定の on / off に関わらず）', () => {
+    // 「無効です」を常時出すと、既定状態の全利用者にノイズを増やすだけになる。
+    expect(shouldShowDetectedNotice({ screenReaderMode: false }, false)).toBe(false);
+    expect(shouldShowDetectedNotice({ screenReaderMode: true }, false)).toBe(false);
+  });
+
+  it('注記を出すときは、必ず実効値も有効になっている', () => {
+    // 「有効です」と書いてあるのに実際は無効、という組み合わせを作らせない。
+    for (const screenReaderMode of [true, false]) {
+      for (const support of [true, false]) {
+        const config = { screenReaderMode };
+        if (shouldShowDetectedNotice(config, support)) {
+          expect(isScreenReaderModeEffective(config, support)).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe('DETECTED_NOTICE_TEXT（文言の不変条件。design-review 由来）', () => {
+  it('VoiceOver を検知したと断定しない', () => {
+    // `app.accessibilitySupportEnabled` は支援技術全般で立つ（音声コントロール・
+    // スイッチコントロール・AX API に繋ぐ自動化ツールでも真になる）。
+    // 断定すると、VoiceOver を起動した覚えのない人に嘘をつくことになる。
+    expect(DETECTED_NOTICE_TEXT).toContain('VoiceOver など');
+    expect(DETECTED_NOTICE_TEXT).toContain('支援技術');
+  });
+
+  it('括弧とコロンを使わない', () => {
+    // VoiceOver は句読点の読み上げ設定によって「かっこ」「コロン」を発話しうる。
+    // まさにこの文を読む人にとってノイズになる。
+    for (const punctuation of ['(', ')', '（', '）', ':', '：']) {
+      expect(DETECTED_NOTICE_TEXT).not.toContain(punctuation);
+    }
+  });
+
+  it('状態を先頭に置く', () => {
+    // この文はチェックボックスの `aria-describedby` から参照され、読み上げでは
+    // 「…チェックボックス、オフ」の直後に読まれる。矛盾を最短で打ち消す語順にする。
+    expect(DETECTED_NOTICE_TEXT.startsWith('いま有効です')).toBe(true);
+  });
+});
+

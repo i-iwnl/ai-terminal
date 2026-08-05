@@ -1518,3 +1518,18 @@ scenarios:
       当てると macOS では `resize` だけが発火する（実測。`move` は 0 回）ので、
       **ドラッグでの移動が保存されることはこの spec では担保できない**。
       承知のうえで `resize` 側だけを固定している。
+  - id: S99
+    title: 支援技術を検知しているときだけ、設定に「いま有効です」が出る
+    spec: S99-screen-reader-detected-notice.spec.ts
+    readme: false
+    note: >-
+      Issue #149 / #180 周4-b。直す前は、設定値（チェックボックス）と実効値
+      （`config.screenReaderMode || accessibilitySupport`）の食い違いが**画面のどこにも
+      出ていなかった**。⭐ **検知状態は E2E から作れる**（`app.accessibilitySupportEnabled = true`
+      を `app.evaluate` から代入でき、`accessibility-support-changed` も実際に発火する。
+      VoiceOver は要らない。2026-08-05 実測）。
+      ⚠ **先に「出ていない」ことを assert する。** これが無いと**常に出す実装でも green**
+      になる。⚠ **アクセシブル名が注記で汚れていないことも見る**（`<label>` の中に入れると
+      WCAG 2.5.3 を割り、かつ2列グリッドの2行目に落ちて崩れる）。
+      ⚠ この spec は検知フラグを**開く前**に立てる。開いたまま切り替えても届くこと（追従）は
+      `src/main/accessibility.ts` の送信先の話で、そちらは `S100` が見る。
