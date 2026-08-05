@@ -591,8 +591,12 @@ body {
 }
 
 /* role="tablist" 自体のコンテナ。ARIA の tablist は「子は role="tab" だけ」が
-   要件のため、隣の「+」ボタン（タブではない）は含めない。1つ外側の
-   .tab-bar__tabs が両者を横並びにする役目を引き継ぐ。 */
+   要件のため、隣の「+」ボタン（タブではない）は含めない。
+
+   **「+ ▾」は .tab-bar__tabs の中に置かない**（Issue #170 / #179 周5）。
+   上の overflow-x: auto がスクロールコンテナを作り、そこに置いた
+   .tab-bar__new-wrapper を包含ブロックにするメニューが切られていた。
+   いまは .tab-bar の直接の子で、.tab-bar__tabs はタブ列だけを持つ。 */
 .tab-bar__tablist {
   display: flex;
   align-items: stretch;
@@ -962,11 +966,20 @@ body {
 
 /* Issue #20 I-1: 「+」を分割ボタン化する（+ ▾ -> 新しいシェル / Claude / Gemini）。
    メニューは絶対配置で浮かせる（design-rules.md「レイアウトを押し下げると
-   SIGWINCH が飛ぶ」。フローに入れず、タブバーの高さに影響させない）。 */
+   SIGWINCH が飛ぶ」。フローに入れず、タブバーの高さに影響させない）。
+
+   ⛔ **この要素の祖先に overflow != visible を作らないこと**（Issue #170）。
+   メニューは `top: 100%` でタブバーの帯の**外**へ出るので、祖先がスクロール
+   コンテナだと切られる。`overflow-x: auto` だけでも `overflow-y` は `auto` に
+   計算される（CSS Overflow 3）ので、横スクロールのつもりでも縦に切られる。
+   実測と関門は S95（`e2e/specs/S95-new-tab-menu-visible.spec.ts`）。 */
 .tab-bar__new-wrapper {
   position: relative;
   display: flex;
   flex-shrink: 0;
+  /* ドラッグ領域の隣に置くので no-drag を明示する（.tab-bar__settings と同じ理由）。
+     以前は .tab-bar__tabs の no-drag を継承していたが、Issue #170 でその外へ出した。 */
+  -webkit-app-region: no-drag;
 }
 
 .tab-bar__new {
@@ -986,11 +999,22 @@ body {
   font-size: var(--fs-xs);
 }
 
+/* **右端揃えにする**（Issue #170）。左端揃えだと、タブが溢れて
+   `.tab-bar__drag-region`（flex: 1 / basis 0）の実幅が 0 になったときに、
+   「+」が設定ボタンに密着し、そこから min-width 160px 伸びて
+   **ウィンドウの外へ出る**（`body { overflow: hidden }` なので黙って消える）。
+   ウィンドウ幅に依存せず必ず起きる。
+
+   右端揃えなら、はみ出さないことを算数で言える: 「+」の右端は最小でも
+   サイドバー 260px + タブ列 + 36px なので 296px 以上あり、160px は必ず内側に入る。
+   **JS の座標計算（案 C）は要らない。** */
 .tab-bar__new-menu {
   position: absolute;
   top: 100%;
-  left: 0;
-  z-index: 15;
+  right: 0;
+  /* `.notice-list` の 20 より上（通知が出ている間もメニューが上に来る）。
+     モーダルの 30 は超えない。 */
+  z-index: 21;
   display: flex;
   flex-direction: column;
   min-width: 160px;

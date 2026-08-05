@@ -68,13 +68,16 @@ test('S51 タブに Tab キーで到達でき、矢印キーで roving tabindex 
   }
 
   // tablist の直接の子は role="tab" の親 div（.tab-bar__tab）だけであること
-  // （「+」新規タブボタンは tablist の外）。Issue #20 I-1（PR 12）で「+」は
-  // 分割ボタン化され、.tab-bar__new-wrapper の中に入ったため、
-  // .tab-bar__tabs から見ると直接の子ではなく孫になった。
+  // （「+」新規タブボタンは tablist の外）。
+  //
+  // ⛔ **入れ子そのものを固定する assert は置かない**（Issue #170 で削除）。
+  // ここには `.tab-bar__tabs > .tab-bar__new-wrapper > .tab-bar__new` を1件、という
+  // 行があったが、これは ARIA の要件ではなく**そのときの DOM の形**を写しただけで、
+  // ラッパーを1枚挟むたびに黙って壊れる（このリポジトリで3回目になるところだった。
+  // `.claude/skills/e2e/reference/spec-writing-traps.md` の「順序に依存するセレクタ」）。
+  // しかも #170 では、その形自体が不具合の原因だったのに緑を返し続けていた。
+  // **「+」がどこに置かれていてよいか**は S95 が振る舞い（当たり判定）で見る。
   await expect(window.locator('.tab-bar__tablist > .tab-bar__new')).toHaveCount(0);
-  await expect(window.locator('.tab-bar__tabs > .tab-bar__new-wrapper > .tab-bar__new')).toHaveCount(
-    1,
-  );
 
   // 3枚目（最後に開いたほう）が選択中のはず。
   await expect(tabButtons.nth(2)).toHaveAttribute('aria-selected', 'true');
