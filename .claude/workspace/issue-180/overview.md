@@ -80,8 +80,8 @@ Issue 本文の対象17件のうち **open な15件を close しきる**（#140 
 
 | PR | 内容 | 製品コード | 画像 | 状態 |
 |---|---|---|---|---|
-| 1 | 関門（`contrast.ts` の alpha ガード / `S40` に2件 / `S64` に3件） | **0行** | 0枚 | **完了** |
-| 2 | 見た目（`line-height` / `:focus` 1本 + `onMouseMove` / `--surface-menu-active` / 白 2px inset / 枠から離す padding / `@media`） | 変える | **1枚**（S06） | 未着手 |
+| 1 | 関門（`contrast.ts` の alpha ガード / `S40` に2件 / `S64` に3件） | **0行** | 0枚 | **完了**（#202） |
+| 2 | 見た目（`line-height` / `:focus` 1本 + `onMouseMove` / `--surface-menu-active` / 白 2px inset / 枠から離す padding / `@media`） | 変える | **1枚**（S06） | **完了** |
 | 3 | 挙動（`focusout` で閉じる / `tabIndex={-1}` / 外側クリックのフォーカス復帰） | 変える | 0枚 | 未着手 |
 
 ⛔ **スタック PR にしない。** 3本とも `main` から生やし、順にマージする。

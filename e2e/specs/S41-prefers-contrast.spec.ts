@@ -103,12 +103,38 @@ test('S41 コントラストを上げる設定に追従して、弱い色が強�
       property: 'background-color',
       againstColor: '--surface-2',
     },
+    // Issue #180 引き継ぎ周5-b。**「+ ▾」メニューの現在項目の塗り。**
+    // 既定は 1.30（--surface-menu-active #3a3a3a 対 --surface-3）。
+    // ⛔ **`@media` 側に上書きを置かないと、ここは既定と同値になって必ず赤くなる**
+    // （下のループが `toBeGreaterThan` = 厳密大なりなので）。**それが狙い**で、
+    // 「高コントラストを名乗りながら1ミリも上がっていない」を素通りさせないための形。
+    //
+    // ⚠ **メニューの枠はここに入れない。** --border-control も --surface-3 も
+    // 高コントラストで変わらないので 3.43 のまま = 上のループに入れると必ず落ちる。
+    // 枠は S40 が既定側で押さえている。
+    {
+      name: 'メニュー項目の選択面の塗り',
+      kind: 'non-text',
+      selector: '.tab-bar__new-menu-item:focus',
+      property: 'background-color',
+      against: '.tab-bar__new-menu',
+    },
   ];
+
+  // メニューを開いたまま、既定 -> 高コントラストの両方を測る
+  // （`emulateMedia` はメニューを閉じない）。開いた瞬間に先頭項目へ
+  // DOM フォーカスが乗るので、`:focus` はホバー無しで成立する。
+  await window.locator('button[aria-label="新しいタブを開く"]').click();
+  await expect(window.locator('.tab-bar__new-menu-item:focus')).toHaveCount(1);
 
   const normal = await measureContrast(window, targets);
 
   await window.emulateMedia({ contrast: 'more' });
   const high = await measureContrast(window, targets);
+
+  // 開いたままにすると、下の Meta+t が「メニューが開いている状態」で走る。
+  await window.keyboard.press('Escape');
+  await expect(window.locator('.tab-bar__new-menu')).toHaveCount(0);
 
   console.log(
     '[S41] 既定 -> 高コントラスト:\n' +

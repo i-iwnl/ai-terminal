@@ -282,6 +282,23 @@ export default function TabBar({
     items[nextIndex]?.focus();
   };
 
+  /**
+   * ポインタが乗った項目へ、選択（= DOM フォーカス）そのものを移す。
+   *
+   * このメニューは APG の roving focus で **DOM フォーカスが選択カーソル**なので、
+   * 見た目は `:focus` 1本で描いている（styles.css）。`:hover` を併記すると
+   * **フォーカスとポインタが別の行にあるとき2行が同時に光る**。
+   *
+   * ⛔ **`onMouseEnter` にしない。** あれは**レイアウト変化のあとの合成 mousemove でも
+   * 発火する**。このメニューは `right: 0` でアンカーがタブ数に応じて動くので、
+   * エージェントの出力でタブタイトルが伸びた瞬間に、**指を動かしていないのに
+   * 選択が別の項目へ飛ぶ**（そのまま Enter を押すと、意図しない CLI が1本起動する）。
+   */
+  const handleNewMenuItemMouseMove = (e: MouseEvent<HTMLButtonElement>): void => {
+    if (e.currentTarget === document.activeElement) return;
+    e.currentTarget.focus();
+  };
+
   /** メニュー項目を選んだときの共通処理。メニューを閉じてトリガーへフォーカスを戻す。 */
   const selectNewMenuItem = (action: () => void): void => {
     setNewMenuOpen(false);
@@ -602,6 +619,7 @@ export default function TabBar({
               ref={firstMenuItemRef}
               onClick={() => selectNewMenuItem(onNewShell)}
               onKeyDown={(e) => handleNewMenuItemKeyDown(e, 0)}
+              onMouseMove={handleNewMenuItemMouseMove}
             >
               {/* **「新しい」を付けない**（Issue #137）。トリガーが
                   `aria-label="新しいタブを開く"`、メニュー自身が
@@ -620,6 +638,7 @@ export default function TabBar({
               className="tab-bar__new-menu-item"
               onClick={() => selectNewMenuItem(onNewClaude)}
               onKeyDown={(e) => handleNewMenuItemKeyDown(e, 1)}
+              onMouseMove={handleNewMenuItemMouseMove}
             >
               Claude
             </button>
@@ -629,6 +648,7 @@ export default function TabBar({
               className="tab-bar__new-menu-item"
               onClick={() => selectNewMenuItem(onNewGemini)}
               onKeyDown={(e) => handleNewMenuItemKeyDown(e, 2)}
+              onMouseMove={handleNewMenuItemMouseMove}
             >
               Gemini
             </button>
