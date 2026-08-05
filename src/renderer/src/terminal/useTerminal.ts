@@ -195,7 +195,28 @@ export function useTerminal(
     // 先に loadAddon すると DOM 未生成の Terminal にアドオンが載る。
     // 実測では先に読み込んでも描画は壊れなかったが、依存する保証が無いので順序を守る。
     try {
-      term.loadAddon(new WebglAddon());
+      const webgl = new WebglAddon();
+      // **コンテキストを失ったら DOM レンダラへ落とす**（Issue #167）。
+      //
+      // このアプリは全タブ・全ペインを同時にマウントしたまま（`visibility` だけで
+      // 切り替える）なので、**WebGL コンテキストがペイン数ぶん同時に生きる**。
+      // Chromium の1レンダラあたりの上限は16前後で、超えると古いものから黙って失われる。
+      //
+      // 放置すると**そのペインは真っ白なキャンバスになるが、a11y の DOM は生き残る**。
+      // 支援技術には読めていて、**晴眼の利用者にだけ主コンテンツが消える**という
+      // 珍しい向きの壊れ方をする。
+      //
+      // `dispose()` すると xterm がコアの既定レンダラ（DOM）へ差し替えて
+      // `handleResize` まで面倒を見る（`WebglAddon.activate` の `toDisposable`）。
+      // **文字が出続けることが最優先**なので、WebGL に戻す試みはしない。
+      //
+      // 発火は `webglcontextlost` の**3秒後**（アドオンが `webglcontextrestored` を
+      // 待つ猶予。`WebglRenderer.ts`）。復帰したら発火しない。
+      webgl.onContextLoss(() => {
+        console.warn('[terminal] WebGL コンテキストを失いました。DOM レンダラへ切り替えます。');
+        webgl.dispose();
+      });
+      term.loadAddon(webgl);
     } catch (err) {
       // WebGL レンダラが使えない環境では黙って DOM レンダラにフォールバックする。
       console.warn('[terminal] WebGL レンダラの初期化に失敗しました。無視して続行します。', err);
