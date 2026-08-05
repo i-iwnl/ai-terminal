@@ -72,7 +72,13 @@ export async function measureContrast(
 
       const fgRaw = getComputedStyle(el).getPropertyValue(item.property);
       const fg = parse(fgRaw);
-      if (!fg) continue;
+      // **完全に透明な前景を測らない。** ここを素通りさせると alpha を捨てて
+      // `rgba(0,0,0,0)` を「黒」として輝度 0 で計算し、**塗られていない要素に
+      // 架空の比が付く**（--surface-3 の上で 1.42。これは #404040 の実測値と同値なので、
+      // 台帳に焼くと「もう段がある」と誤読される）。
+      // 落とせば spec 側のキー突き合わせが**過不足として落として教えてくれる**ので、
+      // 「測れなかった」が静かに合格へ倒れることは無い。
+      if (!fg || fg[3] === 0) continue;
 
       let bg: [number, number, number, number] | null = null;
       if (item.againstColor) {

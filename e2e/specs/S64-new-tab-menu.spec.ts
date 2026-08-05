@@ -55,6 +55,65 @@ test('S64 「+ ▾」で新しいシェル / Claude / Gemini を選んで開け�
   await window.locator('.tab-bar__drag-region').click({ position: { x: 5, y: 5 } });
   await expect(menu).toHaveCount(0);
 
+  // --- Issue #180 引き継ぎ周5-b（PR 1 = characterization）--------------------
+  //
+  // **いま壊れている振る舞いを、壊れたまま固定する。** ここから下の3つは
+  // 「あるべき姿」ではない。**PR 3 でひっくり返す**ためにいまの姿を記録している。
+  // 固定しておかないと、直したことを差分で見せられない。
+  //
+  // ⛔ **「外側クリックのあとフォーカスが `<body>` に落ちている」は、ここでは固定しない。**
+  // 実測（PR 1 の関門確認）: `mousedown` のハンドラの中で `newButtonRef.focus()` を
+  // 呼んでも **`mousedown` の既定動作があとから上書きする**ので、`activeElement` は
+  // `body` のまま = **是正を入れても赤くならない恒真の検査になる**。
+  // `requestAnimationFrame` で遅らせると戻るが、**戻る時刻がフレーム境界に依存する**ので
+  // 「落ちている」という否定形の assert は安定しない。
+  // **是正側（フォーカスがトリガーに戻っている）を `expect.poll` で待つ形にして PR 3 で足す。**
+
+  await newButton.click();
+  await expect(menu).toBeVisible();
+
+  // (1) マウスで開くと、選ばれている項目に色が1つも付かない。
+  //     開いた瞬間に先頭項目へ DOM フォーカスは移っている（上で確認済み）が、
+  //     `:focus-visible` は**マウス起点の `.focus()` では発火しない**ので、
+  //     `.tab-bar__new-menu-item:hover, :focus-visible` の宣言がどちらも当たらない。
+  //     **どの項目が選ばれているか画面に出ていない**（WCAG 2.4.7）。
+  //     ⛔ ここを比で測らない。透明な背景は contrast.ts が落とす（架空の比を作らないため）。
+  expect(await items.nth(0).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+
+  // (2) **光っている行はちょうど1つ。**
+  //     いまキーボードのフォーカスは項目0、マウスは項目2に乗せる。
+  //     現状 (1) の裏返しで光るのはホバー側だけなので 1。
+  //     ⚠ **PR 2 で `:focus-visible` を `:focus` に変えると、対処しない限り 2 になる**
+  //     （フォーカスとホバーが別の行にあるので両方光る）。この関門はその退行のためにある。
+  await items.nth(2).hover();
+  expect(
+    await menu.evaluate(
+      (el) =>
+        [...el.querySelectorAll('[role="menuitem"]')].filter(
+          (item) => getComputedStyle(item).backgroundColor !== 'rgba(0, 0, 0, 0)',
+        ).length,
+    ),
+  ).toBe(1);
+
+  // (3) `Tab` はメニューを閉じない。しかも1回目は**メニューの中**へ進む。
+  //     3項目とも `tabIndex === 0` のままで、APG の roving tabindex が入っていない。
+  //     外へ出るのは3回目で、そのときも `aria-expanded="true"` のまま
+  //     メニューが端末の上に貼り付いて残る。
+  await window.keyboard.press('Tab');
+  expect(await items.nth(1).evaluate((el) => el === document.activeElement)).toBe(true);
+  await window.keyboard.press('Tab');
+  await window.keyboard.press('Tab');
+  await expect(menu).toBeVisible();
+  await expect(newButton).toHaveAttribute('aria-expanded', 'true');
+  expect(
+    await window.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''),
+  ).toBe('設定を開く');
+
+  await window.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+
   // 「Claude」を選ぶと claude タブが開くこと。
   await newButton.click();
   await menu.locator('[role="menuitem"]', { hasText: 'Claude' }).click();

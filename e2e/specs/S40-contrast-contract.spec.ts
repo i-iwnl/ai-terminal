@@ -419,6 +419,45 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
 
   const main = await measureContrast(window, mainTargets);
 
+  // --- Issue #180 引き継ぎ周5-b（PR 1 = characterization）--------------------
+  //
+  // 「+ ▾」メニューの項目。**#170 でメニューが実機に出るようになって初めて測れる。**
+  //
+  // ⛔ **開いた直後（DOM フォーカスが先頭項目に乗っている状態）では測らない。**
+  // `:focus-visible` はマウス起点の `.focus()` で発火しないので背景が透明のままで、
+  // 透明を測ると架空の比が出る（contrast.ts 側で落とすようにしたので、
+  // ここで測ろうとするとキーの過不足で赤くなる）。**ホバーを当ててから測る。**
+  //
+  // **2件目（枠）が、この周の本体を見張る関門。** 項目は `width: 100%` で
+  // メニューの1px 枠に直接接しているので、**選択面を明るくすると枠が埋もれる**。
+  // 名前に「枠」が入っているので下の閾値ループが 3:1 を当てる = 塗りを枠から
+  // 離さずに明るくした実装は、この行が自動で赤くする。
+  await window.locator('button[aria-label="新しいタブを開く"]').click();
+  await expect(window.locator('.tab-bar__new-menu')).toBeVisible();
+  await window.locator('.tab-bar__new-menu-item').nth(1).hover();
+  await expect(window.locator('.tab-bar__new-menu-item:hover')).toHaveCount(1);
+
+  const newTabMenu = await measureContrast(window, [
+    {
+      name: 'メニュー項目の選択面の塗り（対メニュー面）',
+      kind: 'non-text',
+      selector: '.tab-bar__new-menu-item:hover',
+      property: 'background-color',
+      against: '.tab-bar__new-menu',
+    },
+    {
+      name: 'メニューの枠（対 選択面の塗り）',
+      kind: 'non-text',
+      selector: '.tab-bar__new-menu',
+      property: 'border-top-color',
+      against: '.tab-bar__new-menu-item:hover',
+    },
+  ]);
+
+  // 開いたままにすると、下の Meta+t が「メニューが開いている状態」で走る。
+  await window.keyboard.press('Escape');
+  await expect(window.locator('.tab-bar__new-menu')).toHaveCount(0);
+
   // --- Issue #134（周1 characterization）: 「選択中かつ終了」のタブ --------------
   //
   // **上の mainTargets とは別のバッチにしてある。** ここで測りたい状態
@@ -579,6 +618,24 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     // ここは「塗りだけでは足りない」という事実の記録として残す。
     '選択中タブの塗り（対タブバー）': { ratio: 1.23, wcag: 'fail' },
     '検索欄の枠（唯一の境界）': { ratio: 3.43, wcag: 'pass' }, // 1.51 から（PR 5-4）
+    // Issue #180 引き継ぎ周5-b（PR 1 = characterization）。
+    //
+    // **選択面は --surface-2（#222222）で、メニュー面 --surface-3（#282828）に対して 1.08。**
+    // しかも**暗くなる**（macOS のメニューは選択項目が明るくなる）。
+    // --surface-2 は「--surface-0 の上で 1.16 になる」よう選ばれた値で、
+    // **最前面へ持ち込むと面の段を逆走する**。
+    //
+    // ⚠ **この 1.08 は「ホバーしたとき」の値。** マウスで開いただけの状態は
+    // 塗りが1つも当たらない（`:focus-visible` が発火しない）。そちらは比では
+    // なく `backgroundColor === 'rgba(0, 0, 0, 0)'` として S64 が固定している。
+    'メニュー項目の選択面の塗り（対メニュー面）': { ratio: 1.08, wcag: 'fail' },
+    // **この行が、選択面を明るくする周の関門。**
+    // 項目は `width: 100%` なのでメニューの唯一の境界（--border-control #7a7a7a の
+    // 1px 枠）に直接接する。塗りを明るくすると枠が埋もれる:
+    // #3a3a3a で 2.65 / #525252 で 1.82 / #717171 で 1.14。
+    // **いま 3.71 で成立しているのは、塗りが暗い方向へ動いているからにすぎない。**
+    // 明るくするなら、塗りを枠から離す（メニュー側に水平 padding を入れる）ことが要る。
+    'メニューの枠（対 選択面の塗り）': { ratio: 3.71, wcag: 'pass' },
     'あなたの番のドット（対ホバー面）': { ratio: 7.85, wcag: 'pass' },
     '作業中のドット（対ホバー面）': { ratio: 5.72, wcag: 'pass' },
     // Issue #20 PR 10（差し戻し後）: プロバイダの色相アクセントと終了マーク。
@@ -659,7 +716,7 @@ test('S40 画面のコントラスト比が、記録した値から動いてい�
     設定の値の文字: { ratio: 11.81, wcag: 'pass' }, // 9.18 から
   };
 
-  const measured = { ...main, ...exitedActive, ...settings, ...focused };
+  const measured = { ...main, ...newTabMenu, ...exitedActive, ...settings, ...focused };
 
   // 期待値を較正するときに読む。落ちたときに「いくつだったか」が
   // レポートに残るので、記録の更新が推測にならない。
