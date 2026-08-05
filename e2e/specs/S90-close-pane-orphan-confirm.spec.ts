@@ -28,6 +28,11 @@ test.afterEach(async () => {
  * 決まり、安定した `agentSessionId` を持つのは claude だけ。gemini は
  * 使い捨ての `ptyId` に頼るので、閉じた時点で名前を二度と再現できない。
  *
+ * ⚠ **「gemini に ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
+ * `gemini --session-id <UUID>` は存在する。それでも採番しないのは、閉じたあとに
+ * 選び直す側（`gemini --list-sessions`）が走行中セッションを一覧に出さず、しかも
+ * 実行するとその JSONL を削除するため。**この spec の前提（回収できない）は覆っていない。**
+ *
  * **`Cmd+W` は `Cmd+Option+W` より押しやすく、実運用ではこちらが主要な経路になる。**
  *
  * 判定の正は `closeTabCopy.ts` の `needsCloseConfirmation`（`test/unit/` が

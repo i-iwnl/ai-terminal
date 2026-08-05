@@ -332,7 +332,8 @@ async function readPrefix(filePath: string, maxBytes: number): Promise<string> {
 // Gemini: `gemini --list-sessions` のテキスト出力をパースする
 // ---------------------------------------------------------------------------
 //
-// 実機（Gemini CLI v0.37.0）で `gemini --list-sessions` を実行して確認した出力形式:
+// 実機（Gemini CLI v0.53.0 / 2026-08-06 に再実測。初出の確認は v0.37.0）で
+// `gemini --list-sessions` を実行して確認した出力形式:
 //
 //   セッションが無い場合:
 //     "No previous sessions found for this project."
@@ -344,8 +345,17 @@ async function readPrefix(filePath: string, maxBytes: number): Promise<string> {
 //
 // JSON 出力ではなくテキスト出力。`-o json` を付けても --list-sessions の出力形式は変わらない。
 // resume は `--resume <index>` のように行頭の番号（1始まり）で指定する index ベースの
-// インターフェースなので、SessionHistoryEntry.sessionId にはこの index 文字列を入れる
-// （末尾の [UUID] は表示上の内部識別子であり、resume にはそのまま使えない）。
+// インターフェースなので、SessionHistoryEntry.sessionId にはこの index 文字列を入れる。
+//
+// ⛔ **末尾の [UUID] を --resume に渡さない**（Issue #155 / 2026-08-06 実測）。
+// 英字始まりの UUID は偶然そのまま resume できてしまうが、**数字始まり（全体の約 62%）は
+// index として解釈され、別セッションを作ったうえで既存のセッションファイルを失う**。
+// [UUID] の用途はタイトル上書きの保存キー（stableId）だけに留める。
+//
+// ⚠ **このコマンド自体に破壊的な副作用がある**（同日実測）。走行中の gemini セッションは
+// 一覧に出ないうえ、`--list-sessions` を実行するとその JSONL が削除され、以後そのプロセスが
+// 書いても復活しない。再現手順と影響範囲は
+// `.claude/workspace/issue-180/known-issues.md` の 12番が唯一の正。
 
 const GEMINI_BIN = 'gemini';
 /** ハングした CLI にフリーズを引きずられないためのタイムアウト。 */

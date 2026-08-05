@@ -29,10 +29,26 @@
 
 | フラグ | 用途 | 備考 |
 |---|---|---|
-| `--list-sessions` | 履歴一覧を取得する | 出力はテキスト（`-o json` を付けても変わらない）。詳細は [external-formats.md](external-formats.md) |
-| `--resume <index>` | 履歴一覧の index で指定したセッションを再開する | Claude の UUID ベースと異なり **index ベース** |
+| `--list-sessions` | 履歴一覧を取得する | 出力はテキスト（`-o json` を付けても変わらない）。詳細は [external-formats.md](external-formats.md)。⚠ **破壊的な副作用がある**（下記） |
+| `--resume <index>` | 履歴一覧の index で指定したセッションを再開する | Claude の UUID ベースと異なり **index ベース**。⛔ **UUID を渡さない**（下記） |
+| `--session-id <uuid>` | 新規セッションを指定した UUID で起動する | **存在する**（0.53.0 で確認）。渡した UUID はそのまま `--list-sessions` 行末の `[UUID]` に出る。⛔ **アプリでは使っていない**（下記） |
 
 Gemini には実行中タスク一覧に相当するコマンドが確認できておらず、`src/main/agents/gemini.ts` は未対応を返すだけの器になっている。見つかった場合はこのファイルと `gemini.ts` の両方を更新する。
+
+### 2026-08-06 実測（Gemini CLI 0.53.0）: `--session-id` を採用しなかった理由
+
+Issue #155 は「`--session-id` が使えるようになったので claude と対称にできる」と主張していた。**フラグの存在は正しいが、結論は成立しない。**
+
+| 測ったこと | 結果 |
+|---|---|
+| `--session-id <UUID>` で起動 | 渡した UUID がそのまま `--list-sessions` 行末の `[UUID]` に出る（`GEMINI_LINE_RE` がそのまま拾える） |
+| 既存 UUID を `--session-id` に渡す | `Session ID "…" already exists. Use --resume` で**起動しない** |
+| ⛔ `--resume <UUID>` | **使ってはいけない。** 英字始まりの UUID は偶然動くが、**数字始まり（全体の約 62%）は index として解釈され、別セッションを作ったうえで既存のセッションファイルを失う**（2回再現） |
+| ⛔ **走行中の gemini がいる状態での `gemini --list-sessions`** | **走行中セッションは一覧に出ず、しかもその JSONL が削除される。** 会話済みでも消え、以後そのプロセスが書いても復活しない（2回再現）。終了済みセッションは無事 |
+
+最後の行が決定打。tmux で生かした gemini は**走行中**なので履歴に1行も出ず、`--session-id` で tmux セッション名を安定させても**選び直す導線が CLI 側に無い**。安定名だけ付けると「回収できる」という嘘の状態表現を生むだけなので、`buildGeminiPlan` は `agentSessionId` を返さないままにしてある（`test/unit/pty-plan.test.ts` が固定）。
+
+⚠ **この破壊性はアプリが今日踏んでいる経路**（`HistoryList` で provider=gemini を選ぶ / 再読込を押す -> `src/main/history/reader.ts` が `--list-sessions` を実行）。対処は未着手で、材料は `.claude/workspace/issue-180/known-issues.md` の 12番。
 
 ## 認証方針
 
