@@ -28,6 +28,7 @@ const SIDEBAR_PANEL_LABEL: Record<SidebarPanel, string> = {
 import { DEFAULT_CONFIG } from '@shared/defaults';
 import { terminalThemeFrom } from '@shared/theme';
 import { resolveTheme } from '@shared/themes';
+import { isScreenReaderModeEffective } from '@shared/screen-reader-mode';
 import Sidebar from './sidebar/Sidebar';
 import {
   SIDEBAR_DEFAULT_WIDTH_PX,
@@ -1008,7 +1009,9 @@ export default function App(): ReactElement {
               // もう片方に潰される）。分割（Issue #56）で同一タブ内の複数ペインが
               // 同時に visible になっても、PaneTreeView がアクティブな1ペインにしか
               // true を渡さないため、この不変条件は保たれる（S37 が固定）。
-              screenReaderModeEnabled={config.screenReaderMode || accessibilitySupport}
+              // 判定の唯一の正は `@shared/screen-reader-mode`（Issue #149）。
+              // 設定ウィンドウも同じ関数を読むので、ここに式を書き戻さない。
+              screenReaderModeEnabled={isScreenReaderModeEffective(config, accessibilitySupport)}
               onExit={handleExit}
               onActivate={(paneId) => tabsApiRef.current.setActivePaneInTab(tab.id, paneId)}
               registerHandle={(paneId, handle) => {
