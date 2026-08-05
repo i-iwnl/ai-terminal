@@ -928,7 +928,10 @@ export default function App(): ReactElement {
       });
     } else {
       void tabsApiRef.current.newAgentTab('gemini', {
+        // ⛔ この2つを取り違えない。sessionId は `--resume` に渡す index、
+        // stableId は tmux セッション名にだけ使う内部 UUID（src/shared/ipc.ts が唯一の正）。
         geminiResumeTarget: entry.sessionId,
+        geminiAgentSessionId: entry.stableId,
         cwd: entry.cwd,
         title,
       });

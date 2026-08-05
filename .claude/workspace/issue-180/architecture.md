@@ -24,10 +24,19 @@ Issue #180 における変更対象の構造。
 
 ## 2. Contract（src/shared/ipc.ts）変更
 
-現時点では**なし**。
+| チャンネル / 型 | 変更 | 内容 |
+|---|---|---|
+| `SpawnPtyRequest` | **ALTER**（周 6' = #155 / PR 1） | `geminiAgentSessionId?: string` を追加。gemini を resume するときの内部 UUID（`SessionHistoryEntry.stableId`）を Main へ運ぶ。**用途は tmux セッション名の安定化だけ** |
+| `SpawnPtyResult.agentSessionId` | **ALTER**（同上） | doc のみ。「gemini には安定した ID が無いため常に undefined」を撤回し、**用途が2つあり claude と gemini で数が違う**ことを明記（tmux 名の種は両方 / `claude agents --json` との突き合わせは claude だけ） |
 
-- #149（VoiceOver 検知の表示）は既存の検知結果を設定ウィンドウへ出すだけで済むかを周4 で確認する。
-  **新チャンネルが要ると分かった時点でこの節に追記する**（`/electron-ipc` を読む）
+⛔ **新チャンネルは足していない。** 既存 `pty:spawn` の payload を広げただけなので、
+`/electron-ipc` の `add-ipc-channel.md` の4ステップのうち **preload（ステップ3）は変更なし**。
+
+⛔ **`geminiResumeTarget` と `geminiAgentSessionId` を兼用しない。** 前者は `--resume` に渡す index、
+後者は tmux 名にだけ使う UUID。**混ぜると「`--resume` に UUID を渡す」事故になり、
+数字始まりの UUID（全体の約 62%）は index として解釈されて既存のセッションファイルを失う**
+（2026-08-06 実測 / 2回再現）。**名前に `Resume` を入れていないのもそのため**
+（design-review で「`geminiResumeStableId` は `--resume` に渡す値と読まれる」と2人が指摘した）。
 
 ---
 

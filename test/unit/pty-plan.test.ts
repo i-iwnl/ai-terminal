@@ -97,41 +97,124 @@ describe('buildSpawnPlan（claude）と tmux セッション名の安定性', ()
 });
 
 describe('buildSpawnPlan（gemini）', () => {
-  it('新規起動は引数なし', () => {
-    const plan = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined });
+  // Issue #155 で claude と対称にした。非対称の全文は src/main/pty/tmux.ts 冒頭が唯一の正。
+  const SUPPORTED = { geminiSessionId: true };
+
+  it('新規起動では採番した UUID を --session-id で渡す（claude と対称）', () => {
+    const plan = buildSpawnPlan(
+      { kind: 'gemini', cols: 80, rows: 24 },
+      { shell: undefined },
+      () => 'fixed-uuid',
+      SUPPORTED,
+    );
+    expect(plan).toEqual({
+      command: 'gemini',
+      args: ['--session-id', 'fixed-uuid'],
+      agentSessionId: 'fixed-uuid',
+    });
+  });
+
+  it('再開は --resume に index を渡し、agentSessionId には履歴側の UUID が入る', () => {
+    const plan = buildSpawnPlan(
+      {
+        kind: 'gemini',
+        cols: 80,
+        rows: 24,
+        geminiResumeTarget: '1',
+        geminiAgentSessionId: 'session-uuid',
+      },
+      { shell: undefined },
+      () => 'should-not-be-used',
+      SUPPORTED,
+    );
+    expect(plan.args).toEqual(['--resume', '1']);
+    expect(plan.agentSessionId).toBe('session-uuid');
+  });
+
+  it('⛔ --resume に UUID を渡さない（数字始まりの UUID は index として解釈され、既存のセッションを失う）', () => {
+    // 2026-08-06 実測 / Gemini CLI 0.53.0 / 2回再現。
+    // 「効かない」のではなく「壊す」ので、args に UUID が出ないことを直接見る。
+    const uuid = '12345678-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const plan = buildSpawnPlan(
+      {
+        kind: 'gemini',
+        cols: 80,
+        rows: 24,
+        geminiResumeTarget: '2',
+        geminiAgentSessionId: uuid,
+      },
+      { shell: undefined },
+      undefined,
+      SUPPORTED,
+    );
+    expect(plan.args).not.toContain(uuid);
+    expect(plan.args).toEqual(['--resume', '2']);
+  });
+
+  it('新規起動と、その ID からの再開で tmux セッション名が一致する（claude 側と対称）', () => {
+    const freshPlan = buildSpawnPlan(
+      { kind: 'gemini', cols: 80, rows: 24 },
+      { shell: undefined },
+      () => 'gemini-session-x',
+      SUPPORTED,
+    );
+    const resumePlan = buildSpawnPlan(
+      {
+        kind: 'gemini',
+        cols: 80,
+        rows: 24,
+        geminiResumeTarget: '1',
+        geminiAgentSessionId: freshPlan.agentSessionId,
+      },
+      { shell: undefined },
+      undefined,
+      SUPPORTED,
+    );
+    expect(buildTmuxSessionName(freshPlan.agentSessionId!)).toBe(
+      buildTmuxSessionName(resumePlan.agentSessionId!),
+    );
+  });
+
+  it('起動ごとに別の UUID を採番する（別セッションの tmux 名が衝突しない）', () => {
+    let n = 0;
+    const gen = (): string => `gemini-session-${++n}`;
+    const plan1 = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined }, gen, SUPPORTED);
+    const plan2 = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined }, gen, SUPPORTED);
+    expect(buildTmuxSessionName(plan1.agentSessionId!)).not.toBe(
+      buildTmuxSessionName(plan2.agentSessionId!),
+    );
+  });
+
+  it('⚠ CLI が --session-id に対応していなければ渡さず、agentSessionId も返さない（縮退）', () => {
+    // 未知のフラグを渡された gemini は usage を出して即終了する（2026-08-06 実測）。
+    // tmux ラップ下では「開いた瞬間に終了したペイン」にしか見えないので、
+    // 対応が確認できないときは従来どおり引数なしで起動する。
+    const plan = buildSpawnPlan(
+      { kind: 'gemini', cols: 80, rows: 24 },
+      { shell: undefined },
+      () => 'unused-uuid',
+      { geminiSessionId: false },
+    );
     expect(plan).toEqual({ command: 'gemini', args: [] });
   });
 
-  it('再開は --resume に指定された対象を渡す', () => {
+  it('⛔ 対応状況を渡し忘れたら「非対応」に倒れる（既定値の向きを固定する）', () => {
+    // 渡し忘れて --session-id が付くほうへ倒れると、古い CLI の利用者の
+    // 新規タブが起動直後に死ぬ。倒れる先は常に従来の挙動側。
+    const plan = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined });
+    expect(plan.args).toEqual([]);
+    expect(plan.agentSessionId).toBeUndefined();
+  });
+
+  it('resume 元の UUID が取れなければ agentSessionId は undefined（縮退。回収できない側に分類される）', () => {
     const plan = buildSpawnPlan(
       { kind: 'gemini', cols: 80, rows: 24, geminiResumeTarget: 'latest' },
       { shell: undefined },
+      undefined,
+      SUPPORTED,
     );
     expect(plan.args).toEqual(['--resume', 'latest']);
-  });
-
-  it('gemini にはまだ安定したセッション名を付けていない（agentSessionId は常に undefined）', () => {
-    // これは **characterization**（いまそうなっている挙動をそのまま固定するテスト）。
-    //
-    // ⚠ **「ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
-    // Gemini CLI 0.53.0 には `--session-id <UUID>` があり、渡した UUID はそのまま
-    // `--list-sessions` 行末の [UUID] に出る。会話が1往復以上あるセッションは
-    // **走行中でも**一覧に正しく出るので、claude と同じ形にできる見込みがある。
-    // **未実装なのでこのテストが緑になっている**、というだけ。
-    //
-    // #155 を実装するときは、このテストを claude 側の3件と対称な形へ書き換える
-    // （新規起動で agentSessionId が返る / resume で履歴側の stableId が入る /
-    //  両者の buildTmuxSessionName が一致する）。
-    // ⛔ そのとき `--resume` に UUID を渡さないこと。**数字始まりの UUID は index として
-    // 解釈され、既存のセッションファイルを失う**（同日実測）。resume の引数は index のまま。
-    const newPlan = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined });
-    expect(newPlan.agentSessionId).toBeUndefined();
-
-    const resumePlan = buildSpawnPlan(
-      { kind: 'gemini', cols: 80, rows: 24, geminiResumeTarget: 'latest' },
-      { shell: undefined },
-    );
-    expect(resumePlan.agentSessionId).toBeUndefined();
+    expect(plan.agentSessionId).toBeUndefined();
   });
 });
 

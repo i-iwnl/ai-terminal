@@ -197,6 +197,14 @@ export interface LaunchOptions {
   agentsEmpty?: boolean;
   /** gemini --list-sessions が 0 件を返す状況を再現する */
   geminiEmpty?: boolean;
+  /**
+   * 偽 gemini の `--version` を 0.52.0 に落とす（`--session-id` に対応していない CLI）。
+   *
+   * アプリは `gemini --version` を見て `--session-id` を渡すか決める
+   * （src/main/pty/geminiVersion.ts）。未知のフラグを渡された gemini は usage を出して
+   * 即終了するため、**古い CLI では渡してはいけない**。その縮退側を踏むためのオプション。
+   */
+  geminiOldVersion?: boolean;
   /** 偽 CLI を PATH に置かない（CLI 不在時のエラー表示を検証する） */
   withoutCli?: boolean;
   /**
@@ -549,6 +557,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       AI_TERMINAL_E2E_AGENTS_FAIL: options.agentsFail ? '1' : '',
       AI_TERMINAL_E2E_AGENTS_EMPTY: options.agentsEmpty ? '1' : '',
       AI_TERMINAL_E2E_GEMINI_EMPTY: options.geminiEmpty ? '1' : '',
+      AI_TERMINAL_E2E_GEMINI_OLD: options.geminiOldVersion ? '1' : '',
       // 開発起動ではないので DevTools は開かないが、念のため明示する
       AI_TERMINAL_NO_DEVTOOLS: '1',
       // Renderer をローカルファイルから読ませる（dev server を使わない）

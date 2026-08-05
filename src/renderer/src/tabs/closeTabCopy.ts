@@ -13,18 +13,15 @@
 // そのままでは踏めない。だから判定を純粋関数に切り出して `test/unit/` で固定する
 // （このリポジトリの既定の作法。resizeGate / computeYourTurnSince / paneHeader 等と同じ形）。
 //
-// **claude と gemini は非対称**（src/main/pty/tmux.ts のコメントが唯一の正）。
-// tmux セッション名は `buildTmuxSessionName(plan.agentSessionId ?? ptyId)` で決まり、
-// `agentSessionId` を持つのは claude だけ（`buildClaudePlan`）。gemini は
-// 起動のたびに使い捨てる ptyId に頼るしかないので、**閉じるとその名前を二度と
-// 再現できない** = アプリからは回収できない。文言でここを混ぜてはいけない。
+// **回収できるかは `agentSessionId` を持つかで決まる。** tmux セッション名は
+// `buildTmuxSessionName(plan.agentSessionId ?? ptyId)` で決まり、これが無いと
+// 起動のたびに使い捨てる ptyId に落ちて、**閉じるとその名前を二度と再現できない**。
+// ⭐ **条件の全文は src/main/pty/tmux.ts 冒頭が唯一の正**（ここに書き写さない。
+// 書き写すと片方だけ古くなって「どちらが正か分からない」状態になる。実際に一度そうなった）。
 //
-// ⚠ **非対称の理由は「gemini に ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
-// Gemini CLI 0.53.0 には `--session-id <UUID>` があり、claude と同じ形にできる見込みがある。
-// **いま回収できないのは未実装だから**であって、CLI 側の制約ではない。
-// **この文言は「いまは回収できない」という実装の現状に追従していればよい。**
-// #155 が実装されたら、この判定（gemini = orphaned）ごと見直すこと。
-// 理由の全文は src/main/pty/tmux.ts 冒頭。
+// ⚠ **この判定はまだ `ptyKind === 'claude'` を見ている。** Issue #155 で gemini にも
+// 安定した ID を入れたので、次の PR で `agentSessionId` の有無へ切り替える。
+// **その PR まではここを触らない**（分類の変更と ID の導入を同じ diff に混ぜない）。
 
 import type { PaneLeaf } from './paneTree';
 
