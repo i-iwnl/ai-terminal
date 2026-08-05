@@ -18,6 +18,7 @@ UI の見た目を変える作業に、**多角的なレビューを機械的に
 | デザイン案を5ペルソナにレビューさせ、指摘を統合する | [operations/run-review.md](operations/run-review.md) |
 | レビュー結果を GitHub Issue に起票する（親 / 子の切り分け） | [operations/file-proposal.md](operations/file-proposal.md) |
 | UI を書くとき常に守る規約・閾値・却下済みの案とその理由 | [reference/design-rules.md](reference/design-rules.md) |
+| 値や構造を1つ動かしたとき、どこまで数え直すか（配色・SIGWINCH・関門が恒真化する形） | [reference/ripple-effects.md](reference/ripple-effects.md) |
 | 実装してからレビューで見つかった罠（当たり判定・`opacity: 0`・状態クラス） | [reference/implementation-traps.md](reference/implementation-traps.md) |
 | 各ペルソナが何を担当し、何を調べるか | `.claude/agents/design-reviewer-*.md`（5体） |
 

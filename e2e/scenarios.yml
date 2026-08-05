@@ -1593,8 +1593,12 @@ scenarios:
       ⚠ **「実際に同じセッションへ戻れた」ことはここでは証明できない**（偽 tmux は
       `-A` の分岐を再現しない。`e2e/fixtures/bin/tmux` が自分でその限界を書いている）。
       証明できるのは「同じ名前が2回作られる」まで。
-      2件目のテストは `geminiOldVersion: true` で縮退側を踏む。判定そのものの桁ごとの
-      固定は `test/unit/gemini-version.test.ts`。
+      判定そのものの桁ごとの固定は `test/unit/gemini-version.test.ts`、
+      縮退側（0.53.0 未満）は S103。
+      ⛔ 履歴の provider トグルの `aria-pressed` も同じ経路で見る。閉じたときの告知が
+      「サイドバーの『履歴』から再開できます」と言う以上、**その行き先のトグルが
+      読めないと導線が切れる**（見た目は文字色と枠だけで、選択状態が支援技術に
+      露出していなかった）。
 
   - id: S103
     title: CLI が古ければ gemini に --session-id を渡さない

@@ -300,8 +300,18 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
         {provider === 'claude' ? 'Claude' : 'Gemini'}
       </h2>
       <div className="history-list__toolbar">
+        {/*
+          ⛔ **選択状態を `aria-pressed` で露出する**（Issue #155 の design-review）。
+          見た目は `.is-active`（文字色と枠）だけで、支援技術には**どちらが選ばれているか
+          一切伝わっていなかった**。タブを閉じたときの告知が「履歴から再開できます」と
+          言う以上、その行き先のトグルが読めないと導線が切れる。
+          ⛔ `role="tab"` にはしない（tablist の相互排他とキーボード操作の契約が付いてくる。
+          ここはサイドバー本体のタブ（`Sidebar.tsx`）と入れ子になり、意味が濁る）。
+        */}
         <div className="history-list__providers">
           <button
+            type="button"
+            aria-pressed={provider === 'claude'}
             className={provider === 'claude' ? 'is-active' : ''}
             onClick={() => {
               setProvider('claude');
@@ -311,6 +321,8 @@ export default function HistoryList({ onResume, onOpenMemo }: HistoryListProps) 
             Claude
           </button>
           <button
+            type="button"
+            aria-pressed={provider === 'gemini'}
             className={provider === 'gemini' ? 'is-active' : ''}
             onClick={() => {
               setProvider('gemini');
