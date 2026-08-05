@@ -31,10 +31,21 @@ npx agent-browser skills get electron   # 本家の Electron 向け手順（迷�
 npm run build
 
 D=<scratchpad>/appdata && mkdir -p "$D"
-AI_TERMINAL_DATA_DIR="$D" npx electron . --remote-debugging-port=9222 > /tmp/aiterm-cdp.log 2>&1 &
-sleep 7
-curl -s http://127.0.0.1:9222/json/version   # Electron/43.2.0 が返れば起動できている
+# ⛔ npx を通さない（下記）。Playwright の _electron.launch() と同じくバイナリを直接叩く。
+AI_TERMINAL_DATA_DIR="$D" ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron . \
+  --remote-debugging-port=9222 > /tmp/aiterm-cdp.log 2>&1 &
+sleep 8
+# **ターゲットの件数まで見る。** /json/version はウィンドウが無くても返る。
+curl -s http://127.0.0.1:9222/json/list | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
 ```
+
+⛔ **`npx electron .` で起動しない**（2026-08-05・Issue #170 の周で実測）。
+`DevTools listening on ws://...` は出るのに **`app.whenReady()` が発火せず、CDP のターゲットが 0 件**のまま、
+という状態に落ちることがある。**5回連続で再現し、`main` に戻して再ビルドしても、
+`whenReady` だけの最小 Electron アプリでも同じ**だった。バイナリを直接叩けば一発で起動する。
+
+**この症状は「アプリが壊れた」に見える。** 切り分けに時間を溶かさないために、
+**ターゲットが 0 件なら、まず最小アプリで同じことが起きるかを見る**（アプリのコードを疑う前に起動経路を疑う）。
 
 **`AI_TERMINAL_DATA_DIR` を必ず渡す**（`src/main/data-dir.ts` が最優先で読む絶対パス指定）。省くと dev / 安定版のどちらかの実データを読み書きする。#119 で「既定 260 のはずが 220」と食い違ったのは、`~/.ai-terminal-dev` に古い `config.json` が残っていたためで、**実機の値を疑う前にどちらを見ているかを疑う**羽目になった。
 

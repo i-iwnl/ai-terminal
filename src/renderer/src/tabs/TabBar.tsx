@@ -571,69 +571,69 @@ export default function TabBar({
             );
           })}
         </div>
-        <div className="tab-bar__new-wrapper">
-          <button
-            ref={newButtonRef}
-            type="button"
-            className="tab-bar__new"
-            aria-haspopup="menu"
-            aria-expanded={newMenuOpen}
-            aria-label="新しいタブを開く"
-            title="新しいタブを開く"
-            onClick={() => setNewMenuOpen((open) => !open)}
+      </div>
+      <div className="tab-bar__new-wrapper">
+        <button
+          ref={newButtonRef}
+          type="button"
+          className="tab-bar__new"
+          aria-haspopup="menu"
+          aria-expanded={newMenuOpen}
+          aria-label="新しいタブを開く"
+          title="新しいタブを開く"
+          onClick={() => setNewMenuOpen((open) => !open)}
+        >
+          <span aria-hidden="true">+</span>
+          <span className="tab-bar__new-caret" aria-hidden="true">
+            ▾
+          </span>
+        </button>
+        {newMenuOpen && (
+          <div
+            className="tab-bar__new-menu"
+            role="menu"
+            aria-label="新しいタブの種類"
+            ref={newMenuRef}
           >
-            <span aria-hidden="true">+</span>
-            <span className="tab-bar__new-caret" aria-hidden="true">
-              ▾
-            </span>
-          </button>
-          {newMenuOpen && (
-            <div
-              className="tab-bar__new-menu"
-              role="menu"
-              aria-label="新しいタブの種類"
-              ref={newMenuRef}
+            <button
+              type="button"
+              role="menuitem"
+              className="tab-bar__new-menu-item"
+              ref={firstMenuItemRef}
+              onClick={() => selectNewMenuItem(onNewShell)}
+              onKeyDown={(e) => handleNewMenuItemKeyDown(e, 0)}
             >
-              <button
-                type="button"
-                role="menuitem"
-                className="tab-bar__new-menu-item"
-                ref={firstMenuItemRef}
-                onClick={() => selectNewMenuItem(onNewShell)}
-                onKeyDown={(e) => handleNewMenuItemKeyDown(e, 0)}
-              >
-                {/* **「新しい」を付けない**（Issue #137）。トリガーが
-                    `aria-label="新しいタブを開く"`、メニュー自身が
-                    `aria-label="新しいタブの種類"` を既に持っているので、
-                    項目側で繰り返すと読み上げが「新しいタブの種類、新しいシェル」になる。
-                    同じメニューの `Claude` / `Gemini` は裸の名詞なので、
-                    ここだけ動詞的だと3択が同格に見えない。
-                    **アプリメニュー側（menu.ts の「新しいシェルタブ」）は縮めない。**
-                    あちらは直下に「右に分割」（これもシェルを作る）が並ぶので、
-                    「タブ」の2文字が分割との区別を担っている。 */}
-                シェル
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="tab-bar__new-menu-item"
-                onClick={() => selectNewMenuItem(onNewClaude)}
-                onKeyDown={(e) => handleNewMenuItemKeyDown(e, 1)}
-              >
-                Claude
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="tab-bar__new-menu-item"
-                onClick={() => selectNewMenuItem(onNewGemini)}
-                onKeyDown={(e) => handleNewMenuItemKeyDown(e, 2)}
-              >
-                Gemini
-              </button>
-            </div>
-          )}
-        </div>
+              {/* **「新しい」を付けない**（Issue #137）。トリガーが
+                  `aria-label="新しいタブを開く"`、メニュー自身が
+                  `aria-label="新しいタブの種類"` を既に持っているので、
+                  項目側で繰り返すと読み上げが「新しいタブの種類、新しいシェル」になる。
+                  同じメニューの `Claude` / `Gemini` は裸の名詞なので、
+                  ここだけ動詞的だと3択が同格に見えない。
+                  **アプリメニュー側（menu.ts の「新しいシェルタブ」）は縮めない。**
+                  あちらは直下に「右に分割」（これもシェルを作る）が並ぶので、
+                  「タブ」の2文字が分割との区別を担っている。 */}
+              シェル
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tab-bar__new-menu-item"
+              onClick={() => selectNewMenuItem(onNewClaude)}
+              onKeyDown={(e) => handleNewMenuItemKeyDown(e, 1)}
+            >
+              Claude
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tab-bar__new-menu-item"
+              onClick={() => selectNewMenuItem(onNewGemini)}
+              onKeyDown={(e) => handleNewMenuItemKeyDown(e, 2)}
+            >
+              Gemini
+            </button>
+          </div>
+        )}
       </div>
       <div className="tab-bar__drag-region" />
       <button
