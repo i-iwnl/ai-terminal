@@ -72,21 +72,34 @@ test('S64 「+ ▾」で新しいシェル / Claude / Gemini を選んで開け�
   await newButton.click();
   await expect(menu).toBeVisible();
 
-  // (1) マウスで開くと、選ばれている項目に色が1つも付かない。
-  //     開いた瞬間に先頭項目へ DOM フォーカスは移っている（上で確認済み）が、
-  //     `:focus-visible` は**マウス起点の `.focus()` では発火しない**ので、
-  //     `.tab-bar__new-menu-item:hover, :focus-visible` の宣言がどちらも当たらない。
-  //     **どの項目が選ばれているか画面に出ていない**（WCAG 2.4.7）。
-  //     ⛔ ここを比で測らない。透明な背景は contrast.ts が落とす（架空の比を作らないため）。
-  expect(await items.nth(0).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
-    'rgba(0, 0, 0, 0)',
-  );
+  // (1) **マウスで開いても、選ばれている項目が見える。**
+  //     `:focus-visible` はマウス起点の `.focus()` では発火しないので、
+  //     以前はここが `rgba(0, 0, 0, 0)`（塗りが1つも当たらない）だった = 2.4.7 違反。
+  //     roving focus のメニューでは DOM フォーカスが選択カーソルそのものなので、
+  //     `:focus` で描くのが正しい（styles.css）。
+  //
+  //     **選択状態を担うのは塗りではなく白 2px の線。** 塗りは対メニュー面 1.30 で
+  //     3:1 に届かない（届く明るさにすると文字が 4.5:1 を割る）。線は 11.37。
+  //     ⛔ 塗りだけを見て「見えるようになった」と判定しない。
+  const selectedStyle = await items
+    .nth(0)
+    .evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { background: s.backgroundColor, shadow: s.boxShadow };
+    });
+  expect(selectedStyle.background).toBe('rgb(58, 58, 58)');
+  expect(selectedStyle.shadow).toBe('rgb(255, 255, 255) 2px 0px 0px 0px inset');
 
   // (2) **光っている行はちょうど1つ。**
-  //     いまキーボードのフォーカスは項目0、マウスは項目2に乗せる。
-  //     現状 (1) の裏返しで光るのはホバー側だけなので 1。
-  //     ⚠ **PR 2 で `:focus-visible` を `:focus` に変えると、対処しない限り 2 になる**
-  //     （フォーカスとホバーが別の行にあるので両方光る）。この関門はその退行のためにある。
+  //     マウスを項目2へ動かすと、**選択そのものがそこへ移る**（`onMouseMove` が
+  //     `focus()` を移す。macOS のネイティブメニューと同じ挙動）。
+  //
+  //     **2つの assert は主語が違う。順序を入れ替えないこと。**
+  //     - 先の「光っている行が1つ」が赤くなるのは **`:hover` の併記が戻り、かつ
+  //       フォーカスが追随しなくなった**とき（フォーカスとポインタが別の行に居座る）。
+  //       `:hover` を戻しただけでは**赤くならない**（`onMouseMove` が同じ行へ
+  //       フォーカスを移すので、2つの状態が同じ行で重なる）。実測で確認済み
+  //     - あとの「選択が乗り移っている」が赤くなるのは **`onMouseMove` を外した**とき
   await items.nth(2).hover();
   expect(
     await menu.evaluate(
@@ -96,11 +109,35 @@ test('S64 「+ ▾」で新しいシェル / Claude / Gemini を選んで開け�
         ).length,
     ),
   ).toBe(1);
+  expect(await items.nth(2).evaluate((el) => el === document.activeElement)).toBe(true);
+
+  // (2-b) **現在項目の塗りが、メニューの枠に接していない。**
+  //       枠（--border-control）は端末出力の上で「ここからがメニュー」を運ぶ唯一の情報
+  //       なので 1.4.11 の 3:1 が要る。**塗りが接すると 2.65 で割る**（S40 の
+  //       「メニューの枠（対メニュー面）」は色しか見ないので、接触を検出できない）。
+  //       メニュー側の水平 padding で離してある。⛔ 項目側の margin では離せない
+  //       （`width: 100%` の flex アイテムなのでマージンボックスが溢れる）。
+  const inset = await menu.evaluate((el) => {
+    const menuRect = el.getBoundingClientRect();
+    const item = el.querySelector('[role="menuitem"]') as HTMLElement;
+    const itemRect = item.getBoundingClientRect();
+    const border = Number.parseFloat(getComputedStyle(el).borderLeftWidth);
+    return {
+      left: itemRect.left - (menuRect.left + border),
+      right: menuRect.right - border - itemRect.right,
+    };
+  });
+  expect(inset.left).toBeGreaterThan(0);
+  expect(inset.right).toBeGreaterThan(0);
 
   // (3) `Tab` はメニューを閉じない。しかも1回目は**メニューの中**へ進む。
   //     3項目とも `tabIndex === 0` のままで、APG の roving tabindex が入っていない。
   //     外へ出るのは3回目で、そのときも `aria-expanded="true"` のまま
   //     メニューが端末の上に貼り付いて残る。
+  //     ⚠ **直前のホバーで選択が項目2へ移っている**ので、先に矢印で先頭へ戻す
+  //       （3項目の循環なので `ArrowDown` 1回で 2 -> 0）。
+  await window.keyboard.press('ArrowDown');
+  expect(await items.nth(0).evaluate((el) => el === document.activeElement)).toBe(true);
   await window.keyboard.press('Tab');
   expect(await items.nth(1).evaluate((el) => el === document.activeElement)).toBe(true);
   await window.keyboard.press('Tab');

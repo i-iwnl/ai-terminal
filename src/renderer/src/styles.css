@@ -48,6 +48,19 @@
      表しているのが本当の問題**（下線を足すのは次周の必須項目）。 */
   --surface-tab-active: #2e2e2e;
 
+  /* 浮きもの（「+ ▾」メニュー）の中の、現在項目の塗り。**--surface-2 は使えない。**
+     あれは --surface-0（サイドバー）の上で 1.16 になるよう選ばれた値で、最前面
+     （--surface-3）へ持ち込むと 1.08 になるうえ**暗くなる**（macOS のメニューは
+     選択項目が明るくなる）。--surface-tab-active も対 --surface-3 で 1.09 で使えない。
+
+     **"hover" と名付けない。** マウスは項目へフォーカスを移す実装なので、
+     この塗りが出るのは常に :focus。名前と実態がずれるとトークンが腐る。
+
+     **塗りだけで 1.4.11 の 3:1 を満たそうとしない。** 満たす明るさ（#717171 以上）に
+     すると --text-primary が 4.5:1 を割り、文字色も一緒に動かす羽目になる。
+     選択状態は白 2px の線が担う（.tab-bar__new-menu-item を参照）。 */
+  --surface-menu-active: #3a3a3a;
+
   /* -- 境界 -------------------------------------------------------------- */
   /* 装飾の線（情報を運んでいない）。1.4.11 の対象外なので 3:1 は求めない。 */
   --border-subtle: #2a2a2a; /* サイドバーとタブバーの区切り */
@@ -266,6 +279,16 @@
     --border-section: var(--border-control);
     --surface-tab-active: #525252;
     --pane-active-accent: var(--focus-ring);
+
+    /* ⛔ **var(--surface-tab-active) とエイリアスしない。** 値は同じ #525252 でも
+       **分母が違う**（タブは --surface-1 の上で 2.13、メニューは --surface-3 の上で 1.89）。
+       上の「選択中タブの塗りは上の4段に畳めない」と同じ論法で、同じ値だが同じ理由ではない。
+
+       ⛔ **塗りを枠から離していない状態で、ここを上げてはいけない。**
+       全面ベタ塗りのまま #525252 にすると --border-control 対 塗りが 1.82 になり、
+       **「コントラストを上げる」と言った人だけがメニューの唯一の境界を失う**
+       （既定の 2.65 より悪い）。実測の正は S41。 */
+    --surface-menu-active: #525252;
 
     /* Issue #134。**面を明るくしたら、その面に乗る前景も数え直す。**
        上の `--surface-tab-active` を #2e2e2e -> #525252 に上げたぶん、
@@ -1018,7 +1041,14 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 160px;
-  padding: var(--sp-1) 0;
+  /* **水平にも余白を入れる。** 項目は width: 100% なので、余白が無いと
+     現在項目の塗りが下の 1px 枠に直接接する。枠はこのメニューの**唯一の境界**
+     （端末出力の上に浮くので、ここからがメニューだと分かる情報を運んでいる）なので
+     1.4.11 の 3:1 が要り、**塗りを明るくすると埋もれる**（#3a3a3a で 2.65）。
+     ⛔ 項目側に margin を付けて離さない。width: 100% の flex アイテムなので
+     マージンボックスが 100%+8px になり、右へはみ出す。
+     項目の左右 padding をこのぶん減らしてあるので、**文字の x 座標は動かない**。 */
+  padding: var(--sp-1);
   background: var(--surface-3);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
@@ -1028,19 +1058,41 @@ body {
 .tab-bar__new-menu-item {
   display: block;
   width: 100%;
-  padding: var(--sp-2) var(--sp-3);
+  /* 左右は --sp-3(12) から --sp-2(8) へ。メニュー側に入れた --sp-1(4) と足して
+     12 のままなので、**文字の x 座標は変わらない**（S06 の画像もこの1点では動かない）。 */
+  padding: var(--sp-2);
   background: transparent;
   border: none;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   cursor: pointer;
   font: inherit;
   font-size: var(--fs-sm);
+  /* **明示しないと行の高さが揃わない。** `font: inherit` は line-height も
+     継承する（body に宣言が無いので normal）ため、**日本語ラベルだけ
+     フォントフォールバックで行送りが 1.5em になり**、実測で 34 / 30 / 30 px と
+     バラつく。NSMenu の行は文字種に関係なく等高。
+     ⛔ min-height では直らない（ラベルを変えれば破れる）。実測の正は S44。 */
+  line-height: var(--lh-normal);
   text-align: left;
 }
 
-.tab-bar__new-menu-item:hover,
-.tab-bar__new-menu-item:focus-visible {
-  background: var(--surface-2);
+/* **:focus 1本にする。:hover は使わない。**
+   このメニューは WAI-ARIA APG の roving focus なので、**DOM フォーカスが
+   選択カーソルそのもの**。`:focus-visible` は「キーボード起点か」で出し分ける
+   セレクタなので、マウス起点の .focus() では発火せず、**マウスで開いた人には
+   どの項目が選ばれているか見えなかった**（2.4.7）。
+   マウス追随は TabBar.tsx の onMouseMove が focus() を移すことで行う。
+   ⛔ :hover を併記しない。フォーカスとポインタが別の行にあると**2行が同時に光る**
+   （関門は S64 の「光っている行はちょうど1つ」）。 */
+.tab-bar__new-menu-item:focus {
+  background: var(--surface-menu-active);
+  /* **選択状態を担うのはこの線。塗りではない。**
+     塗りは対メニュー面 1.30 で 1.4.11 の 3:1 に届かない（届く明るさにすると
+     文字が 4.5:1 を割る）。白は対選択面 11.37 / 対メニュー面 14.74。
+     **タブの `inset 0 -2px 0`（下辺）と同じ規則**で、集合が縦に並ぶので左辺。
+     実測の正は S64 / S40。 */
+  box-shadow: inset 2px 0 0 var(--focus-ring);
 }
 
 /* 設定ボタンはタブバー右端。ドラッグ領域の上に乗るので no-drag を明示する。 */

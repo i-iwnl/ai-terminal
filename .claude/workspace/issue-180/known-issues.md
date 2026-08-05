@@ -89,3 +89,39 @@ P2（キー等価 / cwd の2秒古さ）・P3（その他）
 未対処（**記録のみ。周を増やしたくなったらここから選ぶ**）
 
 ---
+
+## 3. `npx agent-browser mouse move` では React の `onMouseMove` が発火しない（周5-b PR 2 で遭遇）
+
+### 症状
+
+実機確認（agent-browser + CDP）で `npx agent-browser mouse move <x> <y>` を使っても、
+**`onMouseMove` のハンドラが動かない**。座標を少しずつ変えて複数回呼んでも同じ。
+
+**`:hover` は正しく付く**（`document.querySelectorAll(':hover')` に対象要素が出る）ので、
+「マウスが乗っていない」わけではない。
+
+### 原因（判明している場合）
+
+未特定。`Input.dispatchMouseEvent` の `mouseMoved` がホバー状態の更新には使われているのに、
+React のルートに委譲されたリスナへは届いていないように見える。
+**Playwright の `hover()` では発火する**（同じ CDP 経由なのに挙動が違う）。
+
+### 影響範囲
+
+- 実機確認の手順（`.claude/skills/e2e/operations/verify-on-device.md`）。**ポインタ由来の振る舞いは実機で直接作れない**
+- ⚠ 「実機では動かない」と誤読しやすい。**周5-b で実際に誤読した**（さらに再ビルド漏れが重なって10分溶かした）
+
+### 対処方針
+
+- [x] 代わりに `dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX, clientY }))` で確認した
+- [ ] `verify-on-device.md` の「agent-browser でも届かないもの」に追記するか判断する（**周を増やすなら**）
+
+### 優先度
+
+P3
+
+### ステータス
+
+回避策あり（記録のみ）
+
+---

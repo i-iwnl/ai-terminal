@@ -239,4 +239,57 @@ test('S44 小さいボタンの当たり判定が 24x24 CSS px 以上ある', as
   await expect(noticeCloseButton).toBeVisible();
   expectAtLeast24(await measureHitArea(noticeCloseButton), '通知バナーの閉じる');
   await window.evaluate(() => document.querySelector('.notice-list')?.remove());
+
+  // 7) 「+ ▾」メニューの項目（Issue #180 引き継ぎ周5-b）。
+  //
+  //    ⛔ **measureHitArea は使えない。** あれは `::before` で当たり判定を広げている
+  //    ボタン専用（`content: none` だと `width: auto` -> NaN -> 無条件 fail を返す）。
+  //    メニュー項目は**箱そのものが当たり判定**なので、矩形を直接測る。
+  //
+  //    **固定するのは「24 以上」だけではなく「3項目の高さが等しい」。**
+  //    紙で計算した高さは当てにならない（実測すると 34 / 30 / 30 とバラついていた）。
+  //    原因は `font: inherit` が `line-height: normal` を持ち込み、
+  //    **日本語ラベルだけフォントフォールバックで行送りが 1.5em になる**こと。
+  //    ⛔ `min-height` では「等しい」を保証できない（ラベルを変えれば破れる）ので、
+  //    `line-height` の明示が唯一の直し方。**この不変条件はラベル文字列に依存しない。**
+  await window.locator('button[aria-label="新しいタブを開く"]').click();
+  const menuItems = window.locator('.tab-bar__new-menu-item');
+  await expect(menuItems).toHaveCount(3);
+
+  const menuItemBoxes = await window.evaluate(() =>
+    [...document.querySelectorAll('.tab-bar__new-menu-item')].map((el) => {
+      const rect = el.getBoundingClientRect();
+      // **角丸のぶんだけ内側を突く。** 現在項目のハイライトは角丸（--radius-md）なので、
+      // 矩形の隅ちょうどは**円の外**に落ちて親（メニュー面）に当たる。
+      // 0.5px 固定のままだと「当たらない」と報告されるが、それは当たり判定の
+      // 不足ではなく**測り方が角丸を見ていない**だけ（面積の欠けは 3px 角で 2px^2 弱）。
+      const radius = Number.parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+      const inset = radius + 0.5;
+      const corners: Array<[number, number]> = [
+        [rect.left + inset, rect.top + inset],
+        [rect.right - inset, rect.top + inset],
+        [rect.left + inset, rect.bottom - inset],
+        [rect.right - inset, rect.bottom - inset],
+      ];
+      return {
+        label: el.textContent ?? '',
+        width: rect.width,
+        height: rect.height,
+        hitsAtCorners: corners.every(([x, y]) => {
+          const hit = document.elementFromPoint(x, y);
+          return hit !== null && (hit === el || el.contains(hit));
+        }),
+      };
+    }),
+  );
+
+  for (const box of menuItemBoxes) {
+    expectAtLeast24(box, `メニュー項目「${box.label}」`);
+  }
+  expect(
+    new Set(menuItemBoxes.map((b) => b.height)).size,
+    'メニュー項目の高さが揃っていない（line-height が効いていない）',
+  ).toBe(1);
+
+  await window.keyboard.press('Escape');
 });
