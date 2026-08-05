@@ -88,6 +88,17 @@ export interface UseTerminalOptions {
    * ターミナルの内容が1文字も見えない**。
    */
   screenReaderMode: boolean;
+  /**
+   * xterm の入力用 textarea に付ける名前（Issue #150）。
+   *
+   * **xterm の既定は英語の `Terminal input` で、しかも全ペイン共通。**
+   * 分割すると支援技術のローターに同じ名前が並び、どちらの端末か区別できない。
+   *
+   * ⛔ **`Terminal.strings.promptLabel` は使えない。** あれは **static** なので
+   * インスタンスごとに別の値を持てず、リネームや cwd の追従にも乗らない。
+   * 名前の組み立ては `tabs/paneHeader.ts` の `terminalInputLabel` が唯一の正。
+   */
+  inputLabel: string;
   onExit: (event: PtyExitEvent) => void;
   /**
    * 検索バーの表示が変わったときに呼ばれる。
@@ -291,6 +302,17 @@ export function useTerminal(
     term.options.theme = toXtermTheme(options.theme);
     term.options.screenReaderMode = options.screenReaderMode;
   }, [options.fontFamily, options.fontSize, options.theme, options.screenReaderMode]);
+
+  // 入力用 textarea の名前（Issue #150）。**別の effect にしてある。**
+  // 上の effect はフォント・テーマの変更で走るが、名前はリネームや cwd の追従で
+  // 別のタイミングに変わるので、依存配列を混ぜると片方のたびに両方を書き直すことになる。
+  //
+  // `term.textarea` は `term.open()` のあとに生える。ここは Terminal の生成 effect の
+  // **あと**に走るので、初回から掴める（掴めなかった場合は既定の英語ラベルのまま
+  // 縮退する。名前が付かないだけで入力は動く）。
+  useEffect(() => {
+    termRef.current?.textarea?.setAttribute('aria-label', options.inputLabel);
+  }, [options.inputLabel]);
 
   /**
    * 検索バーを開くときに、xterm の選択範囲から引き継ぐ語を決める（Issue #175）。

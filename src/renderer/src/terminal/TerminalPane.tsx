@@ -7,6 +7,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PtyExitEvent, TerminalTheme } from '@shared/ipc';
 import { useTerminal, type TerminalHandle } from './useTerminal';
+import { terminalInputLabel } from '../tabs/paneHeader';
 import { buildDropInsertion, pathsFromUriList } from '../lib/dropPath';
 import { createFocusEchoGate } from './focusEcho';
 
@@ -165,6 +166,10 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     fontSize,
     theme,
     screenReaderMode,
+    // 入力用 textarea の名前（Issue #150）。**ペインの名前を使い回す。**
+    // ここで別の組み立て方をすると、同じ1つのペインに名前が2通りできる
+    // （リネームや cwd の追従も二重に書くことになる）。
+    inputLabel: terminalInputLabel(fullLabel),
     onExit,
     // 開くときに選択範囲から引き継ぐ語があれば、検索欄に入れる（Issue #175）。
     // ⛔ **`seed` が無いときは `searchTerm` を触らない**（空にするのではない）。

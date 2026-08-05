@@ -16,6 +16,7 @@ import {
   paneAccessibleLabel,
   paneHeaderLabel,
   paneKindLabel,
+  terminalInputLabel,
 } from '../../src/renderer/src/tabs/paneHeader';
 import type { PaneLeaf } from '../../src/renderer/src/tabs/paneTree';
 
@@ -264,3 +265,41 @@ describe('paneAccessibleLabel の役割語（Issue #137）', () => {
     ).toBe('ビルド用、bash・repo、シェル');
   });
 });
+
+describe('terminalInputLabel（xterm の入力用 textarea の名前。Issue #150）', () => {
+  // 直す前は全ペインが xterm の既定 `Terminal input` で、分割すると
+  // 支援技術のローターに同じ名前が並び、どちらの端末か区別できなかった。
+
+  it('ペインの名前をそのまま含む（同じ1つのペインに名前を2通り作らない）', () => {
+    const paneLabel = paneAccessibleLabel(leaf({ title: 'zsh・demo-project' }));
+    expect(terminalInputLabel(paneLabel)).toContain(paneLabel);
+  });
+
+  it('「ターミナル」で始まる（他の入力欄と区別できる）', () => {
+    // 検索欄・ペイン名の編集欄も textarea / input なので、端末の入力欄だと分かる語を先頭に置く。
+    expect(terminalInputLabel('zsh').startsWith('ターミナル')).toBe(true);
+  });
+
+  it('区切りにコロンを使わない', () => {
+    // ⛔ Issue 本文の完了条件は「ターミナル: <名前>」だが、VoiceOver は句読点の
+    // 読み上げ設定によって「コロン」を発話しうる（Issue #149 の design-review で確定）。
+    // このアプリのアクセシブル名は `、` で繋ぐ、に揃える。
+    const label = terminalInputLabel('zsh');
+    for (const punctuation of [':', '：', '(', ')', '（', '）']) {
+      expect(label).not.toContain(punctuation);
+    }
+    expect(label).toContain('、');
+  });
+
+  it('役割の語（入力・テキストエリア）を名前に入れない', () => {
+    // 支援技術は要素の役割を名前とは別に読み上げるので、二重に聞こえる。
+    const label = terminalInputLabel('zsh');
+    expect(label).not.toContain('入力');
+    expect(label).not.toContain('テキスト');
+  });
+
+  it('ペインの名前が変われば、この名前も変わる（リネーム・cwd の追従）', () => {
+    expect(terminalInputLabel('zsh')).not.toBe(terminalInputLabel('claude'));
+  });
+});
+

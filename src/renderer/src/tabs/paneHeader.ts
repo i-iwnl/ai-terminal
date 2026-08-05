@@ -153,3 +153,26 @@ function roleWord(leaf: PaneLeaf): string | undefined {
   const role = providerLabel(leaf.ptyKind);
   return role.toLowerCase() === kindName(leaf).toLowerCase() ? undefined : role;
 }
+
+/**
+ * xterm の入力用 textarea（`.xterm-helper-textarea`）に付ける名前（Issue #150）。
+ *
+ * **既定は英語の `Terminal input` で、しかも全ペイン同じ**（実測: 分割すると
+ * VoiceOver のローターに `Terminal input` が2つ並び、**どちらの端末か区別できない**）。
+ *
+ * **名前の本体は `paneAccessibleLabel` を使い回す。** ここで別の組み立て方を
+ * すると、同じ1つのペインに対して名前が2通りできる（リネームや cwd の追従も
+ * 二重に書くことになる）。
+ *
+ * ⛔ **区切りにコロンを使わない。** Issue 本文の完了条件は「ターミナル: <名前>」だが、
+ * **VoiceOver は句読点の読み上げ設定によって「コロン」を発話しうる**
+ * （Issue #149 の design-review で確定した判断）。このアプリのアクセシブル名は
+ * `tabAccessibleLabel` / `paneAccessibleLabel` とも `、` で繋いでいるので、それに揃える。
+ *
+ * ⛔ **「入力」を名前に入れない。** 支援技術は要素の役割（テキスト入力）を
+ * 名前とは別に読み上げるので、名前に役割を書くと二重に聞こえる。
+ */
+export function terminalInputLabel(paneLabel: string): string {
+  return `ターミナル、${paneLabel}`;
+}
+
