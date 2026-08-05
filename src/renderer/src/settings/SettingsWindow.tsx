@@ -14,6 +14,7 @@ import SettingsPanel from './SettingsPanel';
 export default function SettingsWindow(): ReactElement {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [error, setError] = useState<string | null>(null);
+  const [accessibilitySupport, setAccessibilitySupport] = useState(false);
 
   useEffect(() => {
     window.api.config
@@ -22,6 +23,19 @@ export default function SettingsWindow(): ReactElement {
       .catch((err: unknown) => {
         console.warn('[settings] 設定の取得に失敗しました。既定値を表示します。', err);
       });
+  }, []);
+
+  // 支援技術の起動状態（Issue #149）。**Main と話すのはこの層の仕事**で、
+  // SettingsPanel は編集フォームに徹する（このファイルの冒頭の分担）。
+  // 取得に失敗しても false のまま続行する（App.tsx と同じ形）。
+  useEffect(() => {
+    window.api.app
+      .accessibilitySupport()
+      .then(setAccessibilitySupport)
+      .catch((err: unknown) => {
+        console.warn('[settings] 支援技術の状態を取得できませんでした。', err);
+      });
+    return window.api.app.onAccessibilitySupportChanged(setAccessibilitySupport);
   }, []);
 
   const changeConfig = useCallback((patch: Partial<AppConfig>) => {
@@ -47,7 +61,12 @@ export default function SettingsWindow(): ReactElement {
           {error}
         </div>
       )}
-      <SettingsPanel config={config} onChange={changeConfig} onClose={close} />
+      <SettingsPanel
+        config={config}
+        accessibilitySupport={accessibilitySupport}
+        onChange={changeConfig}
+        onClose={close}
+      />
     </>
   );
 }
