@@ -257,17 +257,59 @@ export default function TabBar({
       if (newMenuRef.current?.contains(target)) return;
       if (newButtonRef.current?.contains(target)) return;
       setNewMenuOpen(false);
+      // **フォーカスが `<body>` に落ちるのを拾ってトリガーへ戻す**（WCAG 2.4.3）。
+      // Escape と項目の選択は戻しているのに、この経路だけ戻していなかった。
+      //
+      // ⛔ ここで同期的に `focus()` を呼んでも効かない。**`mousedown` の既定動作が
+      // あとからフォーカスを移す**ので、`activeElement` は `body` のままになる（実測）。
+      // フレームを1つ待ってから、**まだ `body` に居るときだけ**戻す
+      // （ターミナルなど別の要素がフォーカスを取っていたら奪わない）。
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) newButtonRef.current?.focus();
+      });
     };
     const handleKeyDown = (e: globalThis.KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
       setNewMenuOpen(false);
       newButtonRef.current?.focus();
     };
+    // **フォーカスがメニューの外へ出たら閉じる。**
+    //
+    // これ1本で、開きっぱなしになる経路が2つ塞がる:
+    //   1. `Tab`（項目は tabIndex={-1} なのでメニューの外へ抜ける）
+    //   2. **グローバルショートカット**（App.tsx が capture で聞いているので、
+    //      メニューを開いたまま Cmd+T を押すとタブが生まれて端末へフォーカスが移り、
+    //      `aria-expanded="true"` のメニューだけが端末の上に貼り付いて残っていた）
+    //
+    // ⚠ **ウィンドウの非アクティブ化（Cmd+Tab）は、ここでは塞がらない。**
+    // OS のフォーカスが外れても DOM のフォーカスはメニュー項目に残るので
+    // `focusout` は発火しない（実機で Finder をアクティブにして確認した）。
+    //
+    // **`window` の `blur` を購読する形は採らなかった。検証手段が無いため。**
+    // E2E のウィンドウも CDP で起動した実機も **OS フォーカスを一度も持たない**ので
+    // （`BrowserWindow.isFocused()` が false のまま）、`BrowserWindow.blur()` を
+    // 呼んでも Renderer に `blur` は届かない = **赤くならない関門しか書けない**。
+    // 正攻法は Main の `win.on('blur')` を IPC で渡すことだが、
+    // それは Contract の変更なので別の周で扱う（`known-issues.md` に記録した）。
+    //
+    // ⛔ `keydown` で `Tab` を捕まえる形にしない。閉じる（= React が unmount する）のと
+    // ブラウザが次のフォーカス先を決めるのが競合し、フォーカスが `<body>` に落ちうる。
+    // **`focusout` はフォーカスが移ったあとに発火する**ので、その競合が原理的に起きない。
+    const handleFocusOut = (e: globalThis.FocusEvent): void => {
+      const next = e.relatedTarget as Node | null;
+      if (next && newMenuRef.current?.contains(next)) return;
+      if (next && newButtonRef.current?.contains(next)) return;
+      setNewMenuOpen(false);
+    };
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
+    // focusout は bubble するので、メニュー自身ではなく document で受けてよい。
+    // （メニューが unmount されたあとにリスナが残らないよう、片付けは effect に任せる）
+    document.addEventListener('focusout', handleFocusOut);
     return () => {
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('focusout', handleFocusOut);
     };
   }, [newMenuOpen]);
 
@@ -616,6 +658,7 @@ export default function TabBar({
               type="button"
               role="menuitem"
               className="tab-bar__new-menu-item"
+              tabIndex={-1}
               ref={firstMenuItemRef}
               onClick={() => selectNewMenuItem(onNewShell)}
               onKeyDown={(e) => handleNewMenuItemKeyDown(e, 0)}
@@ -636,6 +679,7 @@ export default function TabBar({
               type="button"
               role="menuitem"
               className="tab-bar__new-menu-item"
+              tabIndex={-1}
               onClick={() => selectNewMenuItem(onNewClaude)}
               onKeyDown={(e) => handleNewMenuItemKeyDown(e, 1)}
               onMouseMove={handleNewMenuItemMouseMove}
@@ -646,6 +690,7 @@ export default function TabBar({
               type="button"
               role="menuitem"
               className="tab-bar__new-menu-item"
+              tabIndex={-1}
               onClick={() => selectNewMenuItem(onNewGemini)}
               onKeyDown={(e) => handleNewMenuItemKeyDown(e, 2)}
               onMouseMove={handleNewMenuItemMouseMove}

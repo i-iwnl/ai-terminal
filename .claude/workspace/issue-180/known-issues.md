@@ -90,31 +90,35 @@ P2（キー等価 / cwd の2秒古さ）・P3（その他）
 
 ---
 
-## 3. `npx agent-browser mouse move` では React の `onMouseMove` が発火しない（周5-b PR 2 で遭遇）
+## 3. `npx agent-browser` のマウス操作は、ページに DOM イベントを1つも届けない（周5-b で2回遭遇）
 
 ### 症状
 
-実機確認（agent-browser + CDP）で `npx agent-browser mouse move <x> <y>` を使っても、
-**`onMouseMove` のハンドラが動かない**。座標を少しずつ変えて複数回呼んでも同じ。
+実機確認（agent-browser + CDP）で `mouse move` / `mouse down` / `mouse up` を使っても、
+**ページのリスナが1つも動かない。**
 
-**`:hover` は正しく付く**（`document.querySelectorAll(':hover')` に対象要素が出る）ので、
-「マウスが乗っていない」わけではない。
+| 試したこと | 結果 |
+|---|---|
+| `mouse move` -> `onMouseMove`（React） | **発火しない** |
+| `mouse down` / `up` -> `document` の `mousedown`（capture・素の DOM リスナ） | **発火しない**（プローブで **0回**） |
+| ⚠ しかし `:hover` は正しく付く | `document.querySelectorAll(':hover')` に対象要素が出る |
+| ⚠ Playwright の `hover()` / `click()` | **発火する**（同じ CDP 経由なのに挙動が違う） |
 
 ### 原因（判明している場合）
 
-未特定。`Input.dispatchMouseEvent` の `mouseMoved` がホバー状態の更新には使われているのに、
-React のルートに委譲されたリスナへは届いていないように見える。
-**Playwright の `hover()` では発火する**（同じ CDP 経由なのに挙動が違う）。
+未特定。ホバー状態の更新には使われているのに、**イベントのディスパッチだけが届いていない**ように見える。
 
 ### 影響範囲
 
-- 実機確認の手順（`.claude/skills/e2e/operations/verify-on-device.md`）。**ポインタ由来の振る舞いは実機で直接作れない**
-- ⚠ 「実機では動かない」と誤読しやすい。**周5-b で実際に誤読した**（さらに再ビルド漏れが重なって10分溶かした）
+- **ポインタ由来の振る舞いは、実機では検証できない**（キーボード経路は問題なく検証できる）
+- ⚠ **「実機では動かない」と誤読しやすい。周5-b で2回誤読した**
+  （1回目はさらに再ビルド漏れが重なって10分溶かした）
+- `.claude/skills/e2e/operations/verify-on-device.md` の「agent-browser でも届かないもの」
 
 ### 対処方針
 
-- [x] 代わりに `dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX, clientY }))` で確認した
-- [ ] `verify-on-device.md` の「agent-browser でも届かないもの」に追記するか判断する（**周を増やすなら**）
+- [x] マウス由来の確認は `dispatchEvent(new MouseEvent(..., { bubbles: true }))` で代替した
+- [ ] `verify-on-device.md` へ追記するか判断する（**周を増やすなら**）
 
 ### 優先度
 
@@ -123,5 +127,49 @@ P3
 ### ステータス
 
 回避策あり（記録のみ）
+
+---
+
+## 4. ウィンドウの非アクティブ化（Cmd+Tab）でメニューが閉じない。**検証手段が無いので直していない**
+
+### 症状
+
+「+ ▾」メニューを開いたままアプリが非アクティブになっても閉じない。
+NSMenu は必ず閉じるので、macOS の作法から外れている。
+戻ってきたとき**打鍵が端末ではなくメニューへ入る**（a11y が「この周でやらないと嘘になる」と判定した項目）。
+
+### 原因（判明している場合）
+
+**OS のフォーカスが外れても DOM のフォーカスはメニュー項目に残る**ので、
+周5-b PR 3 で入れた `focusout` では塞がらない（実機で Finder をアクティブにして確認）。
+
+**`window` の `blur` を購読する形は採らなかった。関門を書けないため。**
+
+| 試したこと | 結果 |
+|---|---|
+| E2E で `BrowserWindow.blur()`（Main 側から本物の経路） | **Renderer に `blur` が届かない** |
+| その理由 | `BrowserWindow.isFocused()` が **最初から false**（`isVisible()` も false）。**一度も OS フォーカスを持たないので、外れようがない** |
+| CDP で起動した実機 | `document.hasFocus()` が **false のまま**。`osascript` で前面に出そうとしたが **Apple Events の権限が無い**（-1743） |
+
+⛔ **`dispatchEvent(new Event('blur'))` で済ませない。** それは自分で作った偽物なので、
+**Chromium が本当に blur を投げるか**を1ミリも確かめない（恒真の関門になる）。
+
+### 影響範囲
+
+- `TabBar.tsx` の「+ ▾」メニュー。コード中のコメントに、採らなかった理由を残した
+
+### 対処方針
+
+- [ ] **正攻法は Main の `win.on('blur')` を IPC で Renderer へ渡すこと。** Contract の変更なので
+      `/electron-ipc` を通す別の周にする。**Main 側なら E2E から `app.evaluate` で観測できる**
+- [ ] 本物の `Cmd+Tab` での確認は**人力**（#195 の候補。Accessibility 権限か手操作が要る）
+
+### 優先度
+
+P2（a11y が必須と判定 / ただし検証手段の確保が先）
+
+### ステータス
+
+未対処（**この周では意図的に見送った。理由は上記**）
 
 ---
