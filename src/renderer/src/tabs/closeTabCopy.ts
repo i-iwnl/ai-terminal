@@ -18,6 +18,12 @@
 // `agentSessionId` を持つのは claude だけ（`buildClaudePlan`）。gemini は
 // 起動のたびに使い捨てる ptyId に頼るしかないので、**閉じるとその名前を二度と
 // 再現できない** = アプリからは回収できない。文言でここを混ぜてはいけない。
+//
+// ⚠ **非対称の理由は「gemini に ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
+// Gemini CLI 0.53.0 には `--session-id <UUID>` がある。それでも回収できないのは、閉じたあとに
+// 選び直す側（`gemini --list-sessions`）が走行中セッションを一覧に出さず、しかも実行すると
+// その JSONL を削除するため。**この文言は「回収できない」という結論の側だけを見ればよく、
+// #155 の実測で覆っていない。** 理由の全文は src/main/pty/tmux.ts 冒頭。
 
 import type { PaneLeaf } from './paneTree';
 

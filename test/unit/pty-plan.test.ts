@@ -110,10 +110,20 @@ describe('buildSpawnPlan（gemini）', () => {
     expect(plan.args).toEqual(['--resume', 'latest']);
   });
 
-  it('gemini は安定したセッション名を持たない（agentSessionId は常に undefined）', () => {
-    // gemini には claude の --session-id / --resume <uuid> に相当する安定した ID が無い。
-    // そのため tmux セッション名は ptyId（起動のたびに使い捨て）に頼るしかなく、
-    // Cmd+W で閉じたタブには拾い直せない（Issue #60 の対象外。tmux.ts 冒頭コメント参照）。
+  it('gemini には安定したセッション名を付けない（agentSessionId は常に undefined）', () => {
+    // ⚠ **理由は「ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
+    // Gemini CLI 0.53.0 には `--session-id <UUID>` があり、渡した UUID はそのまま
+    // `--list-sessions` 行末の [UUID] に出る。それでも採番しないのは、**閉じたあとに
+    // 選び直す側が成立しない**ため:
+    //   (1) `gemini --list-sessions` は走行中のセッションを一覧に出さない
+    //       （tmux で生き残らせた gemini はまさに走行中なので、履歴から選べない）
+    //   (2) `--list-sessions` の実行自体が走行中セッションの JSONL を削除する
+    // 安定名だけ付けても拾い直せず、「回収できる」という嘘の状態表現を生むだけになる。
+    // 理由の全文は tmux.ts 冒頭コメント、再現手順は
+    // .claude/workspace/issue-180/known-issues.md の 12番。
+    //
+    // ⛔ このテストを「反転させれば #155 が終わる」と読まないこと。反転させるには
+    // 上の (1)(2) が解消しているかを実測し直すのが先。
     const newPlan = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined });
     expect(newPlan.agentSessionId).toBeUndefined();
 
