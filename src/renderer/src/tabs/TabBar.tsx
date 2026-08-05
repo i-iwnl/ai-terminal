@@ -435,6 +435,25 @@ export default function TabBar({
     tabButtonRefs.current.get(next.id)?.focus();
   };
 
+  // 選ばれたタブを可視域へ入れる（Issue #180 引き継ぎ周7）。
+  //
+  // **キーボードでタブバーの中を移動する経路は、これが無くても既にスクロールしている**
+  // （`focus()` の副作用としてブラウザがやる。上の handleTabKeyDown / S54）。
+  // 壊れていたのは **DOM フォーカスを1ミリも動かさない経路**で、そちらが日常の主役:
+  // `Cmd+1-9` / `Cmd+Shift+]` / `Cmd+J`（あなたの番へジャンプ）/ 通知クリック。
+  // どれも `setActiveTabId` を呼ぶだけなので、**選んだタブが画面外に着地していた**。
+  //
+  // ⛔ **`block: 'nearest'` を省かない。** 既定は `'start'` で、**縦にもスクロールしようとして
+  // タブバーごと上へ押し出す**（Issue #170 で実際に起きた壊れ方を、自分で再生産することになる）。
+  // 横も `'nearest'` にして、既に見えているタブでは1pxも動かさない。
+  //
+  // ⛔ `focus()` で代用しない。選択とフォーカスは別物で、`Cmd+J` で飛んだ先では
+  // **端末にフォーカスが要る**（飛んだ直後に打てることがこのショートカットの価値）。
+  useEffect(() => {
+    if (activeTabId === null) return;
+    tabButtonRefs.current.get(activeTabId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTabId]);
+
   return (
     <div className="tab-bar">
       {sidebarCollapsed && (
