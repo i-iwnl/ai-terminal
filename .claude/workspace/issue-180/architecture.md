@@ -13,7 +13,8 @@ Issue #180 における変更対象の構造。
 |---|---|---|
 | `src/renderer/src/styles.css` | 変更（引き継ぎ周5-b / #180 周8） | `docs/images/` の撮り直し判定・`S40` / `S41` の実測固定 |
 | `src/renderer/src/components/TabBar.tsx` | 変更（引き継ぎ周5-b / 周7 / #180 周8） | `S06` / `S51` / `S54` / `S64` / `S95` |
-| `src/main/menu.ts` | 変更（#180 周3 = #152） | **#174 周3 と同じ面**。先に main に入ったほうへ追随する |
+| `src/main/menu.ts` | **完了**（#180 周3 = #152 / #145。PR #208 / #209） | 判定は `src/main/menu-action-routing.ts` へ切り出し済み。**この面はいま空いている** |
+| `src/main/menu-action-routing.ts` | 新規（#180 周3 = #152） | `test/unit/menu-action-routing.test.ts` が唯一の関門（**E2E からは踏めない**。`known-issues.md` 6番） |
 | `src/main/window-state.ts` | 変更（#180 周4 = #153） | 既存 `window-state.json` の後方互換 |
 | `e2e/` | 追加（周ごと） | `scenarios.yml` との1:1（`make e2e-lint`） |
 
