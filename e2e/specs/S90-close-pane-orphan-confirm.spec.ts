@@ -25,11 +25,10 @@ test.afterEach(async () => {
  *
  * 回収できるかの条件は `src/main/pty/tmux.ts` 冒頭が唯一の正。
  *
- * ⚠ **この spec は「まだ切り替えていない分類」を固定している。** Issue #155 で
- * gemini にも安定した `agentSessionId` が入った（S102）が、`closeTabCopy.ts` の
- * 分類はまだ `ptyKind === 'claude'` を見ているので、gemini は orphaned のまま。
- * **分類を `agentSessionId` の有無へ切り替える PR で、この spec ごと作り直す**
- * （gemini が resumable 側に入り、1ペインでの確認は出なくなる）。
+ * ⭐ **Issue #155 で前提が反転した。** gemini にも安定した `agentSessionId` が入り
+ * （S102）、分類が `ptyKind` から `agentSessionId` の有無へ変わったので、
+ * **tmux + gemini の1ペインでは確認が出なくなった**。この spec はその新しい
+ * 振る舞いと、**確認を消した分の受け皿（閉じた直後の告知）が実際に鳴ること**を見る。
  *
  * **`Cmd+W` は `Cmd+Option+W` より押しやすく、実運用ではこちらが主要な経路になる。**
  *
@@ -41,7 +40,7 @@ test.afterEach(async () => {
  * されないシェル）で `Cmd+W` を押してもダイアログが出ないこと。これが無いと
  * 「全部確認するようにした」という直し方でも green になってしまう。
  */
-test('S90 Cmd+W で回収不能な gemini ペインを閉じようとすると確認が出て、シェルでは出ない', async () => {
+test('S90 Cmd+W で回収できる gemini ペインは確認なしで閉じ、2枚同時なら確認が出る', async () => {
   const { window } = launched;
 
   const tabs = window.locator('.tab-bar__tab');
@@ -55,7 +54,7 @@ test('S90 Cmd+W で回収不能な gemini ペインを閉じようとすると�
 
   // --- 否定側を先に見る: シェルタブの Cmd+W は確認を出さない -------------------
   //
-  // **先に見るのが要点。** あとに置くと、gemini の確認をキャンセルした状態が
+  // **先に見るのが要点。** あとに置くと、直前の確認をキャンセルした状態が
   // 残っているせいで通ったのか区別しにくい。
   // シェルは `maybeWrapWithTmux` が必ず素通しするので `wrappedInTmux` は false。
   await window.keyboard.press('Meta+t');
@@ -65,7 +64,10 @@ test('S90 Cmd+W で回収不能な gemini ペインを閉じようとすると�
   await expect(tabs).toHaveCount(1, { timeout: 15_000 });
   await expect(dialog).toHaveCount(0);
 
-  // --- 本題: tmux でラップされた gemini タブを Cmd+W で閉じようとする -----------
+  // --- 本題1: tmux でラップされた gemini タブは、確認なしで閉じる ---------------
+  //
+  // ⭐ **Issue #155 でここが反転した。** gemini にも安定した `agentSessionId` が
+  // 入り、履歴から戻れるようになったので、止める理由が消えた。
   await window.keyboard.press('Meta+Shift+E');
   await expect(tabs).toHaveCount(2, { timeout: 15_000 });
   await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
@@ -77,12 +79,60 @@ test('S90 Cmd+W で回収不能な gemini ペインを閉じようとすると�
 
   await window.keyboard.press('Meta+w');
 
-  // **確認が出ること。** タブはまだ閉じていない。
+  await expect(tabs).toHaveCount(1, { timeout: 15_000 });
+  await expect(dialog).toHaveCount(0);
+
+  // ⭐ **確認を消した分の受け皿が実際に鳴っていること**（design-review で4人が
+  // 「削除ではなく降格にせよ」と指摘した本体）。ここを見ないと、
+  // 「確認をやめただけで何も伝えない」実装でも green になる。
+  const status = window.locator('.app-status');
+  await expect(status).toContainText('終了せず残っています');
+  await expect(status).toContainText('Gemini 1 件');
+
+  // ⛔ **同じ文言を連続で告知しても鳴ること**（Issue #155 の design-review で
+  // a11y が「受け皿が成立する前提条件」と指摘）。`useState<string>` のままだと
+  // 同じ値では React が再レンダーを打ち切り、**DOM のテキストが変化しないので
+  // live region が鳴らない**。key で要素ごと差し替えているかを、
+  // **ノードが同一かどうか**で見る（テキストは同じなので、内容では区別できない）。
+  await status.evaluate((el) => {
+    (el as HTMLElement & { __s90mark?: number }).__s90mark = 1;
+  });
+
+  await window.keyboard.press('Meta+Shift+E');
+  await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
+  await window.keyboard.press('Meta+w');
+  await expect(tabs).toHaveCount(1, { timeout: 15_000 });
+  await expect(status).toContainText('Gemini 1 件');
+
+  expect(
+    await status.evaluate(
+      (el) => (el as HTMLElement & { __s90mark?: number }).__s90mark === undefined,
+    ),
+    '同じ文言を2回告知したときに live region の要素が差し替わっていない（2回目が読み上げられない）',
+  ).toBe(true);
+
+  // --- 本題2: 2枚を一度に閉じるときは、いまも確認が出る -------------------------
+  //
+  // **確認の機構ごと消す直し方**（`needsCloseConfirmation` が常に false）でも
+  // 上までは green になるので、残っている条件を必ず1つ踏む。
+  await window.keyboard.press('Meta+Shift+E');
+  await expect(tabs).toHaveCount(2, { timeout: 15_000 });
+  await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
+  await window.keyboard.press('Meta+d');
+
+  // ⛔ **`.terminal-pane` の総数で分割を確かめない。** この時点でタブが2枚あるので、
+  // 分割していなくても総数は2になる（実際にこれで空振りした）。
+  // **アクティブなタブの x ボタンのラベル**は、そのタブのペイン数だけを見ている。
+  await expect(tabs.nth(1).locator('.tab-bar__close')).toHaveAttribute(
+    'aria-label',
+    'タブを閉じる（2 ペイン）',
+    { timeout: 15_000 },
+  );
+
+  await window.keyboard.press('Meta+Alt+w');
+
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await expect(tabs).toHaveCount(2);
-  // 文言は closeTabCopy が決める（`test/unit/close-tab-copy.test.ts` が正）。
-  // ここでは「回収できない」ことが本文に出ていることだけを見る。
-  await expect(dialog).toContainText('アプリから開き直す手段がありません');
 
   // キャンセルすればタブは残る（確認が形だけになっていないこと）。
   await window.keyboard.press('Escape');

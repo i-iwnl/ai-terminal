@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   closeTabCopy,
+  closedTabAnnouncement,
   needsCloseConfirmation,
   summarizeClosingPanes,
   type ClosingPaneSummary,
@@ -24,46 +25,107 @@ function leaf(overrides: Partial<PaneLeaf> = {}): PaneLeaf {
   };
 }
 
+/**
+ * 「閉じても再開できる」ペイン。
+ *
+ * ⭐ **`agentSessionId` を持つことが条件で、プロバイダは条件ではない**（Issue #155）。
+ * Main の `buildClaudePlan` / `buildGeminiPlan` はどちらもこれを返す
+ * （返せない縮退の条件は `src/main/pty/tmux.ts` 冒頭が唯一の正）。
+ */
+function resumableLeaf(kind: 'claude' | 'gemini', overrides: Partial<PaneLeaf> = {}): PaneLeaf {
+  return leaf({
+    ptyKind: kind,
+    wrappedInTmux: true,
+    agentSessionId: `${kind}-session-uuid`,
+    ...overrides,
+  });
+}
+
 describe('summarizeClosingPanes', () => {
   it('tmux でラップされていないペインは「終了する」側に数える', () => {
     expect(summarizeClosingPanes([leaf(), leaf({ paneId: 'p2', ptyId: 'p2' })])).toEqual({
       exiting: 2,
       persistentResumable: 0,
+      resumableByProvider: {},
       persistentOrphaned: 0,
     });
   });
 
   it('tmux + claude は「再開できる」側に数える', () => {
-    const s = summarizeClosingPanes([leaf({ ptyKind: 'claude', wrappedInTmux: true })]);
-    expect(s).toEqual({ exiting: 0, persistentResumable: 1, persistentOrphaned: 0 });
+    const s = summarizeClosingPanes([resumableLeaf('claude')]);
+    expect(s).toEqual({
+      exiting: 0,
+      persistentResumable: 1,
+      resumableByProvider: { claude: 1 },
+      persistentOrphaned: 0,
+    });
   });
 
-  it('tmux + gemini は「回収できない」側に数える（claude と混ぜない）', () => {
+  it('⭐ tmux + gemini も「再開できる」側（Issue #155。プロバイダでは分けない）', () => {
+    const s = summarizeClosingPanes([resumableLeaf('gemini')]);
+    expect(s).toEqual({
+      exiting: 0,
+      persistentResumable: 1,
+      resumableByProvider: { gemini: 1 },
+      persistentOrphaned: 0,
+    });
+  });
+
+  it('⚠ tmux でラップされたのに agentSessionId が無ければ「回収できない」側（縮退）', () => {
+    // CLI が古い / 履歴から UUID を取れなかった場合。条件の全文は src/main/pty/tmux.ts 冒頭。
+    // **未知は必ずこちら側に落とす**のがこの分類の要点。
     const s = summarizeClosingPanes([leaf({ ptyKind: 'gemini', wrappedInTmux: true })]);
-    expect(s).toEqual({ exiting: 0, persistentResumable: 0, persistentOrphaned: 1 });
+    expect(s).toEqual({
+      exiting: 0,
+      persistentResumable: 0,
+      resumableByProvider: {},
+      persistentOrphaned: 1,
+    });
+  });
+
+  it('⚠ claude でも agentSessionId が無ければ「回収できない」側（プロバイダで免除しない）', () => {
+    const s = summarizeClosingPanes([leaf({ ptyKind: 'claude', wrappedInTmux: true })]);
+    expect(s.persistentOrphaned).toBe(1);
+    expect(s.persistentResumable).toBe(0);
   });
 
   it('tmux ラップでも wrappedInTmux が false なら終了する側', () => {
     // 設定を切っている / tmux が入っていない環境。
-    const s = summarizeClosingPanes([leaf({ ptyKind: 'claude', wrappedInTmux: false })]);
-    expect(s).toEqual({ exiting: 1, persistentResumable: 0, persistentOrphaned: 0 });
+    const s = summarizeClosingPanes([resumableLeaf('claude', { wrappedInTmux: false })]);
+    expect(s).toEqual({
+      exiting: 1,
+      persistentResumable: 0,
+      resumableByProvider: {},
+      persistentOrphaned: 0,
+    });
   });
 
   it('既に終了しているペインは数えない（閉じても失われるものが無い）', () => {
     const s = summarizeClosingPanes([
       leaf({ exit: { exitCode: 0 } }),
-      leaf({ paneId: 'p2', ptyId: 'p2', ptyKind: 'claude', wrappedInTmux: true }),
+      resumableLeaf('claude', { paneId: 'p2', ptyId: 'p2' }),
     ]);
-    expect(s).toEqual({ exiting: 0, persistentResumable: 1, persistentOrphaned: 0 });
+    expect(s).toEqual({
+      exiting: 0,
+      persistentResumable: 1,
+      resumableByProvider: { claude: 1 },
+      persistentOrphaned: 0,
+    });
   });
 
-  it('混在をそれぞれの側に振り分ける', () => {
+  it('混在をそれぞれの側に振り分け、再開できるものはプロバイダ別に数える', () => {
     const s = summarizeClosingPanes([
       leaf(),
-      leaf({ paneId: 'p2', ptyId: 'p2', ptyKind: 'claude', wrappedInTmux: true }),
-      leaf({ paneId: 'p3', ptyId: 'p3', ptyKind: 'gemini', wrappedInTmux: true }),
+      resumableLeaf('claude', { paneId: 'p2', ptyId: 'p2' }),
+      resumableLeaf('gemini', { paneId: 'p3', ptyId: 'p3' }),
+      leaf({ paneId: 'p4', ptyId: 'p4', ptyKind: 'gemini', wrappedInTmux: true }),
     ]);
-    expect(s).toEqual({ exiting: 1, persistentResumable: 1, persistentOrphaned: 1 });
+    expect(s).toEqual({
+      exiting: 1,
+      persistentResumable: 2,
+      resumableByProvider: { claude: 1, gemini: 1 },
+      persistentOrphaned: 1,
+    });
   });
 });
 
@@ -71,6 +133,7 @@ describe('closeTabCopy', () => {
   const summary = (o: Partial<ClosingPaneSummary> = {}): ClosingPaneSummary => ({
     exiting: 0,
     persistentResumable: 0,
+    resumableByProvider: {},
     persistentOrphaned: 0,
     ...o,
   });
@@ -100,16 +163,49 @@ describe('closeTabCopy', () => {
     );
   });
 
-  it('claude は再開できると伝える', () => {
-    expect(closeTabCopy(summary({ persistentResumable: 1 })).body).toContain('履歴');
+  it('再開できるものは、プロバイダ名つきで行き先まで伝える', () => {
+    // ⭐ 履歴パネルは Claude / Gemini のトグルで分かれており**既定は Claude**。
+    // 「履歴から再開できます」だけだと、Gemini を閉じた人は空の一覧を見て
+    // 「嘘だった」と判断する（design-review で3人が独立に指摘）。
+    const copy = closeTabCopy(
+      summary({ persistentResumable: 1, resumableByProvider: { gemini: 1 } }),
+    );
+    expect(copy.body).toContain('Gemini 1 件');
+    expect(copy.body).toContain('履歴');
+    expect(copy.body).toContain('切り替え');
   });
 
-  it('gemini は開き直せないことを明示する（claude と混ぜない）', () => {
+  it('⛔ プロバイダ名を決め打ちしない（混在すると必ず嘘になる）', () => {
+    // 直す前は `（claude）` をリテラルで埋めており、内訳を数えていないのに
+    // 名前を書いていた。claude 1 + gemini 1 を一度に閉じると必ず嘘になる。
+    const copy = closeTabCopy(
+      summary({ persistentResumable: 2, resumableByProvider: { claude: 1, gemini: 1 } }),
+    );
+    expect(copy.body).toContain('Claude 1 件');
+    expect(copy.body).toContain('Gemini 1 件');
+  });
+
+  it('⛔ 文言に括弧を使わない（VoiceOver の句読点設定に依存させない）', () => {
+    // 「すべて」設定なら「かっこ」と発話され、「なし」設定なら語の境界が消える。
+    // どちらの設定でも良くならないので、**設定に依存しない解**として括弧を外す
+    // （#150 でコロンを外したのと同じ判断）。
+    for (const s of [
+      summary({ persistentResumable: 2, resumableByProvider: { claude: 1, gemini: 1 } }),
+      summary({ persistentOrphaned: 1 }),
+      summary({ exiting: 1, persistentResumable: 1, resumableByProvider: { claude: 1 } }),
+    ]) {
+      expect(closeTabCopy(s).body).not.toMatch(/[（）()]/);
+    }
+  });
+
+  it('再開先を特定できないものは、開き直せないことを明示する', () => {
     const copy = closeTabCopy(summary({ persistentOrphaned: 1 }));
-    expect(copy.body).toContain('gemini');
-    expect(copy.body).toContain('開き直す手段がありません');
-    // claude が1件も無いのに「履歴から再開できます」と言わない。
+    expect(copy.body).toContain('開き直せません');
+    // 再開できるものが1件も無いのに「履歴から再開できます」と言わない。
     expect(copy.body).not.toContain('再開できます');
+    // ⛔ プロバイダ名を決め打ちしない（この分岐はもう gemini 特有ではない）。
+    expect(copy.body).not.toContain('gemini');
+    expect(copy.body).not.toContain('Gemini');
   });
 
   it('混在では、終了する数と生き残る数を両方出す', () => {
@@ -132,14 +228,17 @@ describe('closeTabCopy', () => {
 // summarizeClosingPanes が作る。ここでは「1ペインでも確認が要る」条件が
 // 内訳から一意に決まることを固定する。
 describe('1ペインでも確認が要る条件（persistentOrphaned > 0）', () => {
-  it('tmux + gemini が1枚だけなら、回収不能なので確認が要る', () => {
+  it('⚠ tmux ラップされたのに agentSessionId が無い1枚なら、回収不能なので確認が要る（縮退）', () => {
     const s = summarizeClosingPanes([leaf({ ptyKind: 'gemini', wrappedInTmux: true })]);
     expect(s.persistentOrphaned).toBeGreaterThan(0);
   });
 
   it('tmux + claude が1枚だけなら、履歴から戻れるので確認は要らない', () => {
-    const s = summarizeClosingPanes([leaf({ ptyKind: 'claude', wrappedInTmux: true })]);
-    expect(s.persistentOrphaned).toBe(0);
+    expect(summarizeClosingPanes([resumableLeaf('claude')]).persistentOrphaned).toBe(0);
+  });
+
+  it('⭐ tmux + gemini が1枚だけでも、履歴から戻れるので確認は要らない（Issue #155）', () => {
+    expect(summarizeClosingPanes([resumableLeaf('gemini')]).persistentOrphaned).toBe(0);
   });
 
   it('tmux ラップ無しのシェル1枚なら確認は要らない', () => {
@@ -156,19 +255,68 @@ describe('1ペインでも確認が要る条件（persistentOrphaned > 0）', ()
 // tmux セッションとプロセスが残る。
 //
 // **`Cmd+W` は `Cmd+Option+W` より押しやすく、実運用ではこちらが主要な経路になる。**
+describe('closedTabAnnouncement（確認ダイアログを消した分の受け皿）', () => {
+  const summary = (o: Partial<ClosingPaneSummary> = {}): ClosingPaneSummary => ({
+    exiting: 0,
+    persistentResumable: 0,
+    resumableByProvider: {},
+    persistentOrphaned: 0,
+    ...o,
+  });
+
+  it('生き残るものが無ければ、従来どおり結果だけを告知する', () => {
+    expect(closedTabAnnouncement(summary({ exiting: 2 }))).toBe('タブを閉じました');
+  });
+
+  it('⭐ 生き残るものがあれば「終了せず残っている」ことまで告知する', () => {
+    // 確認ダイアログは「閉じても走り続けている」を伝える唯一の面だった。
+    // 消しっぱなしにすると、**支援技術利用者だけが一方的に情報を失う**
+    // （視覚利用者は履歴パネルを眺めて発見できるが、その『眺める』が無い）。
+    const msg = closedTabAnnouncement(
+      summary({ persistentResumable: 1, resumableByProvider: { gemini: 1 } }),
+    );
+    expect(msg).toContain('終了せず残っています');
+    expect(msg).toContain('Gemini 1 件');
+    expect(msg).toContain('履歴');
+  });
+
+  it('回収できないものがあれば、それも件数つきで告知する', () => {
+    const msg = closedTabAnnouncement(summary({ persistentOrphaned: 1 }));
+    expect(msg).toContain('終了せず残っています');
+    expect(msg).toContain('開き直せません');
+  });
+
+  it('⛔ 括弧を使わない（VoiceOver の句読点設定に依存させない）', () => {
+    const msg = closedTabAnnouncement(
+      summary({ persistentResumable: 2, resumableByProvider: { claude: 1, gemini: 1 } }),
+    );
+    expect(msg).not.toMatch(/[（）()]/);
+  });
+
+  it('結果が先、内訳が後（読み上げは中断できないので最初の数文字で行動が決まる）', () => {
+    const msg = closedTabAnnouncement(
+      summary({ persistentResumable: 1, resumableByProvider: { claude: 1 } }),
+    );
+    expect(msg.startsWith('タブを閉じました')).toBe(true);
+  });
+});
+
 describe('needsCloseConfirmation', () => {
   // --- Issue #158 の完了条件が名指しした「1 leaf」の3ケース --------------------
 
-  it('1 leaf・tmux + gemini: **確認する**（閉じると二度と回収できない）', () => {
+  it('⚠ 1 leaf・tmux + agentSessionId 無し: **確認する**（閉じると二度と回収できない）', () => {
     const leaves = [leaf({ ptyKind: 'gemini', wrappedInTmux: true })];
     expect(needsCloseConfirmation(leaves)).toBe(true);
   });
 
   it('1 leaf・tmux + claude: 確認しない（履歴から resume できる）', () => {
-    // **claude で止めてはいけない。** 閉じるのは1日に何十回もある操作で、
+    // **戻れるもので止めてはいけない。** 閉じるのは1日に何十回もある操作で、
     // 確認は不可逆なものだけに絞る、というのが #121 周5 で決めた原則。
-    const leaves = [leaf({ ptyKind: 'claude', wrappedInTmux: true })];
-    expect(needsCloseConfirmation(leaves)).toBe(false);
+    expect(needsCloseConfirmation([resumableLeaf('claude')])).toBe(false);
+  });
+
+  it('⭐ 1 leaf・tmux + gemini: 確認しない（Issue #155 で戻れるようになった）', () => {
+    expect(needsCloseConfirmation([resumableLeaf('gemini')])).toBe(false);
   });
 
   it('1 leaf・tmux 無し: 確認しない（従来どおり即座に閉じる）', () => {
