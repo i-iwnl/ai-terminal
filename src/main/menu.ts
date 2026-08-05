@@ -22,6 +22,7 @@ import {
   terminalContextMenuItems,
   type TerminalContextMenuState,
 } from '@shared/context-menu';
+import { routeMenuAction } from './menu-action-routing';
 import { openSettingsWindow } from './settings-window';
 
 const REPOSITORY_URL = 'https://github.com/i-iwnl/ai-terminal';
@@ -64,6 +65,21 @@ function isDev(): boolean {
  * Renderer の `matchShortcut()` に一本化する。両方が同じキーを登録すると、
  * Cmd+T 一回で新しいタブが2枚開くような二重発火になりうる。
  * 発見可能性（メニューにキーが載っていること）と、単一の発火経路を両立させるための指定。
+ *
+ * **宛先は毎回フォーカスを見て決める（Issue #152）。** ここで掴んでいる `win` は
+ * メニュー構築時の本体ウィンドウで、以前はクリック時の状態を一切見ずに
+ * 送っていた。設定ウィンドウ（`settings-window.ts` が作る別ウィンドウ）を見ながら
+ * 「ファイル > ペインを閉じる」をマウスで選ぶと、**裏の本体の PTY が黙って死ぬ**。
+ * 設定側の Renderer は `SettingsWindow.tsx` で `menuAction` を受け取る口が無いため、
+ * 誤操作は本体にだけ現れる。
+ *
+ * **握りつぶさずに本体を前に出す。** 黙って何もしないと「メニューが効かない」
+ * という別の混乱になる。前に出してから送る案は採らなかった（見えるようになる
+ * だけで破壊的な操作は止まらない）。判定の理由は `menu-action-routing.ts`。
+ *
+ * ⛔ **キーボード経路はここを通らない。** `registerAccelerator: false` なので
+ * 拾うのは Renderer の `matchShortcut()` で、設定ウィンドウの Esc / Cmd+W は
+ * `SettingsPanel.tsx` が自前で捌く。**再現するのはマウスでメニューを選んだ場合だけ。**
  */
 function actionItem(
   win: BrowserWindow,
@@ -76,7 +92,16 @@ function actionItem(
     accelerator,
     registerAccelerator: false,
     click: () => {
-      if (win.isDestroyed()) return;
+      const focused = BrowserWindow.getFocusedWindow();
+      const route = routeMenuAction({
+        mainWindowId: win.isDestroyed() ? null : win.id,
+        focusedWindowId: focused === null || focused.isDestroyed() ? null : focused.id,
+      });
+      if (route === 'ignore') return;
+      if (route === 'focus-main') {
+        win.focus();
+        return;
+      }
       win.webContents.send(IpcEvent.menuAction, action);
     },
   };
