@@ -20,7 +20,11 @@ node-pty の macOS 向け prebuild に同梱されている `spawn-helper` は�
 
 **resume できるかは CLI によって非対称。** tmux セッション名は `buildTmuxSessionName(plan.agentSessionId ?? ptyId)` で決まる（[../../../../src/main/pty/tmux.ts](../../../../src/main/pty/tmux.ts) 冒頭のコメント参照）。安定した `agentSessionId` を持つのは claude だけ（`--session-id` / `--resume` に渡した ID がそのまま入る）なので、claude はタブを閉じても履歴から resume すれば同じ tmux セッションに `-A` でアタッチし直せる**はず**（**未実測**。`test/unit/pty-plan.test.ts` が固定しているのは「新規起動と resume でセッション名が一致する」までで、**実際に閉じる前の画面が戻るかは一度も確かめていない**。手順は [/e2e](../../e2e/reference/limitations.md) の「実機確認の手順書」の #154）。gemini はタブを閉じた時点で名前を二度と再現できず、生き残ったプロセスは孤立したまま残り続ける。
 
-⚠ **gemini 側の理由を「安定したセッション ID を採番できないから」と書かないこと**（Issue #155 / 2026-08-06 に Gemini CLI 0.53.0 で実測して覆した）。`gemini --session-id <UUID>` は存在し、渡した UUID はそのまま `--list-sessions` 行末の `[UUID]` に出るので、tmux セッション名を安定させること自体はできる。それでも拾い直せないのは**選び直す側が成立しない**ため: (1) `gemini --list-sessions` は走行中のセッションを一覧に出さない（tmux で生かした gemini はまさに走行中）、(2) `--list-sessions` の実行自体が走行中セッションの JSONL を削除する。⛔ 回避として `--resume` に UUID を渡さないこと（**数字始まりの UUID は index として解釈され、既存のセッションファイルを失う**）。再現手順は `.claude/workspace/issue-180/known-issues.md` の 12番。
+⚠ **gemini 側の理由を「安定したセッション ID を採番できないから」と書かないこと**（Issue #155 / 2026-08-06 に Gemini CLI 0.53.0 で実測して覆した）。`gemini --session-id <UUID>` は存在し、渡した UUID はそのまま `--list-sessions` 行末の `[UUID]` に出る。会話が1往復以上あるセッションは**走行中でも**一覧に正しく出るので、claude と同じ形にできる見込みがある。**いま拾い直せないのは未実装だから**であって、CLI 側の制約ではない。
+
+⛔ ただし実装するとき `--resume` に UUID を渡さないこと（**数字始まりの UUID は index として解釈され、既存のセッションファイルを失う**）。resume の引数は index のままにし、UUID は tmux セッション名にだけ使う。
+
+⚠ 別件で、**実質空のセッション（初期コンテキストだけで会話が0往復）は、gemini をもう1つ起動しただけで削除される**（`--list-sessions` に限らず起動全般）。再現手順は `.claude/workspace/issue-180/known-issues.md` の 12番。
 
 ## PTY に渡す環境変数
 

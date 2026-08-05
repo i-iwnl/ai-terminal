@@ -352,10 +352,10 @@ async function readPrefix(filePath: string, maxBytes: number): Promise<string> {
 // index として解釈され、別セッションを作ったうえで既存のセッションファイルを失う**。
 // [UUID] の用途はタイトル上書きの保存キー（stableId）だけに留める。
 //
-// ⚠ **このコマンド自体に破壊的な副作用がある**（同日実測）。走行中の gemini セッションは
-// 一覧に出ないうえ、`--list-sessions` を実行するとその JSONL が削除され、以後そのプロセスが
-// 書いても復活しない。再現手順と影響範囲は
-// `.claude/workspace/issue-180/known-issues.md` の 12番が唯一の正。
+// ⚠ **走行中のセッションも一覧に出る**（会話が1往復以上あれば。同日実測）。ただし
+// **実質空のセッション（初期コンテキストだけ）は一覧に出ず、しかも gemini を起動すると
+// 削除される**（`--list-sessions` に限らず起動全般の挙動で、このコマンド固有ではない）。
+// 再現手順と影響範囲は `.claude/workspace/issue-180/known-issues.md` の 12番が唯一の正。
 
 const GEMINI_BIN = 'gemini';
 /** ハングした CLI にフリーズを引きずられないためのタイムアウト。 */
