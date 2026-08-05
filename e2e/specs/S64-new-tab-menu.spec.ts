@@ -130,26 +130,51 @@ test('S64 「+ ▾」で新しいシェル / Claude / Gemini を選んで開け�
   expect(inset.left).toBeGreaterThan(0);
   expect(inset.right).toBeGreaterThan(0);
 
-  // (3) `Tab` はメニューを閉じない。しかも1回目は**メニューの中**へ進む。
-  //     3項目とも `tabIndex === 0` のままで、APG の roving tabindex が入っていない。
-  //     外へ出るのは3回目で、そのときも `aria-expanded="true"` のまま
-  //     メニューが端末の上に貼り付いて残る。
+  // (3) **`Tab` 1回でメニューの外へ抜け、そのときメニューが閉じる。**
+  //     以前は3項目とも `tabIndex === 0` で `Tab` が**メニューの中を歩き**、
+  //     3回目で外へ出てもなお `aria-expanded="true"` のまま端末の上に貼り付いていた。
+  //     `tabIndex={-1}`（APG の roving tabindex）+ `focusout` で閉じる、の2つで直る。
   //     ⚠ **直前のホバーで選択が項目2へ移っている**ので、先に矢印で先頭へ戻す
   //       （3項目の循環なので `ArrowDown` 1回で 2 -> 0）。
   await window.keyboard.press('ArrowDown');
   expect(await items.nth(0).evaluate((el) => el === document.activeElement)).toBe(true);
   await window.keyboard.press('Tab');
-  expect(await items.nth(1).evaluate((el) => el === document.activeElement)).toBe(true);
-  await window.keyboard.press('Tab');
-  await window.keyboard.press('Tab');
-  await expect(menu).toBeVisible();
-  await expect(newButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu).toHaveCount(0);
+  await expect(newButton).toHaveAttribute('aria-expanded', 'false');
+  //     **フォーカスは `<body>` に落ちず、メニューの次の停止点へ進んでいる。**
+  //     `focusout` はフォーカスが移ったあとに発火するので、閉じる（unmount）のと
+  //     次のフォーカス先の決定が競合しない。
   expect(
     await window.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''),
   ).toBe('設定を開く');
 
-  await window.keyboard.press('Escape');
+  // (4) **開いたままグローバルショートカットを押しても、メニューが残らない。**
+  //     `App.tsx` は capture フェーズで keydown を聞いているので、
+  //     以前は `Cmd+T` でタブが生まれて端末へフォーカスが移り、
+  //     **`aria-expanded="true"` のメニューだけが端末の上に貼り付いて残っていた**。
+  //     これも `focusout` の1本で塞がっている（3つ目の入口）。
+  await newButton.click();
+  await expect(menu).toBeVisible();
+  await window.keyboard.press('Meta+t');
+  await expect(tabs).toHaveCount(2);
   await expect(menu).toHaveCount(0);
+  await expect(newButton).toHaveAttribute('aria-expanded', 'false');
+
+  // (5) **外側クリックで閉じたあと、フォーカスがトリガーへ戻る**（WCAG 2.4.3）。
+  //     以前は `<body>` に落ちてキーボードの位置が失われていた。
+  //     ⛔ **否定形（`body` に落ちている）では固定できない。** `mousedown` の
+  //     ハンドラ内の `focus()` は既定動作に上書きされるので、是正を入れても
+  //     `body` のままになり**恒真の検査**になる（PR 1 で実測した）。
+  //     是正はフレームを1つ待ってから戻すので、**肯定形を `expect.poll` で待つ**。
+  await newButton.click();
+  await expect(menu).toBeVisible();
+  await window.locator('.tab-bar__drag-region').click({ position: { x: 5, y: 5 } });
+  await expect(menu).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      window.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''),
+    )
+    .toBe('新しいタブを開く');
 
   // 「Claude」を選ぶと claude タブが開くこと。
   await newButton.click();
