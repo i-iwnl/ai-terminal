@@ -15,7 +15,8 @@ Playwright + Electron による E2E テスト基盤（`e2e/`）の運用知識�
 | E2E を実行する・落ちたテストを調べる | [operations/run-e2e.md](operations/run-e2e.md) |
 | **実機のアプリを見て確かめる**（agent-browser + CDP） | [operations/verify-on-device.md](operations/verify-on-device.md) |
 | 隔離ハーネスの仕組み・ハマりどころを知る | [reference/isolation-harness.md](reference/isolation-harness.md) |
-| 自動テストで担保できないものを知る | [reference/limitations.md](reference/limitations.md) |
+| 自動テストで担保できないものを知る（人手の手順書を含む） | [reference/limitations.md](reference/limitations.md) |
+| spec を書く前に、過去に踏んだ落とし穴を読む | [reference/spec-writing-traps.md](reference/spec-writing-traps.md) |
 
 ## 絶対に守ること
 

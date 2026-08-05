@@ -81,11 +81,40 @@ test('S79 ウィンドウタイトルがアクティブなタブに追従し、�
 
   expect(await heightOf(dragRegion), 'フルスクリーン前の帯').toBe(36);
 
+  // **遷移そのものは macOS の仕事で、このリポジトリのコードではない。**
+  //
+  // `setFullScreen(true)` は AppKit へ要求を出すだけで、実際に Space を作って
+  // 遷移するかは WindowServer 側の状態に依存する。**遷移が起きなければ
+  // `enter-full-screen` は発火せず、Renderer に `is-fullscreen` は永久に付かない。**
+  //
+  // ここを分けずに `.app` のクラスだけを見ていたため、2026-08-04 に
+  // 「`make e2e` が S79 で赤い」状態が丸1日続き、`main` へ戻して再ビルドする
+  // 切り分けまでやって**アプリ側は無傷**と分かった（翌日 2026-08-05 は同じコミットで
+  // フル1回 + 単体10回すべて green）。**赤の主語が読めないことが実害だった。**
+  //
+  // そこで OS 側（`win.isFullScreen()`）とアプリ側（Renderer のクラス）を
+  // 別々に待つ。どちらで止まったかがメッセージに出る。
+  const isFullScreen = (): Promise<boolean> =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false);
+
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setFullScreen(true);
   });
 
-  await expect(window.locator('.app')).toHaveClass(/is-fullscreen/, { timeout: 15_000 });
+  await expect
+    .poll(isFullScreen, {
+      timeout: 10_000,
+      message:
+        'macOS がフルスクリーン遷移を行わなかった（win.isFullScreen() が false のまま）。' +
+        'アプリの回帰ではなく環境要因。' +
+        '記録は .claude/skills/e2e/reference/limitations.md の「フルスクリーン遷移」',
+    })
+    .toBe(true);
+
+  await expect(
+    window.locator('.app'),
+    'Main は遷移したのに Renderer に届いていない（IpcEvent.fullScreenChanged の経路）= アプリの回帰',
+  ).toHaveClass(/is-fullscreen/, { timeout: 15_000 });
   await expect.poll(async () => heightOf(dragRegion), { timeout: 10_000 }).toBe(0);
   // **タブバーは畳まない**（畳むとタブの切り替えがマウスから不可能になる）。
   expect(await heightOf(tabBar), 'フルスクリーンでもタブバーは残る').toBe(36);
@@ -95,6 +124,16 @@ test('S79 ウィンドウタイトルがアクティブなタブに追従し、�
     BrowserWindow.getAllWindows()[0]?.setFullScreen(false);
   });
 
-  await expect(window.locator('.app')).not.toHaveClass(/is-fullscreen/, { timeout: 15_000 });
+  await expect
+    .poll(isFullScreen, {
+      timeout: 10_000,
+      message: 'macOS がフルスクリーンから戻らなかった。アプリの回帰ではなく環境要因',
+    })
+    .toBe(false);
+
+  await expect(
+    window.locator('.app'),
+    'Main は戻ったのに Renderer に届いていない（leave-full-screen の経路）= アプリの回帰',
+  ).not.toHaveClass(/is-fullscreen/, { timeout: 15_000 });
   await expect.poll(async () => heightOf(dragRegion), { timeout: 10_000 }).toBe(36);
 });

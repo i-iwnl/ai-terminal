@@ -1095,6 +1095,13 @@ scenarios:
       S73 で実際に呼んで確認した）、信号機はネイティブの NSButton で DOM にも
       現れない。復帰時に `setWindowButtonPosition` を呼んでいることまでが実装の
       担保で、位置の一致は `test/unit/css-tokens.test.ts` が導出ごと固定している。
+      **OS 側（`win.isFullScreen()`）とアプリ側（`.app` のクラス）は別々に待つ**
+      （Issue #179 の周4-0）。`setFullScreen(true)` は AppKit へ要求を出すだけで、
+      Space を作って遷移するかは WindowServer の状態次第 = **このリポジトリの
+      コードの外**。分けずに書いていたため、2026-08-04 に遷移が起きない日が来たとき
+      「アプリの回帰か環境要因か」が読めず、`main` へ戻して再ビルドする切り分けに
+      丸1日かかった（同じコミットで翌日は 11/11 green）。⛔ **`test.skip()` にはしない** —
+      飛ばすと `enter-full-screen` の経路が壊れた日に誰も気づかない。
 
   # --- 配色プリセット（Issue #119 周6 / #20 の PR 18） -----------------------
   - id: S80
