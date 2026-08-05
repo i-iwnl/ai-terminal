@@ -297,6 +297,58 @@ Main（ネイティブメニュー）と Renderer（`shortcuts.ts` の `matchSho
 
 **最終確認: 未実施**（`src/main/menu.ts` に accelerator 付き項目を足したら回すこと）。
 
+### S36 をパッケージ版スモークに足さない（判断。Issue #145）
+
+`e2e/packaged.playwright.config.ts` の `testMatch` に **S36 は足さない。**
+
+**通常レーンが既に本番のメニューを見ているため。** `isDev()` の入力は
+`ELECTRON_RENDERER_URL` の有無だけで、`e2e/fixtures/harness.ts` はこれを
+空文字で渡す。**つまり `make e2e` の S36 は `role: 'reload'` を含まない側**
+＝ユーザーが見るメニューを検証している。パッケージ版で追加できるのは
+asar / 署名 / preload 解決の層だが、**メニュー構築はそのどれにも触れない**
+（`Menu.getApplicationMenu()` のラベルと role を読むだけでファイルを開かない）。
+
+スモーク4本（S01 / S09 / S12 / S39）は「**パッケージングでしか壊れない層**」
+を狙って選んである（asar・asarUnpack した node-pty の spawn-helper・execFile・
+ログインシェルの PATH 解決）。S36 はその条件を満たさないので、足すと
+`make install-app` の関門が重くなるだけになる。
+
+### ⚠ 逆に、**開発側の分岐は機械が一度も通らない**
+
+`isDev()` が true のときだけ現れる `role: 'reload'` / `role: 'toggleDevTools'` は、
+**`make e2e` でも `make e2e-packaged` でも実行されない**（どちらも
+`ELECTRON_RENDERER_URL` を渡さないため）。この分岐を壊しても全レーンが green のまま
+`make dev` で初めて気づくことになる。**メニューの dev 分岐を触ったら、`make dev` で
+「表示」メニューを開いて目で見ること。**
+
+## OS のフォーカスに依存する判定は E2E から踏めない（Issue #152）
+
+`BrowserWindow.getFocusedWindow()` を見る経路は、**E2E では前提条件を作れない。**
+
+| 測ったこと | 結果 |
+|---|---|
+| 設定ウィンドウを開いた状態の `getFocusedWindow()` | **`null`** |
+| `settingsWin.focus()` を呼んだあと | **`null`** |
+| `app.focus({ steal: true })` を挟んだあと | **`null`** |
+| 各ウィンドウの `isFocused()` / `isVisible()` | **すべて `false`** |
+
+**原因はハーネスの非表示化そのもの。** `e2e/fixtures/harness.ts` は
+`BrowserWindow.prototype.focus` / `show` / `showInactive` / `moveTop` を **noop へ
+差し替え**、全ウィンドウを `hide()` し `dock.hide()` している。開発者のエディタから
+フォーカスを奪わないための意図的な設計で、**外すと E2E 全体の前提が変わる**
+（テストの本数だけウィンドウが前に出る）。
+
+**ここに検査を書くと恒真の関門になる。** 「設定にフォーカスがあるとき本体へ送らない」を
+E2E で書いても、その前提を一度も踏まずに必ず通る。判定は純粋関数へ切り出して
+`test/unit/menu-action-routing.test.ts` で固定した（`isSafeExternalUrl` /
+`describeSpawnError` と同じ扱い）。
+
+**通常起動の Electron では正しく追従することは実測済み**（`parent` 付き子ウィンドウが
+生成時にフォーカスを取り、親の `focus()` で親へ戻る）。**実挙動の最終確認は人力**で、
+ネイティブメニューをマウスで選ぶ必要があるため `agent-browser` でも代替できない
+（`operations/verify-on-device.md` の「マウス操作はページに DOM イベントを届けない」）。
+-> [#195](https://github.com/i-iwnl/ai-terminal/issues/195)
+
 ## かつて盲点だったもの（S23 で塞いだ）
 
 **描画そのもの。** 既定では全シナリオを `--disable-gpu` で起動するため、以前は DOM レンダラ経路しか通っていなかった。DOM レンダラは文字を実 DOM のテキストノードとして描くので、`xterm.css` の読み込みを忘れていても表示されてしまう。実際にその不具合を全22シナリオ green（当時） のまま見逃し、ユーザーが使う `make dev`（WebGL レンダラ）ではターミナルが真っ黒だった。

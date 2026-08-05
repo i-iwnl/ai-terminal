@@ -52,7 +52,16 @@ export function updateCloseTabLabel(paneCount: number): void {
   closeTabMenuItem.label = closeTabLabel(paneCount);
 }
 
-/** 開発起動かどうか。index.ts の判定と揃えてある */
+/**
+ * 開発起動かどうか。index.ts の判定と揃えてある。
+ *
+ * ⚠ **この分岐は検証の非対称を生む**（Issue #145）。E2E は通常レーンも
+ * パッケージ版スモークも `ELECTRON_RENDERER_URL` を渡さないので、**機械が通るのは
+ * 常に false 側だけ**。true 側（`role: 'reload'` / `toggleDevTools`）を壊しても
+ * 全レーンが green のままになる。逆に `make dev` で見ているメニューは
+ * ユーザーが見るメニューではない。手動確認の作法は
+ * `.claude/skills/e2e/reference/limitations.md`。
+ */
 function isDev(): boolean {
   return Boolean(process.env.ELECTRON_RENDERER_URL);
 }
