@@ -110,20 +110,20 @@ describe('buildSpawnPlan（gemini）', () => {
     expect(plan.args).toEqual(['--resume', 'latest']);
   });
 
-  it('gemini には安定したセッション名を付けない（agentSessionId は常に undefined）', () => {
-    // ⚠ **理由は「ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
-    // Gemini CLI 0.53.0 には `--session-id <UUID>` があり、渡した UUID はそのまま
-    // `--list-sessions` 行末の [UUID] に出る。それでも採番しないのは、**閉じたあとに
-    // 選び直す側が成立しない**ため:
-    //   (1) `gemini --list-sessions` は走行中のセッションを一覧に出さない
-    //       （tmux で生き残らせた gemini はまさに走行中なので、履歴から選べない）
-    //   (2) `--list-sessions` の実行自体が走行中セッションの JSONL を削除する
-    // 安定名だけ付けても拾い直せず、「回収できる」という嘘の状態表現を生むだけになる。
-    // 理由の全文は tmux.ts 冒頭コメント、再現手順は
-    // .claude/workspace/issue-180/known-issues.md の 12番。
+  it('gemini にはまだ安定したセッション名を付けていない（agentSessionId は常に undefined）', () => {
+    // これは **characterization**（いまそうなっている挙動をそのまま固定するテスト）。
     //
-    // ⛔ このテストを「反転させれば #155 が終わる」と読まないこと。反転させるには
-    // 上の (1)(2) が解消しているかを実測し直すのが先。
+    // ⚠ **「ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
+    // Gemini CLI 0.53.0 には `--session-id <UUID>` があり、渡した UUID はそのまま
+    // `--list-sessions` 行末の [UUID] に出る。会話が1往復以上あるセッションは
+    // **走行中でも**一覧に正しく出るので、claude と同じ形にできる見込みがある。
+    // **未実装なのでこのテストが緑になっている**、というだけ。
+    //
+    // #155 を実装するときは、このテストを claude 側の3件と対称な形へ書き換える
+    // （新規起動で agentSessionId が返る / resume で履歴側の stableId が入る /
+    //  両者の buildTmuxSessionName が一致する）。
+    // ⛔ そのとき `--resume` に UUID を渡さないこと。**数字始まりの UUID は index として
+    // 解釈され、既存のセッションファイルを失う**（同日実測）。resume の引数は index のまま。
     const newPlan = buildSpawnPlan({ kind: 'gemini', cols: 80, rows: 24 }, { shell: undefined });
     expect(newPlan.agentSessionId).toBeUndefined();
 
