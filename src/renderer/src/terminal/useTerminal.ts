@@ -22,6 +22,7 @@ import type { PaneCellMetrics } from '../tabs/paneTree';
 import { subscribePty } from './ptyStream';
 import { shouldSendResize, type ResizeDims } from './resizeGate';
 import { shouldActivateLink } from './linkActivation';
+import { searchSeedFromSelection } from './searchSeed';
 
 /** unicode-graphemes アドオンが登録する Unicode バージョン文字列 */
 const GRAPHEME_UNICODE_VERSION = '15-graphemes';
@@ -88,7 +89,14 @@ export interface UseTerminalOptions {
    */
   screenReaderMode: boolean;
   onExit: (event: PtyExitEvent) => void;
-  onSearchVisibilityChange: (visible: boolean) => void;
+  /**
+   * 検索バーの表示が変わったときに呼ばれる。
+   *
+   * 開くとき、xterm の選択範囲から引き継ぐ語があれば `seed` に入る（Issue #175）。
+   * **`seed` が無いときは検索欄を触らないこと**（空にするのではない。判定の正は
+   * `searchSeed.ts`）。閉じるときは常に `undefined`。
+   */
+  onSearchVisibilityChange: (visible: boolean, seed?: string) => void;
 }
 
 function toXtermTheme(theme: TerminalTheme): ITheme {
@@ -284,10 +292,24 @@ export function useTerminal(
     term.options.screenReaderMode = options.screenReaderMode;
   }, [options.fontFamily, options.fontSize, options.theme, options.screenReaderMode]);
 
+  /**
+   * 検索バーを開くときに、xterm の選択範囲から引き継ぐ語を決める（Issue #175）。
+   *
+   * 引き継ぐと決めたら `searchTermRef` にも入れる。**`Cmd+G` は入力欄ではなく
+   * この ref を見る**ので、ここを更新しないと「検索欄には語が出ているのに
+   * `Cmd+G` は前回の語を探す」というズレができる。
+   */
+  const seedSearchFromSelection = (): string | undefined => {
+    const seed = searchSeedFromSelection(termRef.current?.getSelection());
+    if (seed === null) return undefined;
+    searchTermRef.current = seed;
+    return seed;
+  };
+
   const openSearchBar = (): void => {
     if (searchOpenRef.current) return;
     searchOpenRef.current = true;
-    optionsRef.current.onSearchVisibilityChange(true);
+    optionsRef.current.onSearchVisibilityChange(true, seedSearchFromSelection());
   };
 
   /**
@@ -323,7 +345,12 @@ export function useTerminal(
     },
     toggleSearch: () => {
       searchOpenRef.current = !searchOpenRef.current;
-      optionsRef.current.onSearchVisibilityChange(searchOpenRef.current);
+      // 開くときだけ選択範囲を引き継ぐ（閉じるときに読むと、閉じた後の状態に
+      // 依存した語が次に開いたとき出てくる）。
+      optionsRef.current.onSearchVisibilityChange(
+        searchOpenRef.current,
+        searchOpenRef.current ? seedSearchFromSelection() : undefined,
+      );
       if (!searchOpenRef.current) searchAddonRef.current?.clearDecorations();
     },
     closeSearch: () => {

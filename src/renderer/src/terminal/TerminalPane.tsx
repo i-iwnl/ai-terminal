@@ -166,7 +166,17 @@ const TerminalPane = forwardRef<TerminalHandle, TerminalPaneProps>(function Term
     theme,
     screenReaderMode,
     onExit,
-    onSearchVisibilityChange: setSearchOpen,
+    // 開くときに選択範囲から引き継ぐ語があれば、検索欄に入れる（Issue #175）。
+    // ⛔ **`seed` が無いときは `searchTerm` を触らない**（空にするのではない）。
+    // 行末の余白を撫でただけで前回の検索語が消えると、`Cmd+F` が
+    // 「前回の語をもう一度探す」ためには使えなくなる。判定の正は `searchSeed.ts`。
+    //
+    // `handle.setSearchTerm` は呼ばない。`useTerminal` 側が同じ値で
+    // `searchTermRef` を更新済み（`Cmd+G` はそちらを見る）。
+    onSearchVisibilityChange: (visible, seed) => {
+      setSearchOpen(visible);
+      if (visible && seed !== undefined) setSearchTerm(seed);
+    },
   });
 
   useImperativeHandle(ref, () => handle, [handle]);
