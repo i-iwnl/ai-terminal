@@ -15,7 +15,9 @@ Issue #180 における変更対象の構造。
 | `src/renderer/src/components/TabBar.tsx` | 変更（引き継ぎ周5-b / 周7 / #180 周8） | `S06` / `S51` / `S54` / `S64` / `S95` |
 | `src/main/menu.ts` | **完了**（#180 周3 = #152 / #145。PR #208 / #209） | 判定は `src/main/menu-action-routing.ts` へ切り出し済み。**この面はいま空いている** |
 | `src/main/menu-action-routing.ts` | 新規（#180 周3 = #152） | `test/unit/menu-action-routing.test.ts` が唯一の関門（**E2E からは踏めない**。`known-issues.md` 6番） |
-| `src/main/window-state.ts` | 変更（#180 周4 = #153） | 既存 `window-state.json` の後方互換 |
+| `src/main/window-state.ts` | **完了**（#180 周4-a = #153。PR #211） | `settings` キーを足して相乗り。**書き手が2つになったので、保存前に相手のキーを読む**（`S98` が固定） |
+| `src/main/accessibility.ts` | **完了**（#180 周4-b = #149。PR #215） | 宛先を**イベントのたびに解決**する形へ（`config.ts` の `broadcastConfig` と同型）。Contract は不変だが `ipc.ts` の doc に配信範囲を明記した |
+| `src/shared/screen-reader-mode.ts` | 新規（#180 周4-b = #149。PR #213 / #214） | 実効値の判定と注記の文言の唯一の正。**本体ウィンドウと設定ウィンドウの2つが読む** |
 | `e2e/` | 追加（周ごと） | `scenarios.yml` との1:1（`make e2e-lint`） |
 
 ---
