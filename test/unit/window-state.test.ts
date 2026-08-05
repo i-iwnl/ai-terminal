@@ -1,12 +1,19 @@
-// ウィンドウ状態の永続化（Issue #119 周5 / #20 の K-9）の純粋関数。
+// ウィンドウ状態の永続化（Issue #119 周5 / #20 の K-9 / #153）の純粋関数。
 //
-// `BrowserWindow` の実挙動（保存・復元）は E2E でもプロセスを跨げないので
-// 検証できない（#15 と同じ制約）。**判定だけを切り出して直接固定する。**
+// **本体ウィンドウ**の保存・復元は E2E でもプロセスを跨げないので検証できない
+// （#15 と同じ制約。復元を見るには再起動が要る）。判定だけを切り出して直接固定する。
+//
+// ⚠ **設定ウィンドウは事情が違う。** 開くたびに `BrowserWindow` を作り直すので、
+// 同じプロセスの中で「動かす -> 閉じる -> 開き直す」を通せる。**そちらは
+// `e2e/specs/S98-settings-window-state.spec.ts` が実挙動で固定している。**
+// ここが押さえるのは、外部 JSON の取り込みと後方互換だけ。
 
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_SETTINGS_WINDOW_HEIGHT,
   DEFAULT_WINDOW_SIZE,
+  coerceSettingsWindowState,
   coerceWindowState,
   isVisibleOnSomeDisplay,
 } from '../../src/main/window-state';
@@ -98,5 +105,47 @@ describe('isVisibleOnSomeDisplay（画面外に開かない）', () => {
         left,
       ]),
     ).toBe(true);
+  });
+});
+
+describe('coerceSettingsWindowState（設定ウィンドウ。Issue #153）', () => {
+  // 保存先は本体と同じ `window-state.json` で、`settings` キーに相乗りする。
+  // **既存のファイルにはこのキーが無い**ので、無い場合が既定の入口になる。
+
+  it('キーが無い（既存の window-state.json）なら既定の高さに落とす', () => {
+    // 後方互換の本体。ここが落ちると、更新した瞬間に設定ウィンドウが開かなくなる。
+    for (const missing of [undefined, null, 'x', 42, []]) {
+      expect(coerceSettingsWindowState(missing).height).toBe(DEFAULT_SETTINGS_WINDOW_HEIGHT);
+      expect(coerceSettingsWindowState(missing).x).toBeUndefined();
+      expect(coerceSettingsWindowState(missing).y).toBeUndefined();
+    }
+  });
+
+  it('正常な値はそのまま通す', () => {
+    expect(coerceSettingsWindowState({ x: 317, y: 211, height: 701 })).toEqual({
+      x: 317,
+      y: 211,
+      height: 701,
+    });
+  });
+
+  it('横幅は取り込まない（minWidth === maxWidth === 520 で仕様として固定）', () => {
+    const state = coerceSettingsWindowState({ x: 1, y: 2, width: 999, height: 640 });
+    expect(state).toEqual({ x: 1, y: 2, height: 640 });
+    expect('width' in state).toBe(false);
+  });
+
+  it('minHeight（360）を下回る高さは採らない', () => {
+    // 下回ると「開いた瞬間に何も操作できないウィンドウ」になる。
+    expect(coerceSettingsWindowState({ height: 10 }).height).toBe(360);
+    expect(coerceSettingsWindowState({ height: 360 }).height).toBe(360);
+    expect(coerceSettingsWindowState({ height: 361 }).height).toBe(361);
+  });
+
+  it('数値でない座標・高さは捨てる（鉄則5）', () => {
+    const state = coerceSettingsWindowState({ x: '317', y: null, height: Number.NaN });
+    expect(state.x).toBeUndefined();
+    expect(state.y).toBeUndefined();
+    expect(state.height).toBe(DEFAULT_SETTINGS_WINDOW_HEIGHT);
   });
 });

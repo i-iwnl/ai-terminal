@@ -16,6 +16,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { IpcSend } from '@shared/ipc';
 import { SURFACE } from '@shared/defaults';
 import { attachExternalLinkHandler } from './external-links';
+import { settingsWindowStateOptions, trackSettingsWindowState } from './window-state';
 
 let settingsWindow: BrowserWindow | null = null;
 
@@ -28,8 +29,11 @@ export function openSettingsWindow(parent: BrowserWindow | null): void {
   }
 
   const win = new BrowserWindow({
+    // 前回の位置と高さ（Issue #153）。**幅より先に展開する。**
+    // `settingsWindowStateOptions()` は幅を返さないが、順序を逆にすると
+    // 「幅も復元する」実装へ変えたときに黙って 520 固定が外れる。
+    ...settingsWindowStateOptions(),
     width: 520,
-    height: 640,
     // 設定は縦に伸びるので高さは変えられるようにし、横幅は固定する。
     minWidth: 520,
     maxWidth: 520,
@@ -54,6 +58,10 @@ export function openSettingsWindow(parent: BrowserWindow | null): void {
   // 本体ウィンドウと同じ逃がし先を設置する（Issue #178 周1）。
   // **生成点ごとに書かず1関数を呼ぶ。** 片方への付け忘れがそのまま穴になる。
   attachExternalLinkHandler(win);
+
+  // 位置と高さの保存（Issue #153）。本体ウィンドウと同じ `window-state.json` に
+  // `settings` キーで相乗りする。横幅は仕様として固定なので保存しない。
+  trackSettingsWindowState(win);
 
   win.once('ready-to-show', () => {
     win.show();
