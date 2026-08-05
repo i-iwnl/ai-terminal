@@ -37,6 +37,14 @@ test('S37 設定でターミナルをスクリーンリーダーから読める�
   const a11y = window.locator('.xterm-accessibility');
   await expect(a11y).toHaveCount(1);
 
+  // 入力用 textarea の名前（Issue #150）。**読み上げモードが有効な経路でも
+  // 名前が付いていること**をここで見る（名前そのものの組み立てと、分割時に
+  // 区別が付くことは `S101` が担当。ここは screenReaderMode が true の側の確認）。
+  await expect(window.locator('textarea.xterm-helper-textarea')).toHaveAttribute(
+    'aria-label',
+    /^ターミナル、/,
+  );
+
   // 出力した文字列が、canvas ではなく DOM のテキストとして読める状態になること。
   // ここが「支援技術から見えるか」の実質的な判定。
   await window.keyboard.type('echo SCREEN_READER_OK\n');
