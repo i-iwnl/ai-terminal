@@ -21,6 +21,18 @@
 
 `WebglAddon` は環境によって初期化に失敗することがある（GPU ドライバやサンドボックス設定に依存）。`useTerminal.ts` では `term.loadAddon(new WebglAddon())` を try/catch で囲み、失敗時は警告ログを出すだけで続行する。ここで例外を投げっぱなしにすると、WebGL が使えない環境でターミナルそのものが起動しなくなる。
 
+## 起動後にコンテキストを失っても DOM レンダラへ落とす（Issue #167）
+
+**初期化に成功しても、あとから失われる。** このアプリは全タブ・全ペインを同時にマウントしたまま（`visibility` だけで切り替える）ので、**WebGL コンテキストがペイン数ぶん同時に生きる**。Chromium の1レンダラあたりの上限は16前後で、超えると古いものから黙って失われる。
+
+**放置したときの壊れ方が特徴的。** キャンバスは真っ白になるが、**a11y の DOM は生き残る**。支援技術には読めていて、**晴眼の利用者にだけ主コンテンツが消える**。
+
+`useTerminal.ts` は `onContextLoss` で `dispose()` する。xterm がコアの既定レンダラ（DOM）へ差し替え、`handleResize` まで行う（`WebglAddon.activate` の `toDisposable`）。**WebGL へ戻す試みはしない**（文字が出続けることが最優先）。
+
+- 発火は `webglcontextlost` の**3秒後**（`webglcontextrestored` を待つ猶予。`WebglRenderer.ts`）。復帰すれば発火しない
+- 関門は **S94**（`WEBGL_lose_context` 拡張で意図的に失わせ、`.xterm-rows` に文字が戻ることを見る）
+- ⛔ **`.xterm-screen` の canvas の1枚目を掴まない。** `.xterm-link-layer`（2D コンテキスト）が先に並んでいる。**WebGL コンテキストを持つ1枚を探し当てる**
+
 ## キーボードショートカットと端末入力の共存
 
 アプリのショートカット判定（[../../../../src/renderer/src/lib/shortcuts.ts](../../../../src/renderer/src/lib/shortcuts.ts) の `matchShortcut()`）は `metaKey`（Cmd）系の組み合わせだけを対象にし、`ctrlKey` / `altKey` が同時に押されている場合は判定自体を行わない。これにより `Ctrl+C` のような端末本来のキー入力を一切妨げない設計になっている。

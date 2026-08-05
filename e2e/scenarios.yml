@@ -1420,3 +1420,24 @@ scenarios:
       「素のクリックで発火しない」が green になり、何も検証しない spec になる）。
       さらに、クリックする前に**その座標で `cursor: pointer` になっていること**を
       assert して、検査が意味を持つ条件を同じ spec の中で固定している。
+
+  # --- WebGL コンテキスト喪失（Issue #179 周4 / 統合元 #167） -----------------
+  - id: S94
+    title: WebGL コンテキストを失ってもターミナルの文字が消えず、DOM レンダラへ落ちる
+    spec: S94-webgl-context-loss.spec.ts
+    readme: false
+    note: >-
+      Issue #167（#134 の design-review で a11y が指摘）。このアプリは**全タブ・
+      全ペインを同時にマウントしたまま**（`visibility` だけで切り替える）ので、
+      **WebGL コンテキストがペイン数ぶん同時に生きる**。Chromium の1レンダラ
+      あたりの上限は16前後で、超えると古いものから黙って失われる。
+      放置すると**そのペインは真っ白なキャンバスになるが、a11y の DOM は生き残る** —
+      支援技術には読めていて、**晴眼の利用者にだけ主コンテンツが消える**。
+      `WebglAddon` は `webglcontextlost` の**3秒後**に `onContextLoss` を発火する
+      （`webglcontextrestored` を待つ猶予。`WebglRenderer.ts`）ので、そこで
+      `dispose()` すると xterm がコアの既定レンダラ（DOM）へ差し替える。
+      S23 と同じく **GPU 有効レーン**（`launchApp({ gpu: true })`）で回す。
+      喪失は `WEBGL_lose_context` 拡張で意図的に起こす。
+      ⛔ **canvas が消えたことだけを見ない**（`dispose()` し忘れても canvas は
+      残らない書き方がありうる）。**文字が DOM に戻ってくること**まで見る。
+      それが利用者にとっての「消えていない」の中身。
