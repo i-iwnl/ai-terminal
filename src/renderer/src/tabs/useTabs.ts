@@ -23,6 +23,8 @@ import {
 } from './paneTree';
 import { findTabByPtyId, tabLeaf, type TabState } from './tabPane';
 import { SHELL_FALLBACK_LABEL } from './paneHeader';
+// 起動失敗の文言は spawnErrorCopy.ts が唯一の正（E2E から踏めないので unit で固定している）。
+import { describeSpawnError } from './spawnErrorCopy';
 import { resolveAgentTabTitle } from './tabTitle';
 
 export type { TabState };
@@ -100,14 +102,6 @@ export interface UseTabsResult {
 // 初期の桁数/行数。マウント後すぐに fitAddon.fit() で実サイズに補正される。
 const INITIAL_COLS = 80;
 const INITIAL_ROWS = 24;
-
-function describeSpawnError(err: unknown, kind: PtyKind): string {
-  const message = err instanceof Error ? err.message : String(err);
-  if (kind !== 'shell' && /not found|enoent|no such file/i.test(message)) {
-    return `${kind} コマンドが見つかりません。PATH を確認してください。`;
-  }
-  return `起動に失敗しました: ${message}`;
-}
 
 export function useTabs(onError: (message: string) => void): UseTabsResult {
   const [tabs, setTabs] = useState<TabState[]>([]);
