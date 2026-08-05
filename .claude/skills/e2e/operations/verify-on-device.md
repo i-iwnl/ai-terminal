@@ -85,10 +85,23 @@ npx agent-browser eval "Array.from(document.querySelectorAll('body *')).filter(e
 ### 4. 後片付け
 
 ```bash
-pkill -f "remote-debugging-port=9222"
+lsof -ti :9222                                   # 残っていれば pid が出る
+pkill -f "Electron.app/Contents/MacOS/Electron"
 ```
 
-**残すとポートを掴んだままになり、次の周の `connect` が古いウィンドウにつながる。**
+⛔ **`pkill -f "remote-debugging-port=9222"` では取り逃す**（プロセス一覧に引数が出ないことがあり、
+実際に**2つ残ったまま**になった。2026-08-06 実測）。**`lsof -ti :9222` が空になるまで確認する。**
+
+**残すと次の起動が静かに壊れる。** ポートを掴まれた側は
+
+```
+bind() failed: Address already in use (48)
+Cannot start http server for devtools.
+```
+
+を吐くが、**アプリ自体は普通に起動する**。そこへ `connect` すると**古いターゲットにつながり**、
+`agent-browser` は「ペインが0枚」「要素が無い」と**嘘の観測結果を返す**（2回誤読した）。
+**実機で「無いはずのないもの」が無いときは、まずポートを疑う。**
 
 ## 何を見るか
 
@@ -111,6 +124,21 @@ pkill -f "remote-debugging-port=9222"
 | Dock の跳ね（`dock.bounce`） | Electron に読み戻す API が無い |
 | ネイティブメニューの accelerator 二重発火 | Main 側の経路で、Renderer には現れない |
 | tmux セッションの生死（#154） | プロセスの話。`tmux ls` / `ps` を別途叩く |
+| **ポインタ由来の振る舞い**（`onMouseMove` / `mousedown` / ドラッグ） | **`agent-browser` のマウス操作はページに DOM イベントを1つも届けない**（下記） |
+| **OS ウィンドウの移動・リサイズ** | ウィンドウを掴む手段が無い。位置や大きさの永続化は E2E（`app.evaluate` の `setBounds`）で見る |
+| **OS フォーカス**（どのウィンドウが前面か） | `document.hasFocus()` が **false のまま**。`osascript` で前に出そうとしても Apple Events の権限が無い（-1743） |
+
+### ⛔ `agent-browser` のマウス操作は DOM イベントを届けない（2回誤読した）
+
+| 試したこと | 結果 |
+|---|---|
+| `mouse move` -> React の `onMouseMove` | **発火しない** |
+| `mouse down` / `up` -> `document` の `mousedown`（capture・素の DOM リスナ） | **発火しない**（プローブで **0回**） |
+| ⚠ しかし `:hover` は正しく付く | `document.querySelectorAll(':hover')` に対象要素が出る |
+| ⚠ Playwright の `hover()` / `click()` | **発火する**（同じ CDP 経由なのに挙動が違う） |
+
+**`:hover` が付くので「効いている」と誤読しやすい。** ポインタ由来の振る舞いを実機で確かめたいときは
+`dispatchEvent(new MouseEvent(..., { bubbles: true }))` で代替する。**キーボード（`agent-browser key`）は問題なく届く。**
 
 ## 記録の作法
 

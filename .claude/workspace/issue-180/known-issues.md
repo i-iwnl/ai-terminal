@@ -164,7 +164,8 @@ P2（ウィンドウメニューのタブ一覧 / タブの並べ替え）・P3�
 ### 対処方針
 
 - [x] マウス由来の確認は `dispatchEvent(new MouseEvent(..., { bubbles: true }))` で代替した
-- [ ] `verify-on-device.md` へ追記するか判断する（**周を増やすなら**）
+- [x] **skill へ反映済み**（2026-08-06）: `.claude/skills/e2e/operations/verify-on-device.md` の
+      「agent-browser でも届かないもの」。⛔ **ここに詳細を書き足さない**（唯一の正は skill 側）
 
 ### 優先度
 
@@ -419,7 +420,8 @@ pkill -f "Electron.app/Contents/MacOS/Electron"  # これで取る
 
 ### 影響範囲
 
-- `.claude/skills/e2e/operations/verify-on-device.md`（**追記の候補**。周を増やすなら）
+- **skill へ反映済み**（2026-08-06）: `.claude/skills/e2e/operations/verify-on-device.md` の
+  「4. 後片付け」。**そこにあった `pkill -f "remote-debugging-port=9222"` 自体が誤りだったので直した**
 
 ### 優先度
 
@@ -427,7 +429,7 @@ P3（回避策あり）
 
 ### ステータス
 
-回避策あり（**記録のみ**）
+**解決**（skill 側の手順を訂正した。⛔ **ここに詳細を書き足さない**）
 
 ---
 

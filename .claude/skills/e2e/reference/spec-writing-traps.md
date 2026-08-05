@@ -148,3 +148,25 @@ PR 11（#96）で `position: absolute` を親の `.notice-list` へ移したと�
 **注入した要素が通常フローに落ちてビューポート外へ出た。**
 
 **`position` を動かすときは、合成 DOM を注入している spec を探すこと。**
+
+## 制御コンポーネントに `check()` / `uncheck()` を使わない
+
+設定ウィンドウのチェックボックスは `config.set` の**往復**で checked が決まる
+（`onChange` -> Main へ IPC -> 返ってきた設定で再描画）。
+
+Playwright の `check()` は**クリック直後に同期で状態を確かめる**ので、往復が終わる前に
+
+```
+locator.check: Clicking the checkbox did not change its state
+```
+
+で落ちる。**実装は正しいのに落ちる**ので、原因を製品側に探しに行くことになる（実際に1度探した）。
+
+```ts
+await checkbox.click();                    // 押して
+await expect(checkbox).toBeChecked();      // 待つ
+```
+
+**同じ形は「値が Main を往復してから画面に返る」入力すべてに当てはまる。**
+`fill()` のあと `expect.poll` で確かめている既存の spec（S31）と同じ理由。
+
