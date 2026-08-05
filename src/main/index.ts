@@ -157,7 +157,7 @@ void app.whenReady().then(async () => {
   registerConfigHandlers();
   registerNotifyHandlers();
   registerAppPathHandlers();
-  registerAccessibilityHandlers(mainWindow);
+  registerAccessibilityHandlers();
   registerSettingsWindowHandlers(() => mainWindow);
   registerMenuHandlers();
 

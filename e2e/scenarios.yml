@@ -1533,3 +1533,19 @@ scenarios:
       WCAG 2.5.3 を割り、かつ2列グリッドの2行目に落ちて崩れる）。
       ⚠ この spec は検知フラグを**開く前**に立てる。開いたまま切り替えても届くこと（追従）は
       `src/main/accessibility.ts` の送信先の話で、そちらは `S100` が見る。
+  - id: S100
+    title: 設定ウィンドウを開いたまま支援技術を検知しても、表示と読み上げ用 DOM が追従する
+    spec: S100-accessibility-broadcast.spec.ts
+    readme: false
+    note: >-
+      Issue #149 の後半 / #180 周4-b。直す前の `registerAccessibilityHandlers(win)` は
+      登録時のウィンドウを閉包で掴み、`accessibility-support-changed` を**本体ウィンドウ
+      1枚にしか送っていなかった**。⭐ **これは表示の追従だけの話ではない。**
+      `index.ts` の `app.on('activate')` が本体ウィンドウを作り直すと、掴んでいるのは
+      最初のウィンドウなので **以後 `isDestroyed()` で永久に early return** し、しかも
+      `ipcMain.handle` は二重登録で throw するので張り直しもできなかった。
+      ⚠ **`S99` とは向きが違う。** あちらは検知フラグを**開く前**に立てて
+      「マウント時の invoke」を見る。こちらは**開いたまま**立てて「イベントが届くか」を見る。
+      片方だけだと、もう片方の経路を壊しても緑のままになる。
+      ⭐ 本体ウィンドウ側の `.xterm-accessibility` も同時に見る（**自動検知の経路には
+      これまで E2E が1本も無かった**。S37 は `config.screenReaderMode: true` の経路だけ）。

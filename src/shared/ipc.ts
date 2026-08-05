@@ -728,7 +728,12 @@ export interface RendererApi {
      * 設定を知らないユーザーでもターミナルが読める状態にするための自動検知に使う。
      */
     accessibilitySupport(): Promise<boolean>;
-    /** 支援技術の起動・終了の購読。購読解除関数を返す */
+    /**
+     * 支援技術の起動・終了の購読。購読解除関数を返す。
+     *
+     * **Main は全ウィンドウへ配信する**（Issue #149）。本体ウィンドウだけでなく
+     * 設定ウィンドウもこれを受け取り、開いたまま支援技術を起動・終了しても追従する。
+     */
     onAccessibilitySupportChanged(listener: (enabled: boolean) => void): () => void;
     /**
      * ドロップされた File の絶対パスを返す。取得できなければ空文字。
