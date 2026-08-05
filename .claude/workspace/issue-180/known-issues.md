@@ -393,3 +393,41 @@ P3
 
 ---
 
+## 11. `9222` を掴んだままの Electron が残ると、次の実機確認が静かに嘘をつく
+
+### 症状
+
+実機確認を続けて行うと、2回目以降の起動で CDP が開けない。
+
+```
+bind() failed: Address already in use (48)
+Cannot start http server for devtools.
+```
+
+⚠ **アプリ自体は起動する**ので気づきにくい。`agent-browser` は**古いターゲットに繋がり**、
+「要素が無い」「ペインが0枚」と**嘘の観測結果を返す**（周5 で2回誤読した）。
+
+### 対処
+
+```bash
+lsof -ti :9222                                   # 残っていれば pid が出る
+pkill -f "Electron.app/Contents/MacOS/Electron"  # これで取る
+```
+
+⛔ **`pkill -f "remote-debugging-port=9222"` では取り逃す**（プロセス名に引数が出ないことがある）。
+実際、周5 では**2つのプロセスが 9222 を掴んだまま残っていた**。
+
+### 影響範囲
+
+- `.claude/skills/e2e/operations/verify-on-device.md`（**追記の候補**。周を増やすなら）
+
+### 優先度
+
+P3（回避策あり）
+
+### ステータス
+
+回避策あり（**記録のみ**）
+
+---
+
