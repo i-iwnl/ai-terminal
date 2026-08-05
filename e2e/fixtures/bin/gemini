@@ -16,13 +16,42 @@ for arg in "$@"; do
     exit 0
   fi
   if [ "$arg" = "--version" ]; then
-    echo "0.0.0-e2e-fake"
+    # ⚠ **本物と同じ形の版番号を返す。** アプリは `gemini --version` を見て
+    # `--session-id` を渡すか決める（src/main/pty/geminiVersion.ts）。
+    # `0.0.0` を返していた頃の形のままだと、E2E では常に「非対応」に倒れて
+    # `--session-id` の経路を1度も踏めない。
+    # AI_TERMINAL_E2E_GEMINI_OLD=1 で、その非対応側（縮退）も試せるようにしてある。
+    if [ "${AI_TERMINAL_E2E_GEMINI_OLD:-}" = "1" ]; then
+      echo "0.52.0-e2e-fake"
+    else
+      echo "0.53.0-e2e-fake"
+    fi
     exit 0
   fi
 done
 
+# **--session-id の値は画面に出さない**（偽 claude と同じ理由。bin/claude を参照）。
+# アプリは起動のたびに randomUUID() で採番するので、そのまま出すと
+# docs/images/ の中身が撮るたびに変わる。**非決定性は撮影時に隠すのではなく発生源で断つ。**
+# 実際の値は fixtures ディレクトリへ書き出し、検証したい spec はそちらを読む。
+ARGS_FOR_DISPLAY="$*"
+SESSION_ID=""
+PREV=""
+for ARG in "$@"; do
+  if [ "$PREV" = "--session-id" ]; then
+    SESSION_ID="$ARG"
+  fi
+  PREV="$ARG"
+done
+if [ -n "$SESSION_ID" ]; then
+  if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ]; then
+    printf '%s' "$SESSION_ID" > "${AI_TERMINAL_E2E_FIXTURES}/gemini-session-id.txt"
+  fi
+  ARGS_FOR_DISPLAY="${ARGS_FOR_DISPLAY//$SESSION_ID/<session-id>}"
+fi
+
 echo "FAKE GEMINI READY"
-echo "ARGS: $*"
+echo "ARGS: $ARGS_FOR_DISPLAY"
 printf 'gemini> '
 
 while IFS= read -r line; do

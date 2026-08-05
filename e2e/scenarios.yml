@@ -1566,3 +1566,43 @@ scenarios:
       **リネーム後に2枚の名前が別々になること**まで見る。
       ⛔ 区切りにコロンを使わないことも固定している（VoiceOver が「コロン」を発話しうる。
       Issue #149 の design-review で確定した判断）。
+
+  - id: S102
+    title: gemini の tmux セッション名が新規起動と履歴 resume で安定する
+    spec: S102-gemini-session-id.spec.ts
+    readme: false
+    note: >-
+      Issue #155 / #180 周 6'。gemini にも `--session-id` を渡して、tmux セッション名を
+      claude と対称にした。**非対称の全文は `src/main/pty/tmux.ts` 冒頭が唯一の正**
+      （ここには書き写さない。書き写すと片方だけ古くなる）。
+      見るのは3つ: (1) 新規起動で採番した UUID が `--session-id` に渡り、tmux 名が
+      `aiterm-<その UUID>` になる、(2) 履歴 resume で履歴側の内部 UUID から同じ形の名前が
+      作られる、(3) CLI が 0.53.0 未満なら `--session-id` を渡さない（縮退）。
+      ⭐ **形（`aiterm-<UUID っぽい何か>`）だけを見ない。** それだと ptyId 由来のままでも
+      通ってしまい、この Issue の中核（名前がセッションに対して安定か）を1つも見ていない。
+      採番された実際の値と**文字列一致**で比べる。
+      ⛔ resume の引数が index のままで、UUID を渡していないことも同じ spec で見る
+      （数字始まりの UUID は index として解釈され、既存のセッションファイルを失う。
+      2026-08-06 実測 / 2回再現）。
+      ⚠ **「実際に同じセッションへ戻れた」ことはここでは証明できない**（偽 tmux は
+      `-A` の分岐を再現しない。`e2e/fixtures/bin/tmux` が自分でその限界を書いている）。
+      証明できるのは「同じ名前が2回作られる」まで。
+      2件目のテストは `geminiOldVersion: true` で縮退側を踏む。判定そのものの桁ごとの
+      固定は `test/unit/gemini-version.test.ts`。
+
+  - id: S103
+    title: CLI が古ければ gemini に --session-id を渡さない
+    spec: S103-gemini-session-id-fallback.spec.ts
+    readme: false
+    note: >-
+      Issue #155 / #180 周 6' の**縮退側**（S102 の対）。未知のフラグを渡された gemini は
+      `Unknown arguments: …` と usage を出して**即座に終了する**（2026-08-06 実測）。
+      tmux でラップされていると利用者からは**「開いた瞬間に終了したペイン」**にしか見えず、
+      `describeSpawnError()` は ENOENT しか説明できないので原因に辿り着けない。
+      そこで `gemini --version` を1回だけ見て、0.53.0 未満なら `--session-id` を渡さない。
+      偽 gemini は `geminiOldVersion: true`（env `AI_TERMINAL_E2E_GEMINI_OLD`）で
+      `--version` を 0.52.0 に落とす。
+      ⭐ **「渡さない」だけを見ても足りない**（何も起動しない実装でも通る）。
+      縮退の結果として **tmux セッション名が ptyId 由来になる**ところまで見る。
+      判定そのものの桁ごとの固定は `test/unit/gemini-version.test.ts`
+      （⛔ 版が読み取れなければ非対応に倒す、という**外れ方の向き**もそこで固定している）。

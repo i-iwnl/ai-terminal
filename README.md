@@ -576,9 +576,11 @@ Gemini CLI は起動するたびに「中身の無いセッション」を掃除
 
 この設定（内部では tmux でラップしている）を有効にした状態でタブを閉じると、tmux の**クライアント**だけが終了し、サーバ側のセッションと中の `claude` / `gemini` プロセスは生き残る（`pty.kill()` が殺せるのはクライアントまで。2026-08-03、tmux 3.7b で実測）。`tmux ls` にセッションが残り、`ps` で `claude` / `gemini` のプロセスも見える状態になる。
 
-**claude は履歴から resume すれば同じプロセスに戻れるが、gemini は戻れない。** tmux セッション名は claude の場合 `--session-id` / `--resume` に渡した安定したセッション ID から作るため、サイドバーの「履歴」から resume すれば同じ tmux セッションに `-A` でアタッチし直せる。gemini は生き残ったプロセスが孤立する。心当たりがあれば `tmux ls` / `tmux kill-session -t <名前>` で手動終了する。
+**claude / gemini とも、履歴から resume すれば同じプロセスに戻れる。** tmux セッション名はアプリが採番した安定したセッション ID から作るため、サイドバーの「履歴」から resume すれば同じ tmux セッションに `-A` でアタッチし直せる。心当たりのないセッションが残っていたら `tmux ls` / `tmux kill-session -t <名前>` で手動終了する。
 
-> **gemini が戻れないのは、いまそう作っていないから**（2026-08-06 / Gemini CLI 0.53.0 で実測）。CLI 側の制約ではない。`gemini --session-id <UUID>` は存在し、会話が始まっているセッションは走行中でも履歴一覧に出るので、claude と同じ形にできる見込みがある（[#155](https://github.com/i-iwnl/ai-terminal/issues/155)）。
+> **gemini が戻れるのは Gemini CLI 0.53.0 以降**（`--session-id` が入った版。[#155](https://github.com/i-iwnl/ai-terminal/issues/155)）。それより古いと、アプリは `--session-id` を渡さずに起動する（渡すと CLI が usage を出して即終了してしまうため）。その場合の gemini は従来どおり、閉じると戻れない。
+>
+> ⚠ **一度も話しかけていない gemini タブは、0.53.0 以降でも戻れない。** 会話が0往復のセッションは `gemini --list-sessions` に出ないので、履歴から選べない（下のトラブルシューティングを参照）。
 
 > **「claude なら戻れる」は、名前が一致することまでしか確かめていない**（`test/unit/pty-plan.test.ts`）。**実際に閉じる前の画面が戻るかは未実測**（実機でしか確かめられない。手順は `.claude/skills/e2e/reference/limitations.md` の「実機確認の手順書」）。
 

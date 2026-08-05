@@ -38,6 +38,8 @@ const CWD_POLL_INTERVAL_MS = 2_000;
 export interface SpawnOpts {
   resumeSessionId?: string;
   geminiResumeTarget?: string;
+  /** gemini の内部 UUID。⛔ `--resume` には渡らない（用途は src/shared/ipc.ts が唯一の正）。 */
+  geminiAgentSessionId?: string;
   cwd?: string;
   /** 指定があればタブタイトルにそのまま使う（履歴からの再開で、履歴一覧の表示名を引き継ぐ用途）。 */
   title?: string;
@@ -189,7 +191,10 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       kind: PtyKind,
       title: string,
       cwd: string | undefined,
-      resumeOpts?: Pick<SpawnOpts, 'resumeSessionId' | 'geminiResumeTarget'>,
+      resumeOpts?: Pick<
+        SpawnOpts,
+        'resumeSessionId' | 'geminiResumeTarget' | 'geminiAgentSessionId'
+      >,
     ): Promise<PaneLeaf | null> => {
       const req: SpawnPtyRequest = {
         kind,
@@ -198,6 +203,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
         rows: INITIAL_ROWS,
         resumeSessionId: resumeOpts?.resumeSessionId,
         geminiResumeTarget: resumeOpts?.geminiResumeTarget,
+        geminiAgentSessionId: resumeOpts?.geminiAgentSessionId,
       };
       try {
         const result = await window.api.pty.spawn(req);

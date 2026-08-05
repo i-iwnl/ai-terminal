@@ -32,6 +32,21 @@ export interface SpawnPtyRequest {
    * kind === 'gemini' のときのみ意味を持つ。
    */
   geminiResumeTarget?: string;
+  /**
+   * gemini を resume するときの、そのセッションの内部 UUID
+   * （`SessionHistoryEntry.stableId` と同じ値）。kind === 'gemini' のときのみ意味を持つ。
+   *
+   * **用途は tmux セッション名を安定させることだけ**（`SpawnPtyResult.agentSessionId`
+   * に入り、`buildTmuxSessionName()` が使う）。
+   *
+   * ⛔ **`--resume` に渡してはいけない。** `--resume` は index を受け取る
+   * インターフェースで、**数字始まりの UUID（全体の約 62%）は index として解釈され、
+   * 別セッションを作ったうえで既存のセッションファイルを失う**（2026-08-06 実測 /
+   * Gemini CLI 0.53.0 / 2回再現）。`--resume` へ渡すのは常に `geminiResumeTarget` のほう。
+   * **だからこのフィールドの名前に `Resume` を入れていない**（Issue #155 の design-review で
+   * 「`geminiResumeStableId` は `--resume` に渡す値と読まれる」と2人が指摘した）。
+   */
+  geminiAgentSessionId?: string;
 }
 
 /** PTY 起動の結果 */
@@ -39,14 +54,23 @@ export interface SpawnPtyResult {
   /** アプリ内でこの PTY を識別する ID */
   ptyId: string;
   /**
-   * claude を起動した場合の、そのセッションを一意に識別する ID。
-   * 新規起動時は --session-id で渡した UUID、resume 時は --resume に渡した
-   * 既存のセッション ID がそのまま入る（resume で新たに採番することはない）。
-   * これを使って claude agents --json の結果と突き合わせたり、tmux セッション名
-   * （src/main/pty/tmux.ts）を組み立てたりする。
+   * その CLI セッションを一意に識別する安定 ID。
+   * 新規起動時は --session-id で渡した UUID、resume 時は既存のセッション ID が
+   * そのまま入る（resume で新たに採番することはない）。
+   * つまり「同じ CLI セッションに対しては常に同じ値になる」キー。
+   *
+   * **用途は2つあり、claude と gemini で数が違う。**
+   * 1. tmux セッション名（src/main/pty/tmux.ts）の種。**claude / gemini とも**
+   * 2. `claude agents --json` の結果との突き合わせ。**claude のときだけ**
+   *    （gemini には実行中タスク一覧に相当するコマンドが無い。src/main/agents/gemini.ts）
+   *
    * resume でも埋まるため、Renderer 側では resume で開いたタブもタスク一覧の行から
    * 選べる（src/renderer/src/App.tsx の canFocusTaskTab が参照する）。
-   * gemini には安定した ID が無いため常に undefined。
+   *
+   * ⚠ **gemini で undefined になる場合がある**（Issue #155）。CLI が 0.53.0 未満で
+   * `--session-id` を渡せないとき、または resume 元の履歴から UUID を取れなかったとき。
+   * そのとき tmux セッション名は ptyId 由来になり、閉じると回収できない
+   * （Renderer 側はこの undefined を「回収できない」の判定に使う。closeTabCopy.ts）。
    */
   agentSessionId?: string;
   /** tmux でラップして起動したか */

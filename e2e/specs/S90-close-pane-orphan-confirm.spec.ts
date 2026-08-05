@@ -23,16 +23,13 @@ test.afterEach(async () => {
  * 閉じると、**確認も通知も一切出ないまま、アプリからは二度と回収できない
  * tmux セッションとプロセスが残る**。
  *
- * gemini が回収できない理由は `src/main/pty/tmux.ts` が唯一の正。
- * tmux セッション名は `buildTmuxSessionName(plan.agentSessionId ?? ptyId)` で
- * 決まり、安定した `agentSessionId` を持つのは claude だけ。gemini は
- * 使い捨ての `ptyId` に頼るので、閉じた時点で名前を二度と再現できない。
+ * 回収できるかの条件は `src/main/pty/tmux.ts` 冒頭が唯一の正。
  *
- * ⚠ **「gemini に ID を採番できないから」ではない**（Issue #155 / 2026-08-06 実測）。
- * `gemini --session-id <UUID>` は存在し、claude と同じ形にできる見込みがある。
- * **いま回収できないのは未実装だから。** この spec は現状の挙動を固定しているので、
- * **#155 が実装されたら前提ごと作り直すこと**（gemini が resumable 側に入り、
- * 1ペインでの確認は出なくなる）。
+ * ⚠ **この spec は「まだ切り替えていない分類」を固定している。** Issue #155 で
+ * gemini にも安定した `agentSessionId` が入った（S102）が、`closeTabCopy.ts` の
+ * 分類はまだ `ptyKind === 'claude'` を見ているので、gemini は orphaned のまま。
+ * **分類を `agentSessionId` の有無へ切り替える PR で、この spec ごと作り直す**
+ * （gemini が resumable 側に入り、1ペインでの確認は出なくなる）。
  *
  * **`Cmd+W` は `Cmd+Option+W` より押しやすく、実運用ではこちらが主要な経路になる。**
  *

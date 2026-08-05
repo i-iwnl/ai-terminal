@@ -29,6 +29,7 @@ import { shouldBounceOnExit } from '@shared/pty-exit';
 import { getConfig } from '../config';
 import { markOwnedSession } from '../agents/poller';
 import { readProcessCwd } from './cwd';
+import { geminiSupportsSessionId } from './geminiVersion';
 import {
   isTmuxAvailable,
   buildTmuxSessionName,
@@ -43,17 +44,34 @@ import {
 /** spawn プランの結果。tmux でラップする前の「素のコマンド」を表す。 */
 export interface SpawnPlan extends CommandSpec {
   /**
-   * claude セッションを一意に識別する ID。
-   * 新規起動時は --session-id で自前採番した UUID、resume 時は --resume に渡した
-   * 既存のセッション ID がそのまま入る（resume で新たに採番することはない）。
-   * つまり「同じ claude セッションに対しては常に同じ値になる」キー。
+   * その CLI セッションを一意に識別する ID。
+   * 新規起動時は --session-id で自前採番した UUID、resume 時は既存のセッション ID が
+   * そのまま入る（resume で新たに採番することはない）。
+   * つまり「同じ CLI セッションに対しては常に同じ値になる」キー。
    * tmux セッション名（buildTmuxSessionName）はこれを使って組み立てるため、
    * ここが安定していることで Cmd+W で閉じたタブに resume で戻れる
    * （tmux new-session -A が既存セッションに当たる）。
-   * gemini には安定した ID が無いため常に undefined。
+   * 意味の全文は SpawnPtyResult.agentSessionId（src/shared/ipc.ts）が唯一の正。
    */
   agentSessionId?: string;
 }
+
+/**
+ * 起動時に判定して渡す、CLI 側の対応状況。
+ * **純粋関数（buildSpawnPlan / buildGeminiPlan）から副作用を追い出すためだけの器。**
+ * 実測は geminiSupportsSessionId()（src/main/pty/geminiVersion.ts）が行う。
+ */
+export interface CliFeatures {
+  /** gemini が `--session-id` を受け付けるか（Gemini CLI 0.53.0 以降）。 */
+  geminiSessionId: boolean;
+}
+
+/**
+ * ⛔ **既定は「対応していない」。** 渡し忘れたときに倒れる先を、
+ * 「tmux セッション名が安定しない（従来どおり）」側にする。
+ * 逆に倒すと、古い CLI で**新規タブが起動直後に死ぬ**（geminiVersion.ts 冒頭を参照）。
+ */
+const NO_CLI_FEATURES: CliFeatures = { geminiSessionId: false };
 
 /**
  * ログインシェルの起動コマンドを組み立てる。
@@ -90,12 +108,38 @@ export function buildClaudePlan(
   return { command: 'claude', args: ['--session-id', agentSessionId], agentSessionId };
 }
 
-/** gemini の起動コマンドを組み立てる。 */
-export function buildGeminiPlan(req: Pick<SpawnPtyRequest, 'geminiResumeTarget'>): SpawnPlan {
+/**
+ * gemini の起動コマンドを組み立てる。**claude と対称**（Issue #155）。
+ *
+ * 新規起動は自前で UUID を採番して `--session-id` に渡し、同じ値を agentSessionId に返す。
+ * resume は履歴側の内部 UUID（geminiAgentSessionId）をそのまま agentSessionId に返す
+ * （resume で採番し直さない。claude と同じ理由）。
+ *
+ * ⛔ **`--resume` に渡すのは常に index（geminiResumeTarget）。UUID を渡さない。**
+ * 数字始まりの UUID は index として解釈され、別セッションを作ったうえで
+ * 既存のセッションファイルを失う（2026-08-06 実測 / 2回再現）。
+ *
+ * ⚠ **`--session-id` は CLI が 0.53.0 以降のときだけ渡す**（features.geminiSessionId）。
+ * それ未満に渡すと usage を出して即終了する = 開いた瞬間に死んだペインになる。
+ * 渡せないときは agentSessionId も返さない（tmux 名は ptyId 由来 = 従来どおりの縮退）。
+ */
+export function buildGeminiPlan(
+  req: Pick<SpawnPtyRequest, 'geminiResumeTarget' | 'geminiAgentSessionId'>,
+  generateId: () => string = randomUUID,
+  features: CliFeatures = NO_CLI_FEATURES,
+): SpawnPlan {
   if (req.geminiResumeTarget) {
-    return { command: 'gemini', args: ['--resume', req.geminiResumeTarget] };
+    return {
+      command: 'gemini',
+      args: ['--resume', req.geminiResumeTarget],
+      agentSessionId: req.geminiAgentSessionId,
+    };
   }
-  return { command: 'gemini', args: [] };
+  if (!features.geminiSessionId) {
+    return { command: 'gemini', args: [] };
+  }
+  const agentSessionId = generateId();
+  return { command: 'gemini', args: ['--session-id', agentSessionId], agentSessionId };
 }
 
 /** kind に応じて起動プランを組み立てる（tmux ラップ前）。 */
@@ -103,6 +147,7 @@ export function buildSpawnPlan(
   req: SpawnPtyRequest,
   config: Pick<AppConfig, 'shell'>,
   generateId?: () => string,
+  features: CliFeatures = NO_CLI_FEATURES,
 ): SpawnPlan {
   switch (req.kind) {
     case 'shell':
@@ -110,7 +155,7 @@ export function buildSpawnPlan(
     case 'claude':
       return buildClaudePlan(req, generateId);
     case 'gemini':
-      return buildGeminiPlan(req);
+      return buildGeminiPlan(req, generateId, features);
     default: {
       // req.kind は SpawnPtyRequest['kind'] で網羅済みのはずだが、
       // 将来的な型追加や不正な値に備えて防御的に扱う。
@@ -177,6 +222,8 @@ function isSpawnPtyRequest(value: unknown): value is SpawnPtyRequest {
   if (v.cwd !== undefined && typeof v.cwd !== 'string') return false;
   if (v.resumeSessionId !== undefined && typeof v.resumeSessionId !== 'string') return false;
   if (v.geminiResumeTarget !== undefined && typeof v.geminiResumeTarget !== 'string') return false;
+  if (v.geminiAgentSessionId !== undefined && typeof v.geminiAgentSessionId !== 'string')
+    return false;
   return true;
 }
 
@@ -241,7 +288,11 @@ export function registerPtyHandlers(): void {
       const config = getConfig();
       const ptyId = randomUUID();
 
-      const basePlan = buildSpawnPlan(req, config);
+      // CLI 側の対応状況はここで1度だけ解決して純粋関数へ渡す
+      // （geminiSupportsSessionId 自身が結果をキャッシュする）。
+      const basePlan = buildSpawnPlan(req, config, undefined, {
+        geminiSessionId: geminiSupportsSessionId(),
+      });
       const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId);
 
       const cwd = req.cwd || homedir();
