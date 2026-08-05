@@ -68,6 +68,7 @@ import { previousActiveTab, recordActiveTab, type TabHistory } from './tabs/tabH
 import CloseTabConfirmDialog from './tabs/CloseTabConfirmDialog';
 import {
   closeTabCopy,
+  closedTabAnnouncement,
   needsCloseConfirmation,
   summarizeClosingPanes,
   type CloseTabCopy,
@@ -141,8 +142,16 @@ export default function App(): ReactElement {
   // タブごと閉じたのか」（提案 E'）・「タスク一覧のクリックで対象ペインが
   // 既にアクティブだった」（U4）にも広がったため、変数名を汎用の
   // statusAnnouncement にした（region 自体（.app-status、常に1個）は増やさない）。
-  const [statusAnnouncement, setStatusAnnouncement] = useState('');
-  const announce = useCallback((message: string) => setStatusAnnouncement(message), []);
+  // ⛔ **同じ文字列を連続で渡しても発火するようにする**（Issue #155 の design-review）。
+  // 素の `useState<string>` だと、同じ値では React が再レンダーを打ち切り、
+  // **DOM のテキストが変化しないので live region が鳴らない**。
+  // gemini タブを2枚続けて閉じると2枚目が読み上げられなかった。
+  // seq を増やして要素ごと差し替える（描画側で key に使う）。
+  const [statusAnnouncement, setStatusAnnouncement] = useState({ text: '', seq: 0 });
+  const announce = useCallback(
+    (message: string) => setStatusAnnouncement((prev) => ({ text: message, seq: prev.seq + 1 })),
+    [],
+  );
   // OS の支援技術（VoiceOver 等）が動いているか。
   // 動いていれば設定に関わらず screenReaderMode を有効にする。
   // 設定の存在を知らないユーザーでもターミナルが読める状態になるのが狙い。
@@ -297,10 +306,13 @@ export default function App(): ReactElement {
 
   // タブを実際に閉じる（確認が要らない、または確認済みの経路）。
   // 閉じたあと role="status" で結果を告知する（design-review.md 提案 E'）。
+  // ⭐ **内訳は閉じる前に数える**（閉じたあとでは leaf がもう無い）。
   const performCloseTab = useCallback(
     async (tabId: string): Promise<void> => {
+      const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
+      const summary = summarizeClosingPanes(tab ? flattenPaneTree(tab.layout) : []);
       await tabsApiRef.current.closeTab(tabId);
-      announce('タブを閉じました');
+      announce(closedTabAnnouncement(summary));
     },
     [announce],
   );
@@ -563,9 +575,23 @@ export default function App(): ReactElement {
           }
           // 結果（ペインを閉じたのか、タブごと閉じたのか）を role="status" で
           // 告知する（design-review.md 提案 E'。視覚以外で区別する手段が
-          // 現状ゼロだった）。
+          // 現状ゼロだった）。**閉じたペインが生き残るなら、そこまで言う**
+          // （Issue #155。確認ダイアログを消した分の受け皿）。
+          const closingPane = closingTab
+            ? flattenPaneTree(closingTab.layout).find((l) => l.paneId === closingTab.activePaneId)
+            : undefined;
+          const paneSummary = summarizeClosingPanes(closingPane ? [closingPane] : []);
           void api.closeActivePane().then((outcome) => {
-            announce(outcome.kind === 'tab-closed' ? 'タブを閉じました' : 'ペインを閉じました');
+            if (outcome.kind === 'tab-closed') {
+              announce(closedTabAnnouncement(paneSummary));
+              return;
+            }
+            const persistent = paneSummary.persistentResumable + paneSummary.persistentOrphaned;
+            announce(
+              persistent > 0
+                ? closedTabAnnouncement(paneSummary).replace('タブを閉じました', 'ペインを閉じました')
+                : 'ペインを閉じました',
+            );
           });
           break;
         }
@@ -1101,8 +1127,17 @@ export default function App(): ReactElement {
         分割表示（Issue #56）でペインが複数になっても、この告知は
         タブ単位のまま1個で足りる（ペイン単位の告知は将来の PR の対象）。
       */}
-      <div className="app-status" role="status" style={STATUS_REGION_STYLE}>
-        {statusAnnouncement}
+      {/*
+        key に seq を使って、**同じ文言を連続で告知しても要素が差し替わる**ようにする。
+        同じ文字列のままだと DOM のテキストが変化せず live region が鳴らない（Issue #155）。
+      */}
+      <div
+        key={statusAnnouncement.seq}
+        className="app-status"
+        role="status"
+        style={STATUS_REGION_STYLE}
+      >
+        {statusAnnouncement.text}
       </div>
       {closeConfirmation && (
         // 2つ以上の PTY を一度に閉じるときの確認（Issue #56 PR 8・design-review.md

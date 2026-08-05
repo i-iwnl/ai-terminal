@@ -19,19 +19,40 @@
 // ⭐ **条件の全文は src/main/pty/tmux.ts 冒頭が唯一の正**（ここに書き写さない。
 // 書き写すと片方だけ古くなって「どちらが正か分からない」状態になる。実際に一度そうなった）。
 //
-// ⚠ **この判定はまだ `ptyKind === 'claude'` を見ている。** Issue #155 で gemini にも
-// 安定した ID を入れたので、次の PR で `agentSessionId` の有無へ切り替える。
-// **その PR まではここを触らない**（分類の変更と ID の導入を同じ diff に混ぜない）。
+// ⭐ **分類は `ptyKind` ではなく `agentSessionId` の有無で行う**（Issue #155）。
+// プロバイダ名で分けると、同じ CLI でも縮退している場合（CLI が古い / 履歴から UUID を
+// 取れなかった）を取りこぼす。**「再開先を特定できる鍵を持っているか」が唯一の条件。**
+
+import type { PtyKind } from '@shared/ipc';
 
 import type { PaneLeaf } from './paneTree';
+import { providerLabel } from './tabProvider';
 
 /** 閉じようとしているタブの中身を、閉じた結果ごとに数えたもの。 */
 export interface ClosingPaneSummary {
   /** 閉じると本当に終了する PTY の本数（tmux でラップされていないもの）。 */
   exiting: number;
-  /** 閉じても動き続け、履歴から再開できるもの（tmux + claude）。 */
+  /** 閉じても動き続け、履歴から再開できるもの（tmux + agentSessionId あり）。 */
   persistentResumable: number;
-  /** 閉じても動き続けるが、アプリからは二度と拾い直せないもの（tmux + gemini）。 */
+  /**
+   * 再開できるものの内訳（プロバイダごとの件数）。
+   *
+   * **なぜ内訳が要るか。** 行き先である履歴パネルは Claude / Gemini のトグルで分かれており
+   * **既定は Claude**（`HistoryList.tsx`）。「履歴から再開できます」とだけ言うと、
+   * Gemini を閉じた人は自分のセッションが無い画面を見て「嘘だった」と判断する。
+   * かつ**タブのプロバイダ帯は2型色覚で 1.04 = 区別不能**なので、
+   * **画面に残っている手がかりは語だけ**（design-review で3人が独立に指摘）。
+   */
+  resumableByProvider: Partial<Record<PtyKind, number>>;
+  /**
+   * 閉じても動き続けるが、アプリからは二度と拾い直せないもの
+   * （tmux でラップされたが `agentSessionId` を持たない）。
+   *
+   * ⚠ **到達する。** `SessionHistoryEntry.stableId` は optional で、CLI が古いときや
+   * 履歴から UUID を取れなかったときに `agentSessionId` は undefined になる
+   * （条件の全文は `src/main/pty/tmux.ts` 冒頭）。**未知は必ずこちら側に落とす**
+   * のがこの分類の要点で、「回収できる」と嘘をつくより安全側。
+   */
   persistentOrphaned: number;
 }
 
@@ -50,17 +71,25 @@ export interface CloseTabCopy {
  * 失われるものが無いため。
  */
 export function summarizeClosingPanes(leaves: readonly PaneLeaf[]): ClosingPaneSummary {
-  const summary: ClosingPaneSummary = { exiting: 0, persistentResumable: 0, persistentOrphaned: 0 };
+  const summary: ClosingPaneSummary = {
+    exiting: 0,
+    persistentResumable: 0,
+    resumableByProvider: {},
+    persistentOrphaned: 0,
+  };
   for (const leaf of leaves) {
     if (leaf.exit) continue;
     if (!leaf.wrappedInTmux) {
       summary.exiting += 1;
-    } else if (leaf.ptyKind === 'claude') {
+    } else if (leaf.agentSessionId !== undefined) {
+      // ⭐ **肯定条件でしか resumable に入れない。** 未知は必ず orphaned 側に落ちる。
       summary.persistentResumable += 1;
+      const kind = leaf.ptyKind ?? 'shell';
+      summary.resumableByProvider[kind] = (summary.resumableByProvider[kind] ?? 0) + 1;
     } else {
-      // gemini（および将来ラップ対象が増えた場合）。shell は tmux ラップされない
+      // tmux でラップされたのに再開の鍵が無いもの。shell は tmux ラップされない
       // （maybeWrapWithTmux が kind === 'shell' で早期 return する）ので、
-      // ここに来るのは実質 gemini だけ。
+      // ここに来るのは claude / gemini の縮退した起動だけ。
       summary.persistentOrphaned += 1;
     }
   }
@@ -69,6 +98,27 @@ export function summarizeClosingPanes(leaves: readonly PaneLeaf[]): ClosingPaneS
 
 /** 設定パネル（SettingsPanel.tsx）に出ている語と揃える。別の言い回しを発明しない。 */
 const PERSIST_SETTING_LABEL = 'アプリを閉じても AI の作業を続ける';
+
+/** 内訳の並び順。件数で並べ替えると、同じ構成でも表示が揺れて読み上げが安定しない。 */
+const PROVIDER_ORDER: readonly PtyKind[] = ['claude', 'gemini', 'shell'];
+
+/**
+ * 「N 件は履歴から再開できます」の1文を、プロバイダの内訳つきで組み立てる。
+ *
+ * **行き先まで言い切る。** 履歴パネルは Claude / Gemini のトグルで分かれており
+ * 既定は Claude なので、「履歴から再開できます」だけだと Gemini を閉じた人が
+ * 空の一覧を見て「嘘だった」と判断する（design-review で3人が独立に指摘）。
+ */
+function buildResumeNote(summary: ClosingPaneSummary): string {
+  const parts = PROVIDER_ORDER.filter((kind) => (summary.resumableByProvider[kind] ?? 0) > 0).map(
+    (kind) => `${providerLabel(kind)} ${summary.resumableByProvider[kind] ?? 0} 件`,
+  );
+  // 内訳が取れないとき（将来 ptyKind が増えた等）は件数だけで縮退する。
+  if (parts.length === 0) {
+    return `${summary.persistentResumable} 件はサイドバーの「履歴」から再開できます。`;
+  }
+  return `${parts.join('と')}はサイドバーの「履歴」から再開できます。履歴はプロバイダごとに分かれているので、パネル上部で切り替えてください。`;
+}
 
 /**
  * 内訳から文言を決める。
@@ -91,14 +141,21 @@ export function closeTabCopy(summary: ClosingPaneSummary): CloseTabCopy {
     };
   }
 
+  // ⛔ **プロバイダ名を決め打ちしない。** 直す前は `（gemini）` / `（claude）` を
+  // リテラルで埋めていたが、内訳を数えていないのに名前を書いていたため、
+  // **混在すると必ず嘘になる**（claude 1 + gemini 1 のタブを Cmd+Option+W で閉じる形）。
+  //
+  // ⛔ **括弧を使わない。** VoiceOver は句読点の読み上げ設定によって「かっこ」を発話しうるし、
+  // 「なし」設定だと語の境界が消える。**設定に依存しない解**として括弧を外す
+  // （#150 でコロンを外したのと同じ判断）。
+  //
+  // 表記は `providerLabel()` から引く（`Claude` / `Gemini`）。利用者が探しに行く先の画面
+  // （履歴パネルのトグル）に書いてある綴りと一致させる。
   const orphanNote =
     summary.persistentOrphaned > 0
-      ? `そのうち ${summary.persistentOrphaned} 件（gemini）は、アプリから開き直す手段がありません。続けたい作業なら、このタブは閉じないでください。`
+      ? `そのうち ${summary.persistentOrphaned} 件は、アプリから開き直せません。続けたい作業なら、このタブは閉じないでください。`
       : '';
-  const resumeNote =
-    summary.persistentResumable > 0
-      ? `${summary.persistentResumable} 件（claude）はサイドバーの「履歴」から再開できます。`
-      : '';
+  const resumeNote = summary.persistentResumable > 0 ? buildResumeNote(summary) : '';
 
   // 全部が生き残る場合は「終了します」と言ってはいけない。
   if (summary.exiting === 0) {
@@ -127,6 +184,32 @@ export function closeTabCopy(summary: ClosingPaneSummary): CloseTabCopy {
       .join(''),
     confirmLabel: 'タブを閉じる',
   };
+}
+
+/**
+ * **閉じた直後の告知**（Issue #155 の design-review。4人が「確認を消すなら受け皿が要る」）。
+ *
+ * 確認ダイアログは「閉じても走り続けている」ことを伝える**唯一の面**だった。
+ * gemini が回収可能になって確認が出なくなると、**その情報の総量がゼロになる**。
+ * 視覚利用者は「タブが消えた」を目で確認できるが、**支援技術利用者にはその『眺める』が無い**
+ * ので、消しっぱなしにすると**この変更で得をするのが晴眼キーボード利用者だけ**になる。
+ *
+ * ダイアログ（同意を求める割り込み）から通知（事後の告知）への**降格**であって、削除ではない。
+ *
+ * ⛔ **通知バナーと live region の両方に同じ文を流さない**（VoiceOver が2回読む）。
+ * 呼び出し側は `announce` だけに渡すこと。
+ */
+export function closedTabAnnouncement(summary: ClosingPaneSummary): string {
+  const persistent = summary.persistentResumable + summary.persistentOrphaned;
+  if (persistent === 0) return 'タブを閉じました';
+  const notes = [
+    `タブを閉じました。AI の作業 ${persistent} 件は終了せず残っています。`,
+    summary.persistentResumable > 0 ? buildResumeNote(summary) : '',
+    summary.persistentOrphaned > 0
+      ? `そのうち ${summary.persistentOrphaned} 件は、アプリから開き直せません。`
+      : '',
+  ];
+  return notes.filter(Boolean).join('');
 }
 
 /**
