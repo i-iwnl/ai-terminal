@@ -61,3 +61,36 @@ export function taskRowActionLabel(action: TaskRowAction): string | undefined {
       return undefined;
   }
 }
+
+/**
+ * 「タブに戻せる AI」の節に出すセッションを選ぶ。
+ *
+ * **出すのは「まだどこにも出ていないもの」だけ。** 二重に並べない。
+ *
+ * - `claude agents --json` が返した行（`tasks`）に既にあるものは**上の状態グループに
+ *   出ている**（周12 で押せるようにした）。ここには出さない
+ * - いまタブが開いているものは、そこへ行けばよい。ここには出さない
+ *
+ * ⭐ **残るのは主に gemini。** gemini はタスク一覧に1件も出ない（Main が
+ * `claude agents --json` しか叩かない）ので、**会話0往復で `--list-sessions` にも
+ * 出ないセッションは、この節が唯一の導線**になる（known-issues 12番）。
+ */
+export function selectRecoverableSessions<T extends { agentSessionId: string }>(
+  liveSessions: readonly T[],
+  taskSessionIds: ReadonlySet<string>,
+  openTabSessionIds: ReadonlySet<string>,
+): T[] {
+  return liveSessions.filter(
+    (s) => !taskSessionIds.has(s.agentSessionId) && !openTabSessionIds.has(s.agentSessionId),
+  );
+}
+
+/** 表示名。⛔ `pane_title` を使わない（機種依存文字が混ざり、内容で毎秒変わる）。 */
+export function liveSessionDisplayName(agentSessionId: string): string {
+  return `セッション ${agentSessionId.slice(0, 8)}`;
+}
+
+/** プロバイダの表示語。⛔ 帯の色で分けない（2型色覚で区別不能。design-rules）。 */
+export function liveSessionProviderLabel(provider: 'claude' | 'gemini'): string {
+  return provider === 'claude' ? 'Claude' : 'Gemini';
+}

@@ -1630,3 +1630,15 @@ scenarios:
       先に assert する。これが無いと「常に押せる」実装でも緑になる。
       ⚠ 偽 tmux は一覧の中身をフィクスチャから返すだけで、`-A` で実際にアタッチできるかは
       再現しない。「本当に元の画面へ戻る」は実機確認でしか出ない。
+  - id: S105
+    title: tmux で生きている gemini が「タブに戻せる AI」の節に出る
+    spec: S105-recoverable-section.spec.ts
+    readme: false
+    note: >-
+      #180 周13。**known-issues 12番の本体。** gemini はタスク一覧に1件も出ない
+      （Main は `claude agents --json` しか叩かない）ので、**会話0往復で
+      `gemini --list-sessions` にも出ないセッションはアプリ内に導線が1つも無かった**。
+      tmux には `aiterm-<uuid>` として残っているのでそこから拾う。
+      ⭐ **否定側を同じ spec で見る**（tmux が空なら節ごと出ない / タスク一覧に既にある行は
+      重複させない）。これが無いと「常に節を出す」「全部出す」実装でも緑になる。
+      ⛔ 見出しの「実行中」は design-rules の禁止語、「回収」は内部語なので画面に出さない。

@@ -39,6 +39,7 @@ function request(): void {
       // 差し替える（鉄則5: 縮退表示。取得できていた情報を無かったことにしない）。
       setSnapshot({
         tasks: snapshot.tasks,
+        liveSessions: snapshot.liveSessions,
         error: err instanceof Error ? err.message : String(err),
         fetchedAt: Date.now(),
       });

@@ -948,6 +948,13 @@ export default function App(): ReactElement {
     [focusPaneLocation],
   );
 
+  // 「タブに戻せる AI」の行クリック。**生きている tmux セッションへアタッチする**。
+  // provider は Main が起動コマンドから確定した値（`LiveAgentSession.provider`）を
+  // そのまま使う。⛔ セッション名から推測しない。
+  const recoverSession = useCallback((agentSessionId: string, provider: 'claude' | 'gemini') => {
+    void tabsApiRef.current.newAgentTab(provider, { attachAgentSessionId: agentSessionId });
+  }, []);
+
   // タスク一覧の空状態にある「起動」ボタン（Issue #20 I-3）。Cmd+Shift+C /
   // メニューの「新しい Claude タブ」と同じ操作を、初見ユーザーが説明書を読まずに
   // 踏める唯一の画面上の導線にする。
@@ -997,6 +1004,7 @@ export default function App(): ReactElement {
         collapsed={sidebarCollapsed}
         onFocusTaskTab={focusTaskTab}
         canFocusTaskTab={canFocusTaskTab}
+        onRecoverSession={recoverSession}
         onResumeHistory={resumeHistory}
         onLaunchClaude={launchClaude}
         scopeAgentsToCwd={config.scopeAgentsToCwd}

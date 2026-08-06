@@ -6,7 +6,13 @@
 // 一覧には「このアプリ」バッジ付きで出ているのに、そこからは戻れない。
 
 import { describe, expect, it } from 'vitest';
-import { resolveTaskRowAction, taskRowActionLabel } from '../../src/renderer/src/sidebar/taskRow';
+import {
+  liveSessionDisplayName,
+  liveSessionProviderLabel,
+  resolveTaskRowAction,
+  selectRecoverableSessions,
+  taskRowActionLabel,
+} from '../../src/renderer/src/sidebar/taskRow';
 
 const owned = { ownedByApp: true };
 
@@ -60,5 +66,59 @@ describe('taskRowActionLabel', () => {
     for (const action of ['focus', 'recover', 'none'] as const) {
       expect(taskRowActionLabel(action) ?? '').not.toContain('回収');
     }
+  });
+});
+
+// 「タブに戻せる AI」の節に何を出すか（#180 周13 PR 3）。
+describe('selectRecoverableSessions', () => {
+  const live = [
+    { agentSessionId: 'a', provider: 'claude' as const },
+    { agentSessionId: 'b', provider: 'gemini' as const },
+    { agentSessionId: 'c', provider: 'gemini' as const },
+  ];
+
+  // 上の状態グループに既に出ているものを、この節にも出すと二重になる。
+  it('タスク一覧に既にある行は出さない', () => {
+    expect(
+      selectRecoverableSessions(live, new Set(['a']), new Set()).map((s) => s.agentSessionId),
+    ).toEqual(['b', 'c']);
+  });
+
+  it('いまタブが開いているものは出さない（そこへ行けばよい）', () => {
+    expect(
+      selectRecoverableSessions(live, new Set(), new Set(['b'])).map((s) => s.agentSessionId),
+    ).toEqual(['a', 'c']);
+  });
+
+  it('両方に該当するものも1回だけ落ちる', () => {
+    expect(
+      selectRecoverableSessions(live, new Set(['a']), new Set(['a', 'b'])).map(
+        (s) => s.agentSessionId,
+      ),
+    ).toEqual(['c']);
+  });
+
+  // ⭐ gemini はタスク一覧に1件も出ないので、全部ここに残るのが正しい。
+  it('gemini は素通しで残る（タスク一覧に出ないため）', () => {
+    const geminis = live.filter((s) => s.provider === 'gemini');
+    expect(selectRecoverableSessions(geminis, new Set(), new Set())).toEqual(geminis);
+  });
+
+  it('全部出ていれば空になる（節ごと消える）', () => {
+    expect(selectRecoverableSessions(live, new Set(['a', 'b', 'c']), new Set())).toEqual([]);
+  });
+});
+
+describe('liveSessionDisplayName / liveSessionProviderLabel', () => {
+  // ⛔ pane_title を使わない（`✳` は機種依存文字で、内容によって毎秒変わる）。
+  it('セッション ID の先頭8桁で名乗る（既存の言い回しに合わせる）', () => {
+    expect(liveSessionDisplayName('36ad708d-8af3-4c0f-a4b7-6ce4c5a87bc2')).toBe(
+      'セッション 36ad708d',
+    );
+  });
+
+  it('プロバイダは語で出す（色で分けない）', () => {
+    expect(liveSessionProviderLabel('claude')).toBe('Claude');
+    expect(liveSessionProviderLabel('gemini')).toBe('Gemini');
   });
 });

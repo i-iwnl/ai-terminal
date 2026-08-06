@@ -11,7 +11,7 @@
 //   あなたの番になった時刻（yourTurnSince）からの経過にする。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentTask, AgentTasksEvent } from '@shared/ipc';
+import type { AgentTask, AgentTasksEvent, LiveAgentSession } from '@shared/ipc';
 // 状態の意味・グループ分け・見出し文言の単一の正。表示・通知・Dock バッジが同じ判定を使う。
 import {
   toTaskState,
@@ -20,7 +20,13 @@ import {
   TASK_STATE_LABEL,
 } from '@shared/agent-status';
 import { basename, formatElapsed, formatWaitingSince } from '../lib/format';
-import { resolveTaskRowAction, taskRowActionLabel } from './taskRow';
+import {
+  liveSessionDisplayName,
+  liveSessionProviderLabel,
+  resolveTaskRowAction,
+  selectRecoverableSessions,
+  taskRowActionLabel,
+} from './taskRow';
 // タスク一覧の購読はここで直接 window.api.agents を呼ばず、共有ハブに委ねる
 // （App.tsx の Cmd+J も同じスナップショットを見る必要があるため。lib/agentTasksStore.ts 参照）。
 import { subscribeAgentTasks, recheckAgentTasks } from '../lib/agentTasksStore';
@@ -45,6 +51,8 @@ export interface TaskListProps {
    * 既定は false = マシン全体で、その事実がこれまで画面のどこにも出ていなかった。
    */
   scopedToCwd: boolean;
+  /** 「タブに戻せる AI」の行を押したとき。tmux セッションへアタッチするタブを開く。 */
+  onRecoverSession: (agentSessionId: string, provider: 'claude' | 'gemini') => void;
 }
 
 export default function TaskList({
@@ -52,8 +60,10 @@ export default function TaskList({
   canFocus,
   onLaunchClaude,
   scopedToCwd,
+  onRecoverSession,
 }: TaskListProps) {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
+  const [liveSessions, setLiveSessions] = useState<LiveAgentSession[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [errorKind, setErrorKind] = useState<AgentTasksEvent['errorKind']>(undefined);
   const [now, setNow] = useState(() => Date.now());
@@ -85,6 +95,7 @@ export default function TaskList({
   const applyEvent = useCallback(
     (e: AgentTasksEvent, opts?: { manualRecheck?: boolean }): void => {
       setTasks(e.tasks);
+      setLiveSessions(e.liveSessions ?? []);
       setError(e.error);
       setErrorKind(e.errorKind);
 
@@ -147,6 +158,13 @@ export default function TaskList({
   // 「あなたの番」を先頭に固定し、未知の状態は3つ目のグループとして末尾に置く
   // （「あなたの番」に混ぜない。CLI が新しい status 値を返し始めても誤って人間を急かさないため）。
   const groups = groupTasksForDisplay(tasks);
+
+  // 上の状態グループにも、開いているタブにも無いものだけを別の節へ回す。
+  const recoverable = selectRecoverableSessions(
+    liveSessions,
+    new Set(tasks.map((t) => t.sessionId)),
+    new Set(liveSessions.filter((s) => canFocus(s.agentSessionId)).map((s) => s.agentSessionId)),
+  );
 
   const renderTask = (task: AgentTask) => {
     // 押せるか / 押すと何が起きるかの唯一の正は resolveTaskRowAction（taskRow.ts）。
@@ -248,8 +266,11 @@ export default function TaskList({
           **0件でも消さない**（空状態でスコープが見えることが一番重要）。
           既定（scopeAgentsToCwd: false）はマシン全体で、他アプリから起動した
           claude も混ざる。その事実がこれまで画面のどこにも出ていなかった。 */}
+      {/* ⛔ **プロバイダ名を焼き込まない。** 下の「タブに戻せる AI」節には
+          gemini も入る（tmux から取るので `claude agents --json` に依らない）ので、
+          「…の Claude」と名乗ると、その節が出た瞬間に見出しが嘘になる。 */}
       <h2 className="panel-scope">
-        {scopedToCwd ? 'このフォルダの Claude' : 'このマシン全体の Claude'}
+        {scopedToCwd ? 'このフォルダの AI' : 'このマシン全体の AI'}
       </h2>
       {errorKind === 'not-found' ? (
         // Issue #20 I-3: 「claude が PATH に無い」専用の空状態パネル。
@@ -289,6 +310,49 @@ export default function TaskList({
           <ul>{group.tasks.map((task) => renderTask(task))}</ul>
         </div>
       ))}
+      {/* 「タブに戻せる AI」= tmux で生きているが、タスク一覧にもタブにも無いもの。
+          ⛔ **状態グループ（あなたの番 / 作業中 / 不明）に混ぜない。** tmux からは
+          CLI の状態が取れないので全部「不明」に落ち、design-rules が
+          「CLI が新しい status を返し始めたとき」用に予約している語が潰れる。
+          ⛔ 見出しに「実行中」を使わない（禁止語。「コマンド実行中」と衝突）。
+          **0件のときは節ごと出さない**（常設すると空状態が2段になる）。 */}
+      {recoverable.length > 0 && (
+        <div className="task-group">
+          <h3 className="task-group__heading">タブに戻せる AI {recoverable.length}件</h3>
+          <ul>
+            {recoverable.map((session) => {
+              const name = liveSessionDisplayName(session.agentSessionId);
+              const providerLabel = liveSessionProviderLabel(session.provider);
+              const dir = basename(session.cwd);
+              // 色（帯・ドット）では分けない。プロバイダは語で伝える。
+              const label = [providerLabel, name, dir, 'タブに戻す']
+                .filter((part): part is string => part !== undefined && part !== '')
+                .join('、');
+              return (
+                <li className="task-item task-item--unknown" key={session.agentSessionId}>
+                  <button
+                    type="button"
+                    className="task-item__row"
+                    aria-label={label}
+                    onClick={() => onRecoverSession(session.agentSessionId, session.provider)}
+                  >
+                    <span className="task-item__status-dot" aria-hidden="true" />
+                    <div className="task-item__body">
+                      <div className="task-item__name">
+                        <span className="task-item__state">{providerLabel}</span>
+                        <span>{name}</span>
+                      </div>
+                      {dir !== undefined && dir !== '' && (
+                        <div className="task-item__meta">{dir}</div>
+                      )}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
