@@ -23,8 +23,26 @@
 #   挙動は無い）。
 # - `-A`（同名セッションがあれば attach、無ければ new-session）の分岐は
 #   検証していない。常に「新規にコマンドを exec する」動きしかしない。
+#
+# list-sessions は上記と別に扱う（下を参照）。**一覧の中身はフィクスチャが決める**ので、
+# 「アプリが一覧をどう読むか」は検証できるが、「実際にアタッチできるか」は検証できない。
 
 set -uo pipefail
+
+# list-sessions: 生きているセッションの一覧。
+# アプリ（poller.ts -> tmuxSessions.ts）が3秒ごとに叩く。
+# ${AI_TERMINAL_E2E_FIXTURES}/tmux-live-sessions.txt があればその中身を返し、
+# 無ければ本物の tmux が「サーバが動いていない」ときと同じく非ゼロで終わる。
+# spec 側はこのファイルを書くことで「セッションが生き残っている」状態を作れる。
+if [ "${1:-}" = "list-sessions" ]; then
+  live="${AI_TERMINAL_E2E_FIXTURES:-}/tmux-live-sessions.txt"
+  if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ] && [ -f "$live" ]; then
+    cat "$live"
+    exit 0
+  fi
+  echo "no server running" >&2
+  exit 1
+fi
 
 session=""
 args=("$@")

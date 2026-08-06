@@ -157,6 +157,20 @@ export interface AgentTask {
   /** このアプリ自身が起動したセッションか */
   ownedByApp: boolean;
   /**
+   * タブを閉じた（またはアプリを再起動した）あとでも、**そのセッションに戻せるか**。
+   *
+   * `aiterm-<sessionId>` の tmux セッションが生きていれば true。
+   * `tmux new-session -A` が既存セッションにアタッチするので、**新しいプロセスを
+   * 作らずに元の画面へ戻れる**（`src/main/pty/tmuxSessions.ts`）。
+   *
+   * ⭐ **なぜ要るか。** タブの構成はどこにも永続化していないので、アプリを再起動すると
+   * 走っているセッションは全部「一覧には出るが押せない行」になっていた。
+   *
+   * ⛔ **未取得・失敗は false に倒す。** 「生きていないのに押せる」（押すと新しい
+   * プロセスが生える）側へ倒さないため。
+   */
+  recoverable?: boolean;
+  /**
    * 「あなたの番」になった時刻（epoch ミリ秒）。
    *
    * `src/main/agents/poller.ts` が busy -> 非busy の遷移を検知した瞬間の
