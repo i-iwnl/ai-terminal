@@ -30,6 +30,7 @@ import { getConfig } from '../config';
 import { markOwnedSession } from '../agents/poller';
 import { readProcessCwd } from './cwd';
 import { geminiSupportsSessionId } from './geminiVersion';
+import { mergeUserEnv, resolveLoginShellEnv } from './shellEnv';
 import {
   isTmuxAvailable,
   buildTmuxSessionName,
@@ -305,7 +306,13 @@ export function registerPtyHandlers(): void {
       });
       // env は tmux ラップより先に組み立てる。tmux は子プロセスへ env を引き継がないので、
       // node-pty に渡すだけでは AI ペインに1つも届かない（tmux.ts の wrapCommandWithTmux）。
-      const env = buildPtyEnv(process.env, app.getVersion());
+      //
+      // GUI 起動の .app は ~/.zshrc の値を1つも持たないため、ログインシェルから
+      // 取り直して重ねる（1度だけ・失敗したら現状維持。理由は shellEnv.ts）。
+      const env = buildPtyEnv(
+        mergeUserEnv(process.env, resolveLoginShellEnv(config.shell)),
+        app.getVersion(),
+      );
       const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId, env);
 
       const cwd = req.cwd || homedir();
