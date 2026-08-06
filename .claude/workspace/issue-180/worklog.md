@@ -1310,4 +1310,75 @@ E2E ハーネスは `useTmux: false` 固定でこの分岐を踏めないので�
 
 ---
 
+## 2026-08-06 - #180 周11-b: 周11 が入れた env 転送が `ps` に秘密を漏らしていた（PR #230）
+
+**周12 の計画ゲートで tmux の情報源を調べていたら、自分が数時間前に入れた PR #226 の欠陥が出た。**
+
+### 何が漏れていたか
+
+PR #226 は `tmux new-session -A -s <name> -- /usr/bin/env K=V ... <command>` の形で env を渡していた。
+**`env` は exec するので env 自身の argv は消えるが、node-pty が起動した tmux クライアントは
+タブが開いている間ずっと生き、その argv に全ての値が残る。**
+
+```
+$ ps -eo command | grep new-session
+tmux new-session -A -s aiterm-… -- /usr/bin/env SECRET_TOKEN=hunter3xyz … gemini …
+```
+
+**同じマシンの誰からでも読める。** 周11 で env を「届くようにした」結果、
+**利用者の rc に書かれた API キー等（実際に `~/.zshenv` の `NOTION_API_KEY` が対象だった）が
+`ps` に載る**状態を作っていた。
+
+### 直し方
+
+`update-environment` に**変数名だけ**を足す（`ensureTmuxUpdateEnvironment`）。
+tmux はそこに挙がっている名前を**クライアントの env から**読むので、**値は一度も argv を通らない**。
+既存の値は消さずに追記する（利用者が自分で設定していることがある）。
+
+⛔ **`tmux new-session -e K=V` も使えない**（値が argv に載る。加えて 3.2+ 限定で `-A` では無視される）。
+
+### ⛔ 測り方を間違えると「漏れていない」と誤判定する
+
+最初 `tmux new-session -d`（デタッチ）で測って **漏れなし**と出た。
+`-d` はクライアントを残さないので argv も残らない。**アプリと同じく pty でアタッチした
+クライアントを残して測って初めて漏れが見えた**。
+⭐ **「安全側に出た測定結果」こそ、前提が実態と合っているかを疑うこと。**
+
+### なぜ周11 の時点で気づけなかったか
+
+`ps` を見たのは**プロセスの親子関係を確かめるとき**だけで、**自分が argv に何を載せたかは見ていない**。
+⭐ **argv に値を載せる変更をしたら、`ps -eo command` を1回見る。** 検査も入れた
+（`wrapCommandWithTmux` の結果に `=` が1つも含まれないこと / 名前だけを返すこと）。
+
+### 検証
+
+| 関門 | 結果 |
+|---|---|
+| `make check` | **680 green** |
+| `make e2e` | **111 passed / 0 failed**（flaky 3） |
+| `make e2e-lint` | **PASS=823 FAIL=0** |
+| 撮影レーン | `docs/images/` は**1枚も変わらず** |
+| 実機確認 | launchd 起動相当で `Signed in with Google`（env は届いたまま）。**`ps` の tmux クライアント行に値が1つも無い**ことを確認 |
+
+### 赤くなることの確認（6通り）
+
+値を argv に戻す / 名前ではなく値を返す / 既存の `update-environment` を捨てる /
+重複を除かない / 空白・`=` を含むキーを落とさない / 除外リストを空にする。
+
+### 次に再開するとき最初に読むべきこと
+
+- **周11-b は完了。次は周12**（`known-issues.md` 12番。P1・方針確定済み）
+- ⭐ **周12 の材料は揃っている**（この周の調査で判明）:
+  - `tmux list-sessions -F '#{session_name}|#{session_created}|#{session_attached}'` で
+    生きているセッションが取れる
+  - ⭐ **`#{pane_start_command}` に起動コマンドが丸ごと残る**ので、
+    **provider（claude / gemini）と UUID を推測なしで判別できる**
+  - `#{pane_title}` には CLI 側のタイトル（`✳ Claude Code` 等）が入る
+  - **回収に `--resume` は要らない。** `tmux new-session -A -s aiterm-<uuid>` が
+    生きているセッションにアタッチするので、既存の resume 経路がそのまま使える。
+    **足りないのは「一覧に出す（発見する）」ところだけ**
+- ⚠ **周12 は画素が動くので、計画確定前に `/design-review`**（起動条件は design-review の SKILL.md が正）
+
+---
+
 <!-- 以降、作業のたびにセクションを追記 -->

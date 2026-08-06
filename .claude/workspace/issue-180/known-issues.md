@@ -609,8 +609,15 @@ AI ペインだけが取り残されていた**という非対称。
 
 ### 影響範囲
 
-- **解決済み**（PR #226 / #227 / #228）。`wrapCommandWithTmux` が `/usr/bin/env K=V ...` を挟み、
-  `shell-path.ts` が起動時1回のプローブで PATH と env の両方を取る
+- **解決済み**（PR #226 / #227 / #228 / #230）。`ensureTmuxUpdateEnvironment` が tmux の
+  `update-environment` に変数名を足し、`shell-path.ts` が起動時1回のプローブで PATH と env の
+  両方を取る
+- ⛔ **PR #226 の形（`-- /usr/bin/env K=V ...`）は秘密を漏らしたので #230 で差し替えた。**
+  `env` は exec するので env 自身の argv は消えるが、**node-pty が起動した tmux クライアントは
+  タブが開いている間ずっと生き、その argv に全ての値が残る**。`ps -eo command` で同じマシンの
+  誰からでも読めた（利用者の rc の API キー等が載る）。
+  ⚠ **`-d` で作ったセッションでは漏れない**（クライアントが残らない）ので、
+  **アプリと同じく pty でアタッチしたクライアントを残して測ること**
 - skill へ反映済み: `/terminal` の `pty-pitfalls.md`、`/ai-cli` の `cli-flags.md`
 - README のトラブルシューティングに利用者向けの切り分け手順を追加
 

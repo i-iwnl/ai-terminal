@@ -85,62 +85,110 @@ export function buildTmuxSessionName(idPart: string): string {
 const TMUX_ENV_DENYLIST: readonly string[] = ['TMUX', 'TMUX_PANE', '_'];
 
 /**
- * 環境変数を `/usr/bin/env K=V ...` の引数列に変換する。
+ * tmux に「クライアントから引き継げ」と伝える変数名の一覧を作る。
  *
- * `undefined` の値は「設定しない」を意味するので落とす。`=` を含むキーは
- * `env` が解釈できない形になるため落とす（外部から来た値で argv を壊さない）。
+ * ⛔ **返すのは名前だけ。値は絶対に含めない。** 値を argv に載せると
+ * `ps` から誰にでも読める（下の `buildTmuxUpdateEnvironment` のコメント参照）。
+ *
+ * `undefined` の値は「設定しない」を意味するので落とす。`=` や空白を含むキーは
+ * tmux のオプション値（空白区切り）を壊すので落とす。
  */
-export function buildTmuxEnvArgs(env: Record<string, string | undefined>): string[] {
-  const args: string[] = [];
+export function buildTmuxEnvNames(env: Record<string, string | undefined>): string[] {
+  const names: string[] = [];
   for (const key of Object.keys(env).sort()) {
-    const value = env[key];
-    if (value === undefined) continue;
-    if (key === '' || key.includes('=')) continue;
+    if (env[key] === undefined) continue;
+    if (key === '' || /[\s=]/.test(key)) continue;
     if (TMUX_ENV_DENYLIST.includes(key)) continue;
-    args.push(`${key}=${value}`);
+    names.push(key);
   }
-  return args;
+  return names;
 }
 
 /**
- * コマンドを `tmux new-session -A -s <name> -- /usr/bin/env K=V ... <command> ...` でラップする。
+ * `update-environment` に設定する値（空白区切りの変数名の並び）を組み立てる。
+ *
+ * ⭐ **なぜ値ではなく名前を渡すのか。** tmux はサーバ・クライアント型で、
+ * セッションの中で走るプロセスが継ぐのは**サーバ起動時に凍結された env**。
+ * クライアント側から引き継がれるのは `update-environment` に挙がっている名前だけで、
+ * **値は node-pty がクライアントへ渡した env から tmux が読む**。
+ * つまり値は一度も argv を通らない。
+ *
+ * ⛔ **以前は `-- /usr/bin/env K=V ... <command>` でラップしていたが、これは
+ * 秘密を漏らす（2026-08-06 実測）。** `env` は exec するので env 自身の argv は
+ * 消えるが、**node-pty が起動した tmux クライアントはタブが開いている間ずっと生き、
+ * その argv に全ての値が残る**。`ps -eo command` で同じマシンの誰からでも読めた:
+ *
+ * ```
+ * tmux new-session -A -s probeSec3 -- /usr/bin/env SECRET_TOKEN=hunter3xyz ... sleep 60
+ * ```
+ *
+ * ⚠ **利用者の rc に書かれた API キー等がそのまま載る。** 周11 でこの形を入れて
+ * しまい、同じ周の中で気づいて差し替えた。
+ *
+ * ⛔ **`tmux new-session -e K=V` も同じ理由で使えない**（値が argv に載る。加えて
+ * tmux 3.2 以降にしか無く、`-A` で既存セッションに当たると無視されることも実測済み）。
+ *
+ * 既存の値は消さずに温存する。利用者が自分で設定している場合があり、こちらの都合で
+ * 上書きしてよいものではない。
+ */
+export function buildTmuxUpdateEnvironment(
+  existing: readonly string[],
+  names: readonly string[],
+): string {
+  const merged: string[] = [];
+  for (const name of [...existing, ...names]) {
+    const trimmed = name.trim();
+    if (trimmed.length > 0 && !merged.includes(trimmed)) merged.push(trimmed);
+  }
+  return merged.join(' ');
+}
+
+/**
+ * コマンドを `tmux new-session -A -s <name> -- <command> ...` でラップする。
  * 副作用の無い純粋関数。tmux が使えるかどうかの判断は呼び出し側（isTmuxAvailable）に委ねる。
  *
- * ⭐ **なぜ env を引数として渡すのか。** `tmux new-session` に渡した環境変数は
- * **子プロセスに届かない**。tmux はサーバ・クライアント型で、セッションの中で走る
- * プロセスが継ぐのは**サーバ起動時に凍結された env** だからで、クライアント側の env から
- * 引き継がれるのは `update-environment`（既定で DISPLAY / SSH_* など13個）に
- * 挙がっているものだけ。**`buildPtyEnv` が組み立てた値は1つも届いていなかった。**
- *
- * 実害（2026-08-06 実測 / tmux 3.7b・Gemini CLI 0.54.0・実アプリを agent-browser で観測）:
- * `~/.zshrc` で定義された `GOOGLE_CLOUD_PROJECT` が届かず、Gemini タブが
- * `IneligibleTierError: This client is no longer supported for Gemini Code Assist for
- * individuals` で**認証できなかった**。設定「アプリを閉じても AI の作業を続ける」を
- * 切る（= tmux ラップをやめる）と同じアプリ・同じ env で `Signed in with Google` になる、
- * という非対称で切り分けた。
- *
- * ⛔ **`tmux new-session -e K=V` は使わない。** tmux 3.2 以降にしか無いうえ、
- * **`-A` で既存セッションに当たったときは無視される**（実測: 2回目の `-e` を
- * 反映せず1回目の値が残る）。`/usr/bin/env` でラップすれば版に依存せず、
- * `-A` の意味（既存があればアタッチ、そのときコマンド自体が無視される）とも整合する。
+ * ⚠ **環境変数はここに載せない。** tmux は node-pty が渡した env を子プロセスへ
+ * 引き継がないが、その解決は `update-environment`（`buildTmuxUpdateEnvironment` /
+ * `ensureTmuxUpdateEnvironment`）で行う。**値を argv に載せると `ps` から読める**ので、
+ * ここは名前も値も持たない（理由の全文は `buildTmuxUpdateEnvironment` のコメント）。
  */
-export function wrapCommandWithTmux(
-  sessionName: string,
-  spec: CommandSpec,
-  env: Record<string, string | undefined> = {},
-): CommandSpec {
+export function wrapCommandWithTmux(sessionName: string, spec: CommandSpec): CommandSpec {
   return {
     command: 'tmux',
-    args: [
-      'new-session',
-      '-A',
-      '-s',
-      sessionName,
-      '--',
-      '/usr/bin/env',
-      ...buildTmuxEnvArgs(env),
-      spec.command,
-      ...spec.args,
-    ],
+    args: ['new-session', '-A', '-s', sessionName, '--', spec.command, ...spec.args],
   };
+}
+
+let updateEnvironmentApplied = false;
+
+/**
+ * tmux サーバの `update-environment` に、アプリが渡したい変数名を追記する。
+ *
+ * これを呼んでおくと、以後 `new-session` で作る（または `-A` でアタッチする）
+ * セッションに、**node-pty がクライアントへ渡した env の値**が引き継がれる。
+ * 値は argv を通らないので `ps` から見えない。
+ *
+ * 起動のたびに呼ぶのは無駄なので1度だけ実行する（`isTmuxAvailable()` と同じ形）。
+ * 失敗しても例外を投げない。**env が届かないだけで、タブは従来どおり開く**。
+ */
+export function ensureTmuxUpdateEnvironment(env: Record<string, string | undefined>): void {
+  if (updateEnvironmentApplied) return;
+  updateEnvironmentApplied = true;
+  try {
+    const shown = spawnSync('tmux', ['show-options', '-gv', 'update-environment'], {
+      encoding: 'utf8',
+    });
+    // 取れなければ空から始める（既存を消すわけではなく、tmux 既定のまま追記できないだけ）。
+    const existing =
+      shown.status === 0 && shown.stdout ? shown.stdout.split('\n').filter((l) => l.trim()) : [];
+    const value = buildTmuxUpdateEnvironment(existing, buildTmuxEnvNames(env));
+    spawnSync('tmux', ['set-option', '-g', 'update-environment', value], { stdio: 'ignore' });
+  } catch {
+    // env が届かないだけで済ませる。ここでアプリを止めない。
+  }
+}
+
+/** テスト用に「1度だけ」の状態を捨てる。 */
+export function resetTmuxUpdateEnvironmentForTest(): void {
+  updateEnvironmentApplied = false;
 }

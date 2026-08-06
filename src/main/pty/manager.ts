@@ -35,6 +35,7 @@ import { loginShellEnv } from '../shell-path';
 import {
   isTmuxAvailable,
   buildTmuxSessionName,
+  ensureTmuxUpdateEnvironment,
   wrapCommandWithTmux,
   type CommandSpec,
 } from './tmux';
@@ -274,8 +275,12 @@ export function maybeWrapWithTmux(
   if (!config.useTmux) return { plan, wrappedInTmux: false };
   if (!tmuxAvailable) return { plan, wrappedInTmux: false };
 
+  // ⛔ env は argv に載せない。tmux サーバへ「この名前はクライアントから引き継げ」と
+  // 伝えるだけにする（値を argv に載せると ps から読める。tmux.ts のコメント参照）。
+  ensureTmuxUpdateEnvironment(env);
+
   const sessionName = buildTmuxSessionName(plan.agentSessionId ?? ptyId);
-  const wrapped = wrapCommandWithTmux(sessionName, plan, env);
+  const wrapped = wrapCommandWithTmux(sessionName, plan);
   return { plan: { ...wrapped, agentSessionId: plan.agentSessionId }, wrappedInTmux: true };
 }
 

@@ -6,7 +6,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildPtyEnv, buildSpawnPlan, maybeWrapWithTmux } from '../../src/main/pty/manager';
-import { buildTmuxEnvArgs, buildTmuxSessionName, wrapCommandWithTmux } from '../../src/main/pty/tmux';
+import {
+  buildTmuxEnvNames,
+  buildTmuxSessionName,
+  buildTmuxUpdateEnvironment,
+  wrapCommandWithTmux,
+} from '../../src/main/pty/tmux';
 
 describe('buildSpawnPlan（shell）', () => {
   it('設定のシェルをログインシェルとして起動する', () => {
@@ -291,84 +296,79 @@ describe('buildPtyEnv', () => {
 // node-pty に env を渡すだけでは AI ペインに1つも届かない。実際に `~/.zshrc` 由来の
 // `GOOGLE_CLOUD_PROJECT` が落ち、Gemini タブが認証できなかった（実アプリで再現・
 // 設定で tmux を切ると同じ env で認証が通る、という非対称で切り分けた）。
-describe('wrapCommandWithTmux（環境変数の転送）', () => {
-  it('env を /usr/bin/env の引数として渡す（tmux は子プロセスへ env を引き継がないため）', () => {
-    const wrapped = wrapCommandWithTmux(
-      'aiterm-abc',
-      { command: 'gemini', args: ['--session-id', 'abc'] },
-      { GOOGLE_CLOUD_PROJECT: 'my-project' },
-    );
-    expect(wrapped.command).toBe('tmux');
+describe('tmux への環境変数の渡し方', () => {
+  // ⛔ **この検査がこの周の本体。** 値を argv に載せると、node-pty が起動した
+  // tmux クライアントがタブの生存中ずっとその argv を持ち、`ps -eo command` で
+  // 同じマシンの誰からでも読める（2026-08-06 実測）。利用者の rc に書かれた
+  // API キー等がそのまま載るため、**値は一度も argv を通してはいけない**。
+  it('起動コマンドに環境変数の値を1つも載せない', () => {
+    const wrapped = wrapCommandWithTmux('aiterm-abc', {
+      command: 'gemini',
+      args: ['--session-id', 'abc'],
+    });
+    expect(wrapped.args.join(' ')).not.toContain('=');
     expect(wrapped.args).toEqual([
       'new-session',
       '-A',
       '-s',
       'aiterm-abc',
       '--',
-      '/usr/bin/env',
-      'GOOGLE_CLOUD_PROJECT=my-project',
       'gemini',
       '--session-id',
       'abc',
     ]);
   });
 
-  it('env が空でも起動コマンドは壊れない（/usr/bin/env は素通しになる）', () => {
-    const wrapped = wrapCommandWithTmux('aiterm-abc', { command: 'claude', args: [] }, {});
-    expect(wrapped.args).toEqual([
-      'new-session',
-      '-A',
-      '-s',
-      'aiterm-abc',
-      '--',
-      '/usr/bin/env',
-      'claude',
-    ]);
-  });
-
-  // 呼び出し側が env を渡し忘れても、既定値で従来どおりの起動になること。
-  it('env を省略しても起動コマンドが成立する', () => {
-    const wrapped = wrapCommandWithTmux('aiterm-abc', { command: 'claude', args: ['--resume'] });
-    expect(wrapped.command).toBe('tmux');
-    expect(wrapped.args.slice(-2)).toEqual(['claude', '--resume']);
+  it('tmux へ渡すのは変数名だけで、値は含めない', () => {
+    const names = buildTmuxEnvNames({
+      GOOGLE_CLOUD_PROJECT: 'my-project',
+      NOTION_API_KEY: 'secret-value',
+    });
+    expect(names).toEqual(['GOOGLE_CLOUD_PROJECT', 'NOTION_API_KEY']);
+    expect(names.join(' ')).not.toContain('secret-value');
+    expect(names.join(' ')).not.toContain('my-project');
   });
 
   it('TMUX / TMUX_PANE は持ち込まない（入れ子の tmux だと誤認させる）', () => {
-    const args = buildTmuxEnvArgs({ TMUX: '/tmp/x,1,0', TMUX_PANE: '%3', LANG: 'ja_JP.UTF-8' });
-    expect(args).toEqual(['LANG=ja_JP.UTF-8']);
+    expect(buildTmuxEnvNames({ TMUX: '/tmp/x,1,0', TMUX_PANE: '%3', LANG: 'ja' })).toEqual(['LANG']);
   });
 
   it('値が undefined のキーは「設定しない」なので落とす', () => {
-    const args = buildTmuxEnvArgs({ LANG: undefined, TERM: 'xterm-256color' });
-    expect(args).toEqual(['TERM=xterm-256color']);
+    expect(buildTmuxEnvNames({ LANG: undefined, TERM: 'xterm-256color' })).toEqual(['TERM']);
   });
 
-  // 外部から来た値で argv を壊さない。`=` を含むキーは env が解釈できない。
-  it('キーに = が含まれていたら落とす', () => {
-    const args = buildTmuxEnvArgs({ 'A=B': 'c', OK: 'v' });
-    expect(args).toEqual(['OK=v']);
+  // tmux のオプション値は空白区切りなので、名前に空白や = が入ると並び全体が壊れる。
+  it('空白や = を含むキーは落とす（オプション値の区切りを壊さない）', () => {
+    expect(buildTmuxEnvNames({ 'A=B': 'c', 'X Y': 'z', OK: 'v' })).toEqual(['OK']);
   });
 
-  it('値に = や空白が含まれていても1引数として渡す（argv なのでクォートは不要）', () => {
-    const args = buildTmuxEnvArgs({ CMD: 'a=b c d' });
-    expect(args).toEqual(['CMD=a=b c d']);
-  });
-
-  // 並び順が揺れると、同じ構成でも起動コマンドが変わって差分が読めなくなる。
   it('キーの順序は安定している（辞書順）', () => {
-    const args = buildTmuxEnvArgs({ B: '2', A: '1', C: '3' });
-    expect(args).toEqual(['A=1', 'B=2', 'C=3']);
+    expect(buildTmuxEnvNames({ B: '2', A: '1', C: '3' })).toEqual(['A', 'B', 'C']);
+  });
+
+  // 利用者が自分で設定していることがある。こちらの都合で消してよいものではない。
+  it('update-environment の既存の値を消さずに追記する', () => {
+    expect(buildTmuxUpdateEnvironment(['DISPLAY', 'SSH_AUTH_SOCK'], ['LANG', 'TERM'])).toBe(
+      'DISPLAY SSH_AUTH_SOCK LANG TERM',
+    );
+  });
+
+  it('update-environment が重複しない', () => {
+    expect(buildTmuxUpdateEnvironment(['DISPLAY', 'LANG'], ['LANG', 'TERM'])).toBe(
+      'DISPLAY LANG TERM',
+    );
+  });
+
+  it('update-environment は空要素を持ち込まない（show-options の空行対策）', () => {
+    expect(buildTmuxUpdateEnvironment(['DISPLAY', '', '  '], ['LANG'])).toBe('DISPLAY LANG');
   });
 });
 
-// ⛔ **両端だけ固定して真ん中を無テストにしない**（loop.md の「関門が空振りする形」）。
-// wrapCommandWithTmux 単体を固めても、呼び出し側が env を渡さなくなれば実害は同じ。
-// 「アプリが組み立てた env が tmux の argv に載る」ところまでを1本で通す。
-describe('maybeWrapWithTmux（アプリの env が tmux の起動コマンドまで届くか）', () => {
+describe('maybeWrapWithTmux（AI ペインだけを tmux でラップする）', () => {
   const plan = { command: 'gemini', args: ['--session-id', 'abc'] };
   const env = { GOOGLE_CLOUD_PROJECT: 'my-project' };
 
-  it('AI ペインでは env が tmux の argv に載る', () => {
+  it('AI ペインは tmux でラップされ、env の値は argv に載らない', () => {
     const result = maybeWrapWithTmux(
       { kind: 'gemini', cols: 80, rows: 24 },
       plan,
@@ -378,11 +378,10 @@ describe('maybeWrapWithTmux（アプリの env が tmux の起動コマンドま
       true,
     );
     expect(result.wrappedInTmux).toBe(true);
-    expect(result.plan.args).toContain('GOOGLE_CLOUD_PROJECT=my-project');
-    // env は起動するコマンドより前に置く（/usr/bin/env の使い方）。
-    expect(result.plan.args.indexOf('GOOGLE_CLOUD_PROJECT=my-project')).toBeLessThan(
-      result.plan.args.indexOf('gemini'),
-    );
+    expect(result.plan.command).toBe('tmux');
+    // ⛔ ps から読めるので、値は1つも載せない。
+    expect(result.plan.args.join(' ')).not.toContain('my-project');
+    expect(result.plan.args.join(' ')).not.toContain('GOOGLE_CLOUD_PROJECT');
   });
 
   it('tmux が使えないときは素の起動のままで、env をコマンドに混ぜない', () => {
@@ -398,7 +397,7 @@ describe('maybeWrapWithTmux（アプリの env が tmux の起動コマンドま
     expect(result.plan).toEqual(plan);
   });
 
-  it('シェルは tmux でラップしないので env もコマンドに混ざらない（node-pty 経由で届く）', () => {
+  it('シェルは tmux でラップしない（node-pty 経由で env が届く）', () => {
     const result = maybeWrapWithTmux(
       { kind: 'shell', cols: 80, rows: 24 },
       { command: '/bin/zsh', args: ['-l'] },
