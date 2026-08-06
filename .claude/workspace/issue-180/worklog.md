@@ -1463,4 +1463,50 @@ E2E（S104）: recoverable を見ない / Main が tmux を見に行かない / 
 
 ---
 
+## 2026-08-06 - #180 周13（**進行中**）PR 1: tmux から生きているセッションを provider ごと取る（PR #232）
+
+**⚠ この周はまだ閉じていない。** 配管（Main + IPC）だけが入り、**UI はまだ無い**。
+
+### ⭐ 着手前の実測で、方針が成立することを確認した
+
+会話0往復の gemini セッションを実際に作って測った（Gemini CLI 0.54.0 / tmux 3.7b）:
+
+| 見る場所 | 結果 |
+|---|---|
+| `gemini --list-sessions` | **`No previous sessions found`**（＝ 永久に resume 不能。12番） |
+| `tmux list-panes` | **`aiterm-<uuid>` / `gemini --session-id <uuid>` / cwd がそのまま残っている** |
+
+**tmux 経由の発見なら本当に戻せる。** 12番の対処方針はこれで裏付けが取れた。
+
+### 入ったもの（PR #232）
+
+`src/main/pty/tmuxSessions.ts` に `parseLiveAgentSessions()` / `listLiveAgentSessions()`。
+poller は**1周期に tmux を1回だけ**叩き、`recoverable`（周12）と `liveSessions`（周13）の
+両方をそこから作る。`AgentTasksEvent.liveSessions` を Contract に追加（`architecture.md` に記録済み）。
+
+- provider は `#{pane_start_command}` の**先頭語から確定**（⛔ セッション名から推測しない）
+- 区切りは **0x1f**（空白や `|` は cwd にも起動コマンドにも入りうる）。
+  ⭐ **実 tmux の出力で「全行がちょうど3フィールド」になることを確認してから実装した**
+- ⛔ 起動コマンドの文字列は外へ出さない（採番した UUID が生で載る）
+
+### 次に再開するとき最初に読むべきこと
+
+- **周13 の残り（PR 2 以降）。設計は design-review で確定済み**（`known-issues.md` 12番の
+  「実装するときの確定事項」が唯一の正。⛔ ここに書き写さない）。要点だけ:
+  - 置き場は**タスクパネル内の独立節**（3対2 + ユーザー判断で確定）。**状態グループには混ぜない**
+    （tmux から status が取れないので全部「不明」に落ち、`design-rules` が予約している語が潰れる）
+  - 見出しは **「タブに戻せる AI N件」**。⛔ 「実行中」（禁止語）「回収」（内部語）を画面に出さない
+  - 復帰は **`attach-session -t`**（`new-session -A` は TOCTOU で `--resume` に UUID を渡す事故を再現しうる）
+  - **`SpawnPtyRequest` に attach 専用のフィールドが要る**（`buildGeminiPlan` は
+    `geminiResumeTarget` が無いと必ず新 UUID を採番するので、いまの型では表現できない）
+  - **`pane_title` を表示名にしない**（`✳` は機種依存文字。VoiceOver が全行の先頭で記号を読む）
+  - 0件のときは**節ごと出さない**（`docs/images/` を変えないため）
+- ⚠ **パネル見出し「このマシン全体の Claude」は、gemini を出した時点で嘘になる。**
+  `TaskList.tsx` の `.panel-scope` を provider 非依存へ変える必要があり、**そこで
+  `docs/images/` の最大9枚が変わる**（撮り直しと1枚ずつの説明が要る）
+- ⚠ **既に走っている tmux サーバの env は周11 の修正が効かない**（`known-issues.md` 14番）。
+  利用者が `tmux kill-server` するまで古いまま。**エージェント側からは実行しない**（不可逆）
+
+---
+
 <!-- 以降、作業のたびにセクションを追記 -->
