@@ -64,7 +64,12 @@ test('S75 3パネルの最上部に「いまどの範囲か」が常設され、
     const taskScope = window.locator('.task-list .panel-scope');
     // ハーネスの既定は scopeAgentsToCwd: false（= マシン全体）。
     // **この事実は周3 より前は画面のどこにも出ていなかった。**
-    await expect(taskScope).toHaveText('このマシン全体の Claude');
+    //
+    // ⛔ **プロバイダ名を焼き込まない**（#180 周13）。このパネルには
+    // 「タブに戻せる AI」の節があり、そこには gemini も入る（tmux から取るので
+    // `claude agents --json` に依らない）。「…の Claude」と名乗ると嘘になる。
+    await expect(taskScope).toHaveText('このマシン全体の AI');
+    await expect(taskScope).not.toContainText('Claude');
     await expect(taskScope).toHaveJSProperty('tagName', 'H2');
 
     // 区切りの見出しは h3 に落ちている（範囲の h2 の下）。

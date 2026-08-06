@@ -77,7 +77,11 @@ while [ "$i" -lt "$#" ]; do
   i=$((i + 1))
 done
 
-if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ]; then
+# ⛔ **new-session のときだけ書く。** アプリは `set-option` / `show-options` など
+# 別のサブコマンドでもこのシムを呼ぶ（周11-b で `update-environment` の設定が入った）。
+# それらは `-s` を持たないので、無条件に書くと**空文字で上書きしてしまい**、
+# spec が「tmux セッション名が空」で落ちる（実際に踏んだ）。
+if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ] && [ "${1:-}" = "new-session" ]; then
   printf '%s' "$session" > "${AI_TERMINAL_E2E_FIXTURES}/tmux-session-name.txt"
 fi
 

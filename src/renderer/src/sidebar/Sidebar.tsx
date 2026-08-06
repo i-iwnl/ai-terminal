@@ -44,6 +44,8 @@ export interface SidebarProps {
   collapsed: boolean;
   onFocusTaskTab: (agentSessionId: string) => void;
   canFocusTaskTab: (agentSessionId: string) => boolean;
+  /** 「タブに戻せる AI」の行を押したとき（tmux セッションへアタッチする） */
+  onRecoverSession: (agentSessionId: string, provider: 'claude' | 'gemini') => void;
   onResumeHistory: (entry: SessionHistoryEntry) => void;
   /** タスク一覧の空状態にある「起動」ボタン用（Issue #20 I-3） */
   onLaunchClaude: () => void;
@@ -76,6 +78,7 @@ export default function Sidebar({
   collapsed,
   onFocusTaskTab,
   canFocusTaskTab,
+  onRecoverSession,
   onResumeHistory,
   onLaunchClaude,
   scopeAgentsToCwd,
@@ -157,6 +160,7 @@ export default function Sidebar({
             canFocus={canFocusTaskTab}
             onLaunchClaude={onLaunchClaude}
             scopedToCwd={scopeAgentsToCwd}
+            onRecoverSession={onRecoverSession}
           />
         )}
         {tab === 'history' && <HistoryList onResume={onResumeHistory} onOpenMemo={openMemo} />}
