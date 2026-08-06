@@ -15,6 +15,7 @@ import { getAppPaths } from '../app-paths';
 import { getConfig } from '../config';
 import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
+import { listLiveAgentSessionIds } from '../pty/tmuxSessions';
 import { listClaudeAgents } from './claude';
 import { computeYourTurnSince } from './yourTurnSince';
 
@@ -122,12 +123,18 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
     retryLoginShellPath();
   }
 
+  // 生きている tmux セッション（このアプリ由来）。**1周期につき tmux を1回だけ叩く。**
+  // ⛔ ここで gemini を起動しないこと（会話0往復のセッションが消える。tmuxSessions.ts 冒頭）。
+  const liveSessionIds = listLiveAgentSessionIds();
+
   const tasks: AgentTask[] = result.tasks.map((task) => ({
     ...task,
     ownedByApp: ownedSessionIds.has(task.sessionId),
     // 直近の遷移検知（updateYourTurnSince）の結果をそのまま載せる。
     // ここでは検知そのものは行わない（前回との比較が要るため runPollCycle 側の責務）。
     yourTurnSince: yourTurnSince.get(task.sessionId),
+    // タブが無くても、tmux セッションが生きていれば `-A` で戻せる。
+    recoverable: liveSessionIds.has(task.sessionId),
   }));
 
   return { tasks, error: result.error, errorKind: result.errorKind, fetchedAt: Date.now() };

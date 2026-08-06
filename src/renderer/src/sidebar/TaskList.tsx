@@ -20,6 +20,7 @@ import {
   TASK_STATE_LABEL,
 } from '@shared/agent-status';
 import { basename, formatElapsed, formatWaitingSince } from '../lib/format';
+import { resolveTaskRowAction, taskRowActionLabel } from './taskRow';
 // タスク一覧の購読はここで直接 window.api.agents を呼ばず、共有ハブに委ねる
 // （App.tsx の Cmd+J も同じスナップショットを見る必要があるため。lib/agentTasksStore.ts 参照）。
 import { subscribeAgentTasks, recheckAgentTasks } from '../lib/agentTasksStore';
@@ -148,7 +149,12 @@ export default function TaskList({
   const groups = groupTasksForDisplay(tasks);
 
   const renderTask = (task: AgentTask) => {
-    const clickable = task.ownedByApp && canFocus(task.sessionId);
+    // 押せるか / 押すと何が起きるかの唯一の正は resolveTaskRowAction（taskRow.ts）。
+    // ⛔ ここで ownedByApp を重ねて見ないこと（Main のメモリで、再起動すると空になる）。
+    // ⭐ ここに条件を書き足さないこと。判定そのものが不具合の本体だったので
+    // 純粋関数へ出して単体で固定している。
+    const action = resolveTaskRowAction(task, canFocus(task.sessionId));
+    const clickable = action !== 'none';
     const state = toTaskState(task.status);
     const name = task.name ?? `セッション ${task.sessionId.slice(0, 8)}`;
     const stateLabel = TASK_STATE_LABEL[state];
@@ -172,6 +178,9 @@ export default function TaskList({
       stateLabel,
       name,
       task.ownedByApp ? 'このアプリが起動' : undefined,
+      // 押したときに何が起きるかを、押せる行だけで言い分ける。
+      // ⛔ 「回収」は内部語なので画面にも読み上げにも出さない。
+      taskRowActionLabel(action),
       basename(task.cwd),
       // CLI が返した生の値も読み上げに残す（鉄則4/5: CLI が言ったことを隠さない）。
       task.status !== undefined ? `CLI の生の状態は ${task.status}` : undefined,

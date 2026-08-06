@@ -919,20 +919,34 @@ export default function App(): ReactElement {
     [announce, nextNoticeId],
   );
 
-  // クリック可否の判定は「対応するタブがあるか」のままでよい（design-review.md
-  // U4 が直すのは「クリックしたときにどのペインへ向けるか」であって、
-  // クリック可能性の判定基準ではない）。
+  // 対応するタブが**いま開いているか**。開いていれば押すとそこへ移動する。
+  // ⭐ **押せるかどうかの判定はこれ「だけ」ではない。** タブが無くても tmux セッションが
+  // 生きていれば戻せるので、その分は `AgentTask.recoverable` が持ち、TaskList が併せて見る。
   const canFocusTaskTab = useCallback(
     (agentSessionId: string) => findTabByAgentSessionId(tabsApi.tabs, agentSessionId) !== undefined,
     [tabsApi.tabs],
   );
 
-  // タスク一覧の行クリック。OS 通知クリック（session.onFocus）と同じ
-  // ペイン粒度の解決を通す（design-review.md U4）。
+  // タスク一覧の行クリック。
+  //
+  // 1. タブが開いていれば、そのペインへ移動する（OS 通知クリックと同じ粒度の解決。
+  //    design-review.md U4）
+  // 2. 開いていなければ、**そのセッションに戻すタブを開く**。`buildClaudePlan` が
+  //    `--resume` に渡した ID をそのまま `agentSessionId` に入れるので、tmux 名は
+  //    `aiterm-<同じ ID>` になり、`tmux new-session -A` が**生きているセッションに
+  //    アタッチする**（内側の `claude --resume` は実行されない）
+  //
+  // ⚠ 2 に来るのは `recoverable` が true の行だけ（TaskList が押せる形にしない）。
+  // 生きていなければ `-A` は新規作成に倒れるが、そのとき走るのは `claude --resume <既存 ID>`
+  // なので、いずれにせよ元のセッションへ戻る（claude の resume は安全）。
   const focusTaskTab = useCallback(
     (agentSessionId: string) => {
       const location = findPaneByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
-      if (location) focusPaneLocation(location);
+      if (location) {
+        focusPaneLocation(location);
+        return;
+      }
+      void tabsApiRef.current.newAgentTab('claude', { resumeSessionId: agentSessionId });
     },
     [focusPaneLocation],
   );

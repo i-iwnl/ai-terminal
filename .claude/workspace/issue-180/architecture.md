@@ -28,6 +28,7 @@ Issue #180 における変更対象の構造。
 |---|---|---|
 | `SpawnPtyRequest` | **ALTER**（周 6' = #155 / PR 1） | `geminiAgentSessionId?: string` を追加。gemini を resume するときの内部 UUID（`SessionHistoryEntry.stableId`）を Main へ運ぶ。**用途は tmux セッション名の安定化だけ** |
 | `SpawnPtyResult.agentSessionId` | **ALTER**（同上） | doc のみ。「gemini には安定した ID が無いため常に undefined」を撤回し、**用途が2つあり claude と gemini で数が違う**ことを明記（tmux 名の種は両方 / `claude agents --json` との突き合わせは claude だけ） |
+| `AgentTask.recoverable` | **ALTER**（周12 / PR #231） | `aiterm-<sessionId>` の tmux セッションが生きているか。Main の poller が**1周期に tmux を1回だけ**叩いて埋める（`src/main/pty/tmuxSessions.ts`）。⛔ **未取得・失敗は false に倒す**（押した先で新しいプロセスが生えないように）。⭐ **`ownedByApp` の代わりに使える**（あれは Main のメモリで再起動すると空になるが、tmux 名が付いていること自体が「このアプリが起動した」の証拠になる） |
 
 ⛔ **新チャンネルは足していない。** 既存 `pty:spawn` の payload を広げただけなので、
 `/electron-ipc` の `add-ipc-channel.md` の4ステップのうち **preload（ステップ3）は変更なし**。
