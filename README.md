@@ -564,6 +564,12 @@ Gemini CLI は起動するたびに「中身の無いセッション」を掃除
 
 ⚠ **これが gemini で唯一残った「閉じると戻れない」経路。** [#155](https://github.com/i-iwnl/ai-terminal/issues/155) 以降、gemini にもアプリが採番したセッション ID が渡るので tmux セッション名は安定するが、**会話が0往復のセッションは履歴一覧に出ないので選び直せない**（アプリからはこの区別が付かないため、閉じるときの確認も出ない）。プロセスは tmux に残るので、不要なら `tmux ls` / `tmux kill-session -t <名前>` で終了する。
 
+**Gemini タブが「認証方法を選べ」で止まる / `Failed to sign in` と出る**
+
+`This client is no longer supported for Gemini Code Assist for individuals` と出ていても、**アカウントの問題とは限らない**。Gemini CLI は `GOOGLE_CLOUD_PROJECT` が無いと個人向けの扱いになり、この拒否に当たることがある。
+
+**切り分け方**: シェルタブで `gemini` を直接起動して通るなら、アプリが子プロセスへ環境変数を渡せていない。設定の「アプリを閉じても AI の作業を続ける」を切って新しい Gemini タブを開き、そこで通るなら tmux が環境変数を引き継いでいない（2026-08-06 に実測して対処済み。`~/.ai-terminal/shell-path.log` に起動時の解決結果が残る）。
+
 **Slack / Discord に通知が届かない**
 
 設定ウィンドウの「テスト送信」を押すと結果がその場に出る。よくある原因:
