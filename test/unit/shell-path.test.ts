@@ -11,6 +11,7 @@ import {
   mergePathEntries,
   shouldAttemptRetry,
 } from '../../src/main/shell-path';
+import { SHELL_ENV_COMMAND } from '../../src/main/pty/shellEnv';
 
 const D = '__AI_TERMINAL_PATH__';
 
@@ -62,8 +63,14 @@ describe('buildProbeCommand', () => {
     expect(buildProbeCommand('__D__')).not.toMatch(/\$PATH[A-Za-z0-9_]/);
   });
 
-  it('目印で挟んだ PATH を printf で出力するコマンドになっている', () => {
-    expect(buildProbeCommand('__D__')).toBe(`printf '%s' "__D__\${PATH}__D__"`);
+  it('目印で挟んだ PATH を printf で出力するコマンドで始まる', () => {
+    expect(buildProbeCommand('__D__')).toMatch(/^printf '%s' "__D__\$\{PATH\}__D__"/);
+  });
+
+  // ⛔ **ログインシェルの起動は1回だけ。** PATH と env を別々に取りに行くと
+  // ユーザーの rc が2回走り、起動も2倍待たされる（#180 周11 で一度そうしてしまった）。
+  it('同じ1回のプローブで env 全体も取る', () => {
+    expect(buildProbeCommand('__D__')).toContain(SHELL_ENV_COMMAND);
   });
 });
 

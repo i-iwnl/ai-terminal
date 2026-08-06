@@ -28,8 +28,6 @@
 // ⛔ **親の env を持ったまま測ると必ず「取れた」と出る。** 最初にこれで
 // 誤った結論を出した。`env -i` で親を切ってから測ること。
 
-import { spawnSync } from 'node:child_process';
-
 /**
  * `env -0` の出力の開始位置を示す目印。
  *
@@ -76,20 +74,20 @@ export function parseShellEnvOutput(stdout: string): Record<string, string> {
  *
  * ⛔ **起動元が勝つ。解決した側は「起動元に無いキー」だけを埋める。**
  *
- * 最初は逆（解決した側が勝つ）で書き、「そうしないと Finder 起動で最小 PATH の
- * ままになる」と理由まで書いたが、**それは測っていない推測だった**。
- * 実際には `make e2e` が落ちて誤りが分かった:
- *
- * - E2E ハーネスは**一時 HOME と偽 CLI の PATH** を渡してアプリを隔離している
- * - 解決した側を優先すると、その `HOME` が**実ユーザーの HOME で上書きされ**、
- *   シェルが本物の `~/.zshrc` を読んでプロンプトが変わった
- *   （`demo-project %` を期待するところが `%` になった / screenshots S56）
- * - 同じ理屈で **PATH も上書きされる**ので、偽 CLI が迂回されて
- *   **本物の claude / gemini が起動しうる**。隔離ハーネスの前提が崩れる
- *
  * ⭐ **起動元が明示的に渡した env は、常にそちらが意図。** 埋めるだけなら
  * 直そうとしている不具合（GUI 起動で `~/.zshrc` の変数が1つも無い）は解消し、
- * 隔離も壊さない。
+ * 起動元が意図的に絞った env（E2E ハーネスの一時 HOME・偽 CLI を先頭に置いた
+ * PATH など）を rc 由来の値で崩すこともない。`shell-path.ts` の
+ * `mergePathEntries` が PATH について同じ結論を先に出している
+ * （「既に解決できているものの解決先を変えない」）ので、揃えてある。
+ *
+ * ⛔ **最初は逆（解決した側が勝つ）で書き、「そうしないと Finder 起動で最小 PATH の
+ * ままになる」と理由まで書いたが、それは測っていない推測だった。**
+ * PATH は `ensureLoginShellPath()` が起動時に既に補完しており、ここの向きとは
+ * 関係が無い。⚠ **さらに「`make e2e` の S56 が落ちたのがその証拠」とも書いたが、
+ * それも誤り**（S56 の `demo-project %` 待ちは以前から知られた flaky で、
+ * 単独で3回・フルセットの retry でも緑になる）。**この向きの根拠は上の原則だけ**で、
+ * テストが証明したものではない。
  *
  * アプリが所有する値（TERM / TERM_PROGRAM など）は `buildPtyEnv` が**この後で**
  * 上書きするので、ここで気にしなくてよい。
@@ -105,38 +103,4 @@ export function mergeUserEnv(
     merged[key] = value;
   }
   return merged;
-}
-
-let cache: Record<string, string> | undefined;
-
-/**
- * ログインシェルを1度だけ起動して env を取る。結果はキャッシュする
- * （spawn のたびにユーザーの rc を実行するのはコストなので避ける。
- * `isTmuxAvailable()` / `geminiSupportsSessionId()` と同じ形）。
- *
- * 失敗・タイムアウトしたら**空を返す**。env が取れないことでアプリが
- * 起動しなくなるより、従来どおりの env で動くほうがよい。
- */
-export function resolveLoginShellEnv(shell: string | undefined): Record<string, string> {
-  if (cache !== undefined) return cache;
-
-  const target = shell || process.env.SHELL || '/bin/zsh';
-  try {
-    const result = spawnSync(target, ['-l', '-i', '-c', SHELL_ENV_COMMAND], {
-      encoding: 'utf8',
-      // ユーザーの rc が重いことがある。待ち続けてアプリの起動を止めない。
-      timeout: 5000,
-      // rc が標準入力を読もうとしても止まらないようにする。
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    cache = result.status === 0 && result.stdout ? parseShellEnvOutput(result.stdout) : {};
-  } catch {
-    cache = {};
-  }
-  return cache;
-}
-
-/** テスト用にキャッシュを捨てる。 */
-export function resetLoginShellEnvCache(): void {
-  cache = undefined;
 }
