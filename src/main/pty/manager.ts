@@ -30,7 +30,8 @@ import { getConfig } from '../config';
 import { markOwnedSession } from '../agents/poller';
 import { readProcessCwd } from './cwd';
 import { geminiSupportsSessionId } from './geminiVersion';
-import { mergeUserEnv, resolveLoginShellEnv } from './shellEnv';
+import { mergeUserEnv } from './shellEnv';
+import { loginShellEnv } from '../shell-path';
 import {
   isTmuxAvailable,
   buildTmuxSessionName,
@@ -310,7 +311,7 @@ export function registerPtyHandlers(): void {
       // GUI 起動の .app は ~/.zshrc の値を1つも持たないため、ログインシェルから
       // 取り直して重ねる（1度だけ・失敗したら現状維持。理由は shellEnv.ts）。
       const env = buildPtyEnv(
-        mergeUserEnv(process.env, resolveLoginShellEnv(config.shell)),
+        mergeUserEnv(process.env, loginShellEnv()),
         app.getVersion(),
       );
       const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId, env);

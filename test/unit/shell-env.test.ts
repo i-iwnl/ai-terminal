@@ -53,9 +53,10 @@ describe('parseShellEnvOutput', () => {
 });
 
 describe('mergeUserEnv', () => {
-  // ⛔ **この向きを逆にすると隔離が壊れる。** 最初は「解決した側が勝つ」で書いて
-  // make e2e が落ちた。E2E ハーネスは一時 HOME と偽 CLI の PATH でアプリを隔離して
-  // いるので、上書きすると本物の ~/.zshrc を読み、偽 CLI も迂回される。
+  // ⛔ **この向きを逆にしない。** 起動元が明示的に渡した env は常にそちらが意図で、
+  // E2E ハーネスの一時 HOME / 偽 CLI を先頭に置いた PATH のように「意図的に絞った env」を
+  // rc 由来の値で崩さないため。shell-path.ts の mergePathEntries と同じ結論。
+  // ⚠ 一度これを「make e2e の S56 が落ちたのが根拠」と書いたが誤り（S56 は既知の flaky）。
   it('起動元が明示的に渡したキーは上書きしない（E2E の一時 HOME / 偽 CLI の PATH を守る）', () => {
     const merged = mergeUserEnv(
       { HOME: '/tmp/e2e-home', PATH: '/tmp/fixtures/bin:/usr/bin' },

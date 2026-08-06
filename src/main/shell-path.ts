@@ -10,6 +10,11 @@
 // （agents/claude.ts）・gemini 履歴（history/reader.ts）・tmux 判定（pty/tmux.ts）は
 // いずれも process.env を参照するため、ここでの反映で全箇所に効く。
 //
+// **同じ1回の起動で env 全体も取る**（PTY へ渡す環境変数の補完に使う。詳細は
+// pty/shellEnv.ts）。⛔ **これと別にもう1回ログインシェルを起動しないこと。**
+// ユーザーの rc を2回実行することになり、起動も2倍待つ。実際に #180 周11 で
+// 一度そうしてしまい、この統合で1回に戻した。
+//
 // 起動時の解決は一過性の要因（起動直後の負荷・シェルの遅延等）で失敗しうるため、
 // 一度きりにしない。ポーリングが「claude が見つからない」を検知したら、抑制付きで
 // 再解決を試みる（retryLoginShellPath）。失敗したまま固定させないことが要件。
@@ -23,6 +28,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { dataDir } from './data-dir';
+import { SHELL_ENV_COMMAND, parseShellEnvOutput } from './pty/shellEnv';
 
 const execFileAsync = promisify(execFile);
 
@@ -103,10 +109,22 @@ export function shouldAttemptRetry(
  * 必ず失敗する。実際にこれが原因でパッケージ版の PATH 補完が全く効いていなかった。
  */
 export function buildProbeCommand(delimiter: string = DELIMITER): string {
-  return `printf '%s' "${delimiter}\${PATH}${delimiter}"`;
+  return `printf '%s' "${delimiter}\${PATH}${delimiter}"; ${SHELL_ENV_COMMAND}`;
 }
 
 const retryState: RetryState = { attemptCount: 0, lastAttemptAt: 0, inFlight: false };
+
+/**
+ * 直近の解決で得られたログインシェルの env。
+ * PTY 起動（pty/manager.ts）が「起動元に無いキー」を埋めるのに使う。
+ * 解決前・失敗時は空で、その場合は従来どおりの env で起動する（縮退）。
+ */
+let loginEnv: Record<string, string> = {};
+
+/** ログインシェルから取れた環境変数。取れていなければ空。 */
+export function loginShellEnv(): Record<string, string> {
+  return loginEnv;
+}
 
 /**
  * 診断ログ（データディレクトリの shell-path.log）へ1行追記する。
@@ -141,6 +159,9 @@ async function resolveLoginShellPath(shell: string): Promise<string | undefined>
       ['-i', '-l', '-c', buildProbeCommand()],
       { timeout: EXEC_TIMEOUT_MS, killSignal: 'SIGKILL', windowsHide: true },
     );
+    // env は PATH と独立に扱う。片方が取れなくてももう片方を捨てない。
+    const env = parseShellEnvOutput(stdout);
+    if (Object.keys(env).length > 0) loginEnv = env;
     const path = extractDelimitedPath(stdout);
     if (!path) log(`シェルの出力から PATH を切り出せませんでした: ${JSON.stringify(stdout.slice(0, 200))}`);
     return path;
