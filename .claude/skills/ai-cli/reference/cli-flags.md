@@ -48,8 +48,20 @@ Issue #155 は「`--session-id` が使えるようになったので claude と�
 | 走行中のセッションは `--list-sessions` に出るか | ✅ **出る**（会話が1往復以上あれば。走行中でも消えない） |
 | ⚠ **実質空のセッション**（初期コンテキストだけ / 会話0往復） | **一覧に出ず、gemini を起動すると削除される。** `--list-sessions` 固有ではなく**起動全般**の挙動（`-p` の通常起動でも同じ）。詳細は `.claude/workspace/issue-180/known-issues.md` の 12番 |
 
+### gemini が認証できないときは、まず env の到達を疑う（2026-08-06 実測）
+
+`IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals` が出たら、**アカウントの問題とは限らない**。`~/.zshrc` の `GOOGLE_CLOUD_PROJECT` が子プロセスに届いていないだけのことがある。
+
+| 条件 | 結果 |
+|---|---|
+| `GOOGLE_CLOUD_PROJECT` あり | ✅ 通る |
+| 無し | ❌ `IneligibleTierError`（**`gemini -p` でも対話でも同じ**） |
+
+⭐ **切り分けは tmux ラップの有無で行う。** 設定「アプリを閉じても AI の作業を続ける」を切って同じ env で通るなら、CLI ではなく env の到達（tmux が env を凍結する）が原因。詳細は [/terminal の pty-pitfalls.md](../../terminal/reference/pty-pitfalls.md)。
+
 ### ⛔ gemini の対話挙動を測るときの罠（2026-08-06 に4回踏んだ）
 
+- ⭐ **tmux 経由なら Enter は届く。** `tmux send-keys -t <session> 'テキスト'` のあと**別の呼び出しで** `tmux send-keys -t <session> Enter` を送れば、対話モードの gemini に問いを届けられる（実測で応答まで確認）。⛔ **測る前に「入力が通ったこと」を画面ダンプで assert すること**（下の `pty` の罠と同じ理由）
 - **`pty` 経由でテキストを書いても Enter が届かない。** `\r` でも `\n` でも、テキストと同じ write に混ぜても、別の write に分けても送信されなかった。**入力欄に文字は乗る**ので画面を見ないと気づけない
 - したがって**「会話済みの走行中セッション」を作るには `-i <prompt>` を使う。** これを知らずに「会話済みのつもりの空セッション」で2回測り、**同じ誤った結論を2回再現してしまった**（#155 を一度は「実装しない」で閉じ、再オープンした）
 - `script -q /dev/null gemini … < fifo` は使えない（`tcgetattr/ioctl: Operation not supported on socket`）。`python3` の `pty.fork()` + `TIOCSWINSZ`（サイズを与えないと TUI の入力欄が出ない）

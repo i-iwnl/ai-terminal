@@ -26,6 +26,22 @@ node-pty の macOS 向け prebuild に同梱されている `spawn-helper` は�
 
 ⚠ 別件で、**実質空のセッション（初期コンテキストだけで会話が0往復）は、gemini をもう1つ起動しただけで削除される**（`--list-sessions` に限らず起動全般）。再現手順は `.claude/workspace/issue-180/known-issues.md` の 12番。
 
+## ⛔ tmux は env を引き継がない（2026-08-06 実測、tmux 3.7b）
+
+**tmux ラップされるペイン（= claude / gemini 全部）には、`buildPtyEnv()` が組み立てた値が1つも届かない。**
+
+tmux はサーバ・クライアント型で、セッションの中で走るプロセスが継ぐのは**サーバ起動時に凍結された env**。クライアント側から引き継がれるのは `update-environment`（既定で DISPLAY / SSH_* など13個）に挙がっているものだけ。**`GOOGLE_CLOUD_PROJECT` のような任意の変数は落ちる。**
+
+しかも tmux サーバは**アプリより長生きする**（実測: アプリが2日前に立てたサーバがそのまま使われていた）ので、「アプリを起動し直せば直る」でもない。
+
+実害: `~/.zshrc` の `GOOGLE_CLOUD_PROJECT` が届かず、Gemini タブが `IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals` で**認証できなかった**。
+
+**切り分け方が要点。** 設定「アプリを閉じても AI の作業を続ける」を切る（= tmux ラップをやめる）と、**同じアプリ・同じ env で認証が通る**。tmux ラップの有無で挙動が変わったら、まず env の到達を疑う。
+
+対処は `tmux new-session -A -s <name> -- /usr/bin/env K=V ... <command>`（`wrapCommandWithTmux`）。
+
+⛔ **`tmux new-session -e K=V` は使わない。** tmux 3.2 以降にしか無いうえ、**`-A` で既存セッションに当たったときは無視される**（実測: 2回目の `-e` を反映せず1回目の値が残る）。
+
 ## PTY に渡す環境変数
 
 `buildPtyEnv()`（manager.ts）が組み立てる規約:
@@ -42,6 +58,12 @@ node-pty の macOS 向け prebuild に同梱されている `spawn-helper` は�
 `buildShellPlan()`（manager.ts）の決定順は **設定ファイルの `shell` -> `$SHELL` -> `/bin/zsh`**。起動時は `-l`（ログインシェル）を付与する。
 
 ログインシェルとして起動するのは、`.zprofile` 等で通した PATH を拾わせるため。ここが崩れて非ログインシェルで起動すると、ターミナル上で `claude` / `gemini` が「コマンドが見つかりません」になる（PATH 未継承が原因のケースは README.md の「うまく動かないとき」にも実例がある）。
+
+⚠ **AI ペイン（claude / gemini）はログインシェルを挟まず素で spawn される**ので、この恩恵を受けない。GUI 起動の .app は `~/.zshrc` の値を1つも持たないため、**シェルタブでは動くのに AI タブでだけ動かない**という非対称が起きる。埋め合わせは [../../../../src/main/shell-path.ts](../../../../src/main/shell-path.ts) が起動時に1回だけ行う（PATH と env をまとめて取る）。
+
+⛔ **env が要るからといって、ここと別にログインシェルを起動しないこと。** ユーザーの rc が2回走り、起動も2倍待たされる（#180 周11 で一度そうしてしまい、統合して1回に戻した）。
+
+⚠ **`-l` だけでは `~/.zshrc` を読まない。** zsh は対話シェルのときしか `.zshrc` を読まないので `-i` が要る。⛔ **親の env を持ったまま測ると必ず「取れた」と出る**ので、`env -i` で親を切ってから測ること（この誤りで一度、逆の結論を出しかけた）。
 
 ## PTY の出力は加工しない
 
