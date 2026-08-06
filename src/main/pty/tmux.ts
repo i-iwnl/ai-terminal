@@ -159,6 +159,22 @@ export function wrapCommandWithTmux(sessionName: string, spec: CommandSpec): Com
   };
 }
 
+/**
+ * 生きている tmux セッションへ**アタッチするだけ**のコマンドを組み立てる。
+ *
+ * ⛔ **`new-session -A` を使わないこと。** `-A` は「無ければ作る」なので、
+ * **一覧に出してから押すまでの間にセッションが死んでいると `--` 以降を実行する**。
+ * そこに `gemini --resume <UUID>` のような引数が載っていると、
+ * **数字始まりの UUID が index として解釈され、既存のセッションファイルを失う**
+ * （冒頭のコメント参照）。`attach-session` なら**存在しなければ失敗して終わるだけ**で、
+ * 「消えていた」を「新しいセッションを作って上書き」に化けさせない。
+ *
+ * design-review（2026-08-06 / 5ペルソナ）で3人が独立に指摘した経路。
+ */
+export function buildTmuxAttachCommand(sessionName: string): CommandSpec {
+  return { command: 'tmux', args: ['attach-session', '-t', sessionName] };
+}
+
 let updateEnvironmentApplied = false;
 
 /**

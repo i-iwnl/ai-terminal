@@ -47,6 +47,23 @@ export interface SpawnPtyRequest {
    * 「`geminiResumeStableId` は `--resume` に渡す値と読まれる」と2人が指摘した）。
    */
   geminiAgentSessionId?: string;
+  /**
+   * **既に生きている tmux セッションへアタッチする**ときの `agentSessionId`。
+   *
+   * これが入っていると、Main は CLI の起動コマンドを1つも組み立てず
+   * `tmux attach-session -t aiterm-<この値>` だけを実行する。
+   * **新しい CLI プロセスは生えない**（走っているものにそのまま繋ぐ）。
+   *
+   * ⭐ **`resumeSessionId` / `geminiResumeTarget` では表現できない。**
+   * それらは「CLI に resume させる」ための値で、`buildGeminiPlan` は
+   * `geminiResumeTarget` が無いと**必ず新しい UUID を採番する**。
+   * 「既存の UUID で tmux 名だけ作る」という要求の形が無かった
+   * （design-review で4人が独立に指摘した、案の最大の穴）。
+   *
+   * ⛔ **セッションが消えていたら失敗して終わるのが正しい**（`attach-session` は
+   * 作らない）。⛔ `new-session -A` に置き換えないこと（理由は `tmux.ts`）。
+   */
+  attachAgentSessionId?: string;
 }
 
 /** PTY 起動の結果 */

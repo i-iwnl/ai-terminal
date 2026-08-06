@@ -5,7 +5,12 @@
 // どちらも画面上は「一応動いている」ように見えるため、ここで固定する。
 
 import { describe, expect, it } from 'vitest';
-import { buildPtyEnv, buildSpawnPlan, maybeWrapWithTmux } from '../../src/main/pty/manager';
+import {
+  buildAttachPlan,
+  buildPtyEnv,
+  buildSpawnPlan,
+  maybeWrapWithTmux,
+} from '../../src/main/pty/manager';
 import {
   buildTmuxEnvNames,
   buildTmuxSessionName,
@@ -408,5 +413,72 @@ describe('maybeWrapWithTmux（AI ペインだけを tmux でラップする）',
     );
     expect(result.wrappedInTmux).toBe(false);
     expect(result.plan.args).toEqual(['-l']);
+  });
+});
+
+// 生きている tmux セッションへのアタッチ（#180 周13 PR 2）。
+//
+// **`resumeSessionId` / `geminiResumeTarget` では表現できない要求。** それらは
+// 「CLI に resume させる」ための値で、`buildGeminiPlan` は `geminiResumeTarget` が
+// 無いと**必ず新しい UUID を採番する**。「既存の UUID で tmux 名だけ作る」という
+// 形が無かった（design-review で4人が独立に指摘した、案の最大の穴）。
+describe('buildAttachPlan（生きている tmux セッションへ繋ぐ）', () => {
+  it('CLI の起動コマンドを1つも組み立てない（走っているものに繋ぐだけ）', () => {
+    const plan = buildAttachPlan('abc-123');
+    expect(plan.command).toBe('tmux');
+    expect(plan.args).toEqual(['attach-session', '-t', 'aiterm-abc-123']);
+    // claude / gemini のどちらの引数も現れない。
+    expect(plan.args.join(' ')).not.toContain('--session-id');
+    expect(plan.args.join(' ')).not.toContain('--resume');
+  });
+
+  // ⛔ `new-session -A` は「無ければ作る」。一覧に出してから押すまでにセッションが
+  // 死んでいると `--` 以降を実行してしまい、`--resume` に UUID を渡す事故を再現しうる。
+  it('new-session を使わない（消えていたら失敗して終わるのが正しい）', () => {
+    expect(buildAttachPlan('abc').args).not.toContain('new-session');
+    expect(buildAttachPlan('abc').args).not.toContain('-A');
+  });
+
+  // 閉じたあとの分類（closeTabCopy）が新規起動・resume と同じ扱いになるように。
+  it('agentSessionId をそのまま返す', () => {
+    expect(buildAttachPlan('abc-123').agentSessionId).toBe('abc-123');
+  });
+
+  // tmux セッション名の組み立ては1箇所（buildTmuxSessionName）に閉じている。
+  it('tmux セッション名の規約は buildTmuxSessionName と一致する', () => {
+    const id = 'e2f9c1a0-1111-2222-3333-444455556666';
+    expect(buildAttachPlan(id).args).toContain(buildTmuxSessionName(id));
+  });
+});
+
+describe('maybeWrapWithTmux（アタッチ計画を二重にラップしない）', () => {
+  it('アタッチ計画はそのまま渡す（tmux で tmux をラップしない）', () => {
+    const plan = buildAttachPlan('abc');
+    const result = maybeWrapWithTmux(
+      { kind: 'claude', cols: 80, rows: 24, attachAgentSessionId: 'abc' },
+      plan,
+      { useTmux: true },
+      'pty-1',
+      {},
+      true,
+    );
+    expect(result.plan.args).toEqual(['attach-session', '-t', 'aiterm-abc']);
+    // 既に tmux の中なので、閉じたときの分類は「tmux でラップされている」側。
+    expect(result.wrappedInTmux).toBe(true);
+  });
+
+  // 設定で tmux を切っていても、アタッチ要求は tmux コマンドそのもの。
+  it('useTmux が false でもアタッチ計画は壊さない', () => {
+    const plan = buildAttachPlan('abc');
+    const result = maybeWrapWithTmux(
+      { kind: 'claude', cols: 80, rows: 24, attachAgentSessionId: 'abc' },
+      plan,
+      { useTmux: false },
+      'pty-1',
+      {},
+      true,
+    );
+    expect(result.plan.args).toEqual(['attach-session', '-t', 'aiterm-abc']);
+    expect(result.wrappedInTmux).toBe(true);
   });
 });

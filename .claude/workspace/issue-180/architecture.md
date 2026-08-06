@@ -28,6 +28,7 @@ Issue #180 における変更対象の構造。
 |---|---|---|
 | `SpawnPtyRequest` | **ALTER**（周 6' = #155 / PR 1） | `geminiAgentSessionId?: string` を追加。gemini を resume するときの内部 UUID（`SessionHistoryEntry.stableId`）を Main へ運ぶ。**用途は tmux セッション名の安定化だけ** |
 | `SpawnPtyResult.agentSessionId` | **ALTER**（同上） | doc のみ。「gemini には安定した ID が無いため常に undefined」を撤回し、**用途が2つあり claude と gemini で数が違う**ことを明記（tmux 名の種は両方 / `claude agents --json` との突き合わせは claude だけ） |
+| `SpawnPtyRequest.attachAgentSessionId` | **ALTER**（周13 / PR 2） | 生きている tmux セッションへ**アタッチする**ときの ID。これが入ると Main は CLI の起動コマンドを1つも組み立てず `tmux attach-session -t aiterm-<値>` だけを実行する。⭐ **既存の `resumeSessionId` / `geminiResumeTarget` では表現できなかった**（`buildGeminiPlan` は resume 先が無いと必ず新 UUID を採番する）。⛔ `new-session -A` に置き換えない（消えていたときに `--` 以降が走り、`--resume` に UUID を渡す事故を再現しうる） |
 | `AgentTasksEvent.liveSessions` | **ALTER**（周13 / PR 1） | tmux で生きている、このアプリ由来のセッション（`agentSessionId` / `provider` / `cwd`）。**`tasks` とは出自が違い、`gemini --list-sessions` に出ない gemini も入る**（12番の本体を解く材料）。⛔ 起動コマンドの文字列は載せない（採番した UUID が生で入る）。重複は受け取り側が `agentSessionId` で突き合わせて落とす |
 | `AgentTask.recoverable` | **ALTER**（周12 / PR #231） | `aiterm-<sessionId>` の tmux セッションが生きているか。Main の poller が**1周期に tmux を1回だけ**叩いて埋める（`src/main/pty/tmuxSessions.ts`）。⛔ **未取得・失敗は false に倒す**（押した先で新しいプロセスが生えないように）。⭐ **`ownedByApp` の代わりに使える**（あれは Main のメモリで再起動すると空になるが、tmux 名が付いていること自体が「このアプリが起動した」の証拠になる） |
 

@@ -931,14 +931,11 @@ export default function App(): ReactElement {
   //
   // 1. タブが開いていれば、そのペインへ移動する（OS 通知クリックと同じ粒度の解決。
   //    design-review.md U4）
-  // 2. 開いていなければ、**そのセッションに戻すタブを開く**。`buildClaudePlan` が
-  //    `--resume` に渡した ID をそのまま `agentSessionId` に入れるので、tmux 名は
-  //    `aiterm-<同じ ID>` になり、`tmux new-session -A` が**生きているセッションに
-  //    アタッチする**（内側の `claude --resume` は実行されない）
+  // 2. 開いていなければ、**生きている tmux セッションへアタッチする**タブを開く。
+  //    ⛔ `--resume` で開き直さない。`attach-session` なら**新しい CLI プロセスが生えず**、
+  //    セッションが消えていたときも「失敗して終わる」だけで済む（理由は src/main/pty/tmux.ts）
   //
   // ⚠ 2 に来るのは `recoverable` が true の行だけ（TaskList が押せる形にしない）。
-  // 生きていなければ `-A` は新規作成に倒れるが、そのとき走るのは `claude --resume <既存 ID>`
-  // なので、いずれにせよ元のセッションへ戻る（claude の resume は安全）。
   const focusTaskTab = useCallback(
     (agentSessionId: string) => {
       const location = findPaneByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
@@ -946,7 +943,7 @@ export default function App(): ReactElement {
         focusPaneLocation(location);
         return;
       }
-      void tabsApiRef.current.newAgentTab('claude', { resumeSessionId: agentSessionId });
+      void tabsApiRef.current.newAgentTab('claude', { attachAgentSessionId: agentSessionId });
     },
     [focusPaneLocation],
   );
