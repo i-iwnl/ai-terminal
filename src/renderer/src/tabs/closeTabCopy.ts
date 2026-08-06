@@ -9,9 +9,13 @@
 // `pty.kill()` が殺すのは tmux **クライアント**だけで、サーバ側のセッションと
 // 中の claude / gemini は生き残るため。
 //
-// **E2E ハーネスは `useTmux: false` 固定**なので、この分岐は E2E からは
-// そのままでは踏めない。だから判定を純粋関数に切り出して `test/unit/` で固定する
+// ⚠ **E2E ハーネスの既定は `useTmux: false`** だが、**固定ではない**
+// （`launchApp({ config: { useTmux: true }, fakeTmux: true })` で上書きでき、
+// S84 / S90 / S102 / S103 が実際にこの分岐を踏んでいる）。
+// それでも判定は純粋関数に切り出して `test/unit/` でも固定する
 // （このリポジトリの既定の作法。resizeGate / computeYourTurnSince / paneHeader 等と同じ形）。
+// **偽 tmux は `-A` のアタッチ分岐を再現しない**ので、E2E で守れるのは
+// 「どう分類するか」までで、「実際に戻れるか」は実機確認の担当。
 //
 // **回収できるかは `agentSessionId` を持つかで決まる。** tmux セッション名は
 // `buildTmuxSessionName(plan.agentSessionId ?? ptyId)` で決まり、これが無いと

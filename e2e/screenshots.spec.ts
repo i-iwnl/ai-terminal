@@ -48,8 +48,11 @@ const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // `make e2e` の側にこそ要る（PR #86 は「回せば落ちるが、回す動機が無かった」事例）。
 // しかし `docs/images/` は**同じコードで2回撮っても全枚数がバイト差**になるため
 // （実測）、`make e2e` のたびに約940KB のバイナリが dirty になるのは受け入れられない。
-// （**画素差**は Issue #120 周5 でほぼ消えた。残るのはセッション UUID が写る2枚だけで、
-// そちらは Issue #121 B-2 の担当。バイト差は PNG の圧縮まわりで別口に残る。）
+// （**画素差は解消済み**。Issue #121 B-2 で `e2e/fixtures/bin/claude` が
+// `ARGS_FOR_DISPLAY` から UUID を `<session-id>` へ置換し、**非決定性を撮影時に
+// 隠すのではなく発生源で断った**。`scripts/verify-screenshots.mjs` の
+// `KNOWN_NONDETERMINISTIC` は**空**で、除外している画像は1枚も無い。
+// バイト差は PNG の圧縮まわりで別口に残る。）
 // `make e2e` からは一時ディレクトリへ吐かせ、検証だけを取り込む。
 const IMAGES_DIR =
   process.env.AI_TERMINAL_E2E_IMAGES_DIR ?? join(REPO_ROOT, 'docs', 'images');

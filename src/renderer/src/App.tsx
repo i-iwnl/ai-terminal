@@ -1159,8 +1159,10 @@ export default function App(): ReactElement {
         {statusAnnouncement.text}
       </div>
       {closeConfirmation && (
-        // 2つ以上の PTY を一度に閉じるときの確認（Issue #56 PR 8・design-review.md
-        // 提案 E'）。position: fixed のオーバーレイなので DOM 上の位置は問わない。
+        // タブを閉じる前の確認（Issue #56 PR 8・design-review.md 提案 E'）。
+        // ⛔ **「2つ以上のときだけ」ではない。** 条件は `needsCloseConfirmation`
+        // （closeTabCopy.ts）が唯一の正で、1本でも回収できなくなるものがあれば立つ。
+        // position: fixed のオーバーレイなので DOM 上の位置は問わない。
         <CloseTabConfirmDialog
           copy={closeConfirmation.copy}
           onCancel={() => setCloseConfirmation(null)}
