@@ -40,6 +40,11 @@ export interface SpawnOpts {
   geminiResumeTarget?: string;
   /** gemini の内部 UUID。⛔ `--resume` には渡らない（用途は src/shared/ipc.ts が唯一の正）。 */
   geminiAgentSessionId?: string;
+  /**
+   * 生きている tmux セッションへ**アタッチする**ときの `agentSessionId`。
+   * これを渡すと CLI の起動コマンドは1つも組み立てられない（src/shared/ipc.ts）。
+   */
+  attachAgentSessionId?: string;
   cwd?: string;
   /** 指定があればタブタイトルにそのまま使う（履歴からの再開で、履歴一覧の表示名を引き継ぐ用途）。 */
   title?: string;
@@ -193,7 +198,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       cwd: string | undefined,
       resumeOpts?: Pick<
         SpawnOpts,
-        'resumeSessionId' | 'geminiResumeTarget' | 'geminiAgentSessionId'
+        'resumeSessionId' | 'geminiResumeTarget' | 'geminiAgentSessionId' | 'attachAgentSessionId'
       >,
     ): Promise<PaneLeaf | null> => {
       const req: SpawnPtyRequest = {
@@ -204,6 +209,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
         resumeSessionId: resumeOpts?.resumeSessionId,
         geminiResumeTarget: resumeOpts?.geminiResumeTarget,
         geminiAgentSessionId: resumeOpts?.geminiAgentSessionId,
+        attachAgentSessionId: resumeOpts?.attachAgentSessionId,
       };
       try {
         const result = await window.api.pty.spawn(req);

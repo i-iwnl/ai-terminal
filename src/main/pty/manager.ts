@@ -34,6 +34,7 @@ import { mergeUserEnv } from './shellEnv';
 import { loginShellEnv } from '../shell-path';
 import {
   isTmuxAvailable,
+  buildTmuxAttachCommand,
   buildTmuxSessionName,
   ensureTmuxUpdateEnvironment,
   wrapCommandWithTmux,
@@ -145,6 +146,18 @@ export function buildGeminiPlan(
   return { command: 'gemini', args: ['--session-id', agentSessionId], agentSessionId };
 }
 
+/**
+ * 生きている tmux セッションへアタッチするだけのプラン。
+ *
+ * CLI の起動コマンドを1つも組み立てない（走っているものに繋ぐだけ）。
+ * `agentSessionId` はそのまま返すので、閉じたあとの分類（`closeTabCopy.ts`）も
+ * 新規起動・resume と同じ扱いになる。
+ */
+export function buildAttachPlan(agentSessionId: string): SpawnPlan {
+  const wrapped = buildTmuxAttachCommand(buildTmuxSessionName(agentSessionId));
+  return { ...wrapped, agentSessionId };
+}
+
 /** kind に応じて起動プランを組み立てる（tmux ラップ前）。 */
 export function buildSpawnPlan(
   req: SpawnPtyRequest,
@@ -227,6 +240,8 @@ function isSpawnPtyRequest(value: unknown): value is SpawnPtyRequest {
   if (v.geminiResumeTarget !== undefined && typeof v.geminiResumeTarget !== 'string') return false;
   if (v.geminiAgentSessionId !== undefined && typeof v.geminiAgentSessionId !== 'string')
     return false;
+  if (v.attachAgentSessionId !== undefined && typeof v.attachAgentSessionId !== 'string')
+    return false;
   return true;
 }
 
@@ -271,6 +286,9 @@ export function maybeWrapWithTmux(
   // （テストが「そのマシンに tmux が入っているか」で結果を変えないようにする）。
   tmuxAvailable: boolean = isTmuxAvailable(),
 ): { plan: SpawnPlan; wrappedInTmux: boolean } {
+  // ⛔ アタッチ計画は**既に tmux のコマンド**なので、重ねてラップしない
+  // （`tmux new-session -A -s … -- tmux attach-session …` になってしまう）。
+  if (req.attachAgentSessionId) return { plan, wrappedInTmux: true };
   if (req.kind === 'shell') return { plan, wrappedInTmux: false };
   if (!config.useTmux) return { plan, wrappedInTmux: false };
   if (!tmuxAvailable) return { plan, wrappedInTmux: false };
@@ -305,11 +323,15 @@ export function registerPtyHandlers(): void {
       const config = getConfig();
       const ptyId = randomUUID();
 
-      // CLI 側の対応状況はここで1度だけ解決して純粋関数へ渡す
-      // （geminiSupportsSessionId 自身が結果をキャッシュする）。
-      const basePlan = buildSpawnPlan(req, config, undefined, {
-        geminiSessionId: geminiSupportsSessionId(),
-      });
+      // ⭐ **アタッチ要求は CLI の起動コマンドを組み立てない。**
+      // 走っている tmux セッションへ繋ぐだけなので、`--session-id` も `--resume` も要らない
+      // （むしろ渡すと、セッションが消えていたときに新規セッションを作ってしまう）。
+      const attachId = req.attachAgentSessionId;
+      const basePlan = attachId
+        ? buildAttachPlan(attachId)
+        : buildSpawnPlan(req, config, undefined, {
+            geminiSessionId: geminiSupportsSessionId(),
+          });
       // env は tmux ラップより先に組み立てる。tmux は子プロセスへ env を引き継がないので、
       // node-pty に渡すだけでは AI ペインに1つも届かない（tmux.ts の wrapCommandWithTmux）。
       //
