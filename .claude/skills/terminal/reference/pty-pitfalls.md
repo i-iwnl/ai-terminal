@@ -38,9 +38,22 @@ tmux はサーバ・クライアント型で、セッションの中で走るプ
 
 **切り分け方が要点。** 設定「アプリを閉じても AI の作業を続ける」を切る（= tmux ラップをやめる）と、**同じアプリ・同じ env で認証が通る**。tmux ラップの有無で挙動が変わったら、まず env の到達を疑う。
 
-対処は `tmux new-session -A -s <name> -- /usr/bin/env K=V ... <command>`（`wrapCommandWithTmux`）。
+### ⛔ 直し方: 値を argv に載せてはいけない（`ps` から読める）
 
-⛔ **`tmux new-session -e K=V` は使わない。** tmux 3.2 以降にしか無いうえ、**`-A` で既存セッションに当たったときは無視される**（実測: 2回目の `-e` を反映せず1回目の値が残る）。
+対処は **`update-environment` に変数名を足すこと**（`ensureTmuxUpdateEnvironment`）。tmux はそこに挙がっている名前だけを**クライアントの env から**読むので、**値は一度も argv を通らない**。
+
+⛔ **`-- /usr/bin/env K=V ... <command>` でラップしてはいけない。** 一度これを入れて同じ周の中で気づいた（2026-08-06）。`env` は exec するので env 自身の argv は消えるが、**node-pty が起動した tmux クライアントはタブが開いている間ずっと生き、その argv に全ての値が残る**:
+
+```
+$ ps -eo command | grep new-session
+tmux new-session -A -s aiterm-… -- /usr/bin/env SECRET_TOKEN=hunter3xyz … gemini …
+```
+
+**同じマシンの誰からでも読める。** 利用者の rc に書かれた API キー等がそのまま載る。
+
+⛔ **`tmux new-session -e K=V` も同じ理由で使えない**（値が argv に載る。加えて tmux 3.2 以降にしか無く、`-A` で既存セッションに当たると無視されることも実測済み）。
+
+⚠ **測り方の注意**: `-d`（デタッチ）で作ったセッションでは**漏れない**（クライアントが残らないため）。**アプリと同じく pty でアタッチしたクライアントを残して測ること**。これを間違えると「漏れていない」と誤判定する。
 
 ## PTY に渡す環境変数
 
