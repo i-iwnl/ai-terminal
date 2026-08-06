@@ -76,12 +76,71 @@ export function buildTmuxSessionName(idPart: string): string {
 }
 
 /**
- * コマンドを `tmux new-session -A -s <name> -- <command> ...` でラップする。
- * 副作用の無い純粋関数。tmux が使えるかどうかの判断は呼び出し側（isTmuxAvailable）に委ねる。
+ * tmux セッションへ持ち込まない環境変数。
+ *
+ * - `TMUX` / `TMUX_PANE`: 入れ子の tmux だと誤認させる。アプリ自身が tmux の
+ *   内側で起動されている場合に混入する。
+ * - `_`: 直前に実行したコマンドのパスで、意味が無いうえ毎回変わる。
  */
-export function wrapCommandWithTmux(sessionName: string, spec: CommandSpec): CommandSpec {
+const TMUX_ENV_DENYLIST: readonly string[] = ['TMUX', 'TMUX_PANE', '_'];
+
+/**
+ * 環境変数を `/usr/bin/env K=V ...` の引数列に変換する。
+ *
+ * `undefined` の値は「設定しない」を意味するので落とす。`=` を含むキーは
+ * `env` が解釈できない形になるため落とす（外部から来た値で argv を壊さない）。
+ */
+export function buildTmuxEnvArgs(env: Record<string, string | undefined>): string[] {
+  const args: string[] = [];
+  for (const key of Object.keys(env).sort()) {
+    const value = env[key];
+    if (value === undefined) continue;
+    if (key === '' || key.includes('=')) continue;
+    if (TMUX_ENV_DENYLIST.includes(key)) continue;
+    args.push(`${key}=${value}`);
+  }
+  return args;
+}
+
+/**
+ * コマンドを `tmux new-session -A -s <name> -- /usr/bin/env K=V ... <command> ...` でラップする。
+ * 副作用の無い純粋関数。tmux が使えるかどうかの判断は呼び出し側（isTmuxAvailable）に委ねる。
+ *
+ * ⭐ **なぜ env を引数として渡すのか。** `tmux new-session` に渡した環境変数は
+ * **子プロセスに届かない**。tmux はサーバ・クライアント型で、セッションの中で走る
+ * プロセスが継ぐのは**サーバ起動時に凍結された env** だからで、クライアント側の env から
+ * 引き継がれるのは `update-environment`（既定で DISPLAY / SSH_* など13個）に
+ * 挙がっているものだけ。**`buildPtyEnv` が組み立てた値は1つも届いていなかった。**
+ *
+ * 実害（2026-08-06 実測 / tmux 3.7b・Gemini CLI 0.54.0・実アプリを agent-browser で観測）:
+ * `~/.zshrc` で定義された `GOOGLE_CLOUD_PROJECT` が届かず、Gemini タブが
+ * `IneligibleTierError: This client is no longer supported for Gemini Code Assist for
+ * individuals` で**認証できなかった**。設定「アプリを閉じても AI の作業を続ける」を
+ * 切る（= tmux ラップをやめる）と同じアプリ・同じ env で `Signed in with Google` になる、
+ * という非対称で切り分けた。
+ *
+ * ⛔ **`tmux new-session -e K=V` は使わない。** tmux 3.2 以降にしか無いうえ、
+ * **`-A` で既存セッションに当たったときは無視される**（実測: 2回目の `-e` を
+ * 反映せず1回目の値が残る）。`/usr/bin/env` でラップすれば版に依存せず、
+ * `-A` の意味（既存があればアタッチ、そのときコマンド自体が無視される）とも整合する。
+ */
+export function wrapCommandWithTmux(
+  sessionName: string,
+  spec: CommandSpec,
+  env: Record<string, string | undefined> = {},
+): CommandSpec {
   return {
     command: 'tmux',
-    args: ['new-session', '-A', '-s', sessionName, '--', spec.command, ...spec.args],
+    args: [
+      'new-session',
+      '-A',
+      '-s',
+      sessionName,
+      '--',
+      '/usr/bin/env',
+      ...buildTmuxEnvArgs(env),
+      spec.command,
+      ...spec.args,
+    ],
   };
 }

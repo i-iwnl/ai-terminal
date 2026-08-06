@@ -251,19 +251,29 @@ interface PtyEntry {
 
 const entries = new Map<string, PtyEntry>();
 
-/** kind === 'shell' 以外、かつ設定で有効、かつ tmux が使える場合のみラップする。 */
-function maybeWrapWithTmux(
+/**
+ * kind === 'shell' 以外、かつ設定で有効、かつ tmux が使える場合のみラップする。
+ *
+ * `env` は node-pty へ渡すものと**同じ値**を渡すこと。tmux は子プロセスへ env を
+ * 引き継がないので、ラップするコマンド自体に載せないと1つも届かない
+ * （理由の全文は src/main/pty/tmux.ts の wrapCommandWithTmux）。
+ */
+export function maybeWrapWithTmux(
   req: SpawnPtyRequest,
   plan: SpawnPlan,
   config: Pick<AppConfig, 'useTmux'>,
   ptyId: string,
+  env: Record<string, string | undefined>,
+  // tmux の有無だけが外部依存。既定で実測し、単体テストからは注入する
+  // （テストが「そのマシンに tmux が入っているか」で結果を変えないようにする）。
+  tmuxAvailable: boolean = isTmuxAvailable(),
 ): { plan: SpawnPlan; wrappedInTmux: boolean } {
   if (req.kind === 'shell') return { plan, wrappedInTmux: false };
   if (!config.useTmux) return { plan, wrappedInTmux: false };
-  if (!isTmuxAvailable()) return { plan, wrappedInTmux: false };
+  if (!tmuxAvailable) return { plan, wrappedInTmux: false };
 
   const sessionName = buildTmuxSessionName(plan.agentSessionId ?? ptyId);
-  const wrapped = wrapCommandWithTmux(sessionName, plan);
+  const wrapped = wrapCommandWithTmux(sessionName, plan, env);
   return { plan: { ...wrapped, agentSessionId: plan.agentSessionId }, wrappedInTmux: true };
 }
 
@@ -293,10 +303,12 @@ export function registerPtyHandlers(): void {
       const basePlan = buildSpawnPlan(req, config, undefined, {
         geminiSessionId: geminiSupportsSessionId(),
       });
-      const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId);
+      // env は tmux ラップより先に組み立てる。tmux は子プロセスへ env を引き継がないので、
+      // node-pty に渡すだけでは AI ペインに1つも届かない（tmux.ts の wrapCommandWithTmux）。
+      const env = buildPtyEnv(process.env, app.getVersion());
+      const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId, env);
 
       const cwd = req.cwd || homedir();
-      const env = buildPtyEnv(process.env, app.getVersion());
 
       let proc: IPty;
       try {

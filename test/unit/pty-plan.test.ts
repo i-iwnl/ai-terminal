@@ -5,8 +5,8 @@
 // どちらも画面上は「一応動いている」ように見えるため、ここで固定する。
 
 import { describe, expect, it } from 'vitest';
-import { buildPtyEnv, buildSpawnPlan } from '../../src/main/pty/manager';
-import { buildTmuxSessionName } from '../../src/main/pty/tmux';
+import { buildPtyEnv, buildSpawnPlan, maybeWrapWithTmux } from '../../src/main/pty/manager';
+import { buildTmuxEnvArgs, buildTmuxSessionName, wrapCommandWithTmux } from '../../src/main/pty/tmux';
 
 describe('buildSpawnPlan（shell）', () => {
   it('設定のシェルをログインシェルとして起動する', () => {
@@ -278,5 +278,136 @@ describe('buildPtyEnv', () => {
   it('TERM_PROGRAM_VERSION は継承した値を無視し、引数で渡したアプリのバージョンになる', () => {
     const env = buildPtyEnv({ TERM_PROGRAM_VERSION: '470.2' }, '0.0.1');
     expect(env.TERM_PROGRAM_VERSION).toBe('0.0.1');
+  });
+});
+
+// tmux ラップ時の環境変数の転送（2026-08-06 / #180 周11）。
+//
+// **なぜ unit で固定するか。** E2E ハーネスは `useTmux: false` 固定なので、この分岐は
+// E2E から踏めない。判定を純粋関数へ出して単体で固定するのがこのリポジトリの既定の作法
+// （resizeGate / computeYourTurnSince / paneHeader 等と同じ形）。
+//
+// **何を守っているか。** tmux はサーバ起動時の env を凍結して子プロセスへ渡すため、
+// node-pty に env を渡すだけでは AI ペインに1つも届かない。実際に `~/.zshrc` 由来の
+// `GOOGLE_CLOUD_PROJECT` が落ち、Gemini タブが認証できなかった（実アプリで再現・
+// 設定で tmux を切ると同じ env で認証が通る、という非対称で切り分けた）。
+describe('wrapCommandWithTmux（環境変数の転送）', () => {
+  it('env を /usr/bin/env の引数として渡す（tmux は子プロセスへ env を引き継がないため）', () => {
+    const wrapped = wrapCommandWithTmux(
+      'aiterm-abc',
+      { command: 'gemini', args: ['--session-id', 'abc'] },
+      { GOOGLE_CLOUD_PROJECT: 'my-project' },
+    );
+    expect(wrapped.command).toBe('tmux');
+    expect(wrapped.args).toEqual([
+      'new-session',
+      '-A',
+      '-s',
+      'aiterm-abc',
+      '--',
+      '/usr/bin/env',
+      'GOOGLE_CLOUD_PROJECT=my-project',
+      'gemini',
+      '--session-id',
+      'abc',
+    ]);
+  });
+
+  it('env が空でも起動コマンドは壊れない（/usr/bin/env は素通しになる）', () => {
+    const wrapped = wrapCommandWithTmux('aiterm-abc', { command: 'claude', args: [] }, {});
+    expect(wrapped.args).toEqual([
+      'new-session',
+      '-A',
+      '-s',
+      'aiterm-abc',
+      '--',
+      '/usr/bin/env',
+      'claude',
+    ]);
+  });
+
+  // 呼び出し側が env を渡し忘れても、既定値で従来どおりの起動になること。
+  it('env を省略しても起動コマンドが成立する', () => {
+    const wrapped = wrapCommandWithTmux('aiterm-abc', { command: 'claude', args: ['--resume'] });
+    expect(wrapped.command).toBe('tmux');
+    expect(wrapped.args.slice(-2)).toEqual(['claude', '--resume']);
+  });
+
+  it('TMUX / TMUX_PANE は持ち込まない（入れ子の tmux だと誤認させる）', () => {
+    const args = buildTmuxEnvArgs({ TMUX: '/tmp/x,1,0', TMUX_PANE: '%3', LANG: 'ja_JP.UTF-8' });
+    expect(args).toEqual(['LANG=ja_JP.UTF-8']);
+  });
+
+  it('値が undefined のキーは「設定しない」なので落とす', () => {
+    const args = buildTmuxEnvArgs({ LANG: undefined, TERM: 'xterm-256color' });
+    expect(args).toEqual(['TERM=xterm-256color']);
+  });
+
+  // 外部から来た値で argv を壊さない。`=` を含むキーは env が解釈できない。
+  it('キーに = が含まれていたら落とす', () => {
+    const args = buildTmuxEnvArgs({ 'A=B': 'c', OK: 'v' });
+    expect(args).toEqual(['OK=v']);
+  });
+
+  it('値に = や空白が含まれていても1引数として渡す（argv なのでクォートは不要）', () => {
+    const args = buildTmuxEnvArgs({ CMD: 'a=b c d' });
+    expect(args).toEqual(['CMD=a=b c d']);
+  });
+
+  // 並び順が揺れると、同じ構成でも起動コマンドが変わって差分が読めなくなる。
+  it('キーの順序は安定している（辞書順）', () => {
+    const args = buildTmuxEnvArgs({ B: '2', A: '1', C: '3' });
+    expect(args).toEqual(['A=1', 'B=2', 'C=3']);
+  });
+});
+
+// ⛔ **両端だけ固定して真ん中を無テストにしない**（loop.md の「関門が空振りする形」）。
+// wrapCommandWithTmux 単体を固めても、呼び出し側が env を渡さなくなれば実害は同じ。
+// 「アプリが組み立てた env が tmux の argv に載る」ところまでを1本で通す。
+describe('maybeWrapWithTmux（アプリの env が tmux の起動コマンドまで届くか）', () => {
+  const plan = { command: 'gemini', args: ['--session-id', 'abc'] };
+  const env = { GOOGLE_CLOUD_PROJECT: 'my-project' };
+
+  it('AI ペインでは env が tmux の argv に載る', () => {
+    const result = maybeWrapWithTmux(
+      { kind: 'gemini', cols: 80, rows: 24 },
+      plan,
+      { useTmux: true },
+      'pty-1',
+      env,
+      true,
+    );
+    expect(result.wrappedInTmux).toBe(true);
+    expect(result.plan.args).toContain('GOOGLE_CLOUD_PROJECT=my-project');
+    // env は起動するコマンドより前に置く（/usr/bin/env の使い方）。
+    expect(result.plan.args.indexOf('GOOGLE_CLOUD_PROJECT=my-project')).toBeLessThan(
+      result.plan.args.indexOf('gemini'),
+    );
+  });
+
+  it('tmux が使えないときは素の起動のままで、env をコマンドに混ぜない', () => {
+    const result = maybeWrapWithTmux(
+      { kind: 'gemini', cols: 80, rows: 24 },
+      plan,
+      { useTmux: true },
+      'pty-1',
+      env,
+      false,
+    );
+    expect(result.wrappedInTmux).toBe(false);
+    expect(result.plan).toEqual(plan);
+  });
+
+  it('シェルは tmux でラップしないので env もコマンドに混ざらない（node-pty 経由で届く）', () => {
+    const result = maybeWrapWithTmux(
+      { kind: 'shell', cols: 80, rows: 24 },
+      { command: '/bin/zsh', args: ['-l'] },
+      { useTmux: true },
+      'pty-1',
+      env,
+      true,
+    );
+    expect(result.wrappedInTmux).toBe(false);
+    expect(result.plan.args).toEqual(['-l']);
   });
 });
