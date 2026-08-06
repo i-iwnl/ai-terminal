@@ -528,7 +528,7 @@ Issue #155 の design-review（5ペルソナ）で出たが、その周のスコ
 | # | 内容 | 指摘者 | 見積もり |
 |---|---|---|---|
 | a | **`needsCloseConfirmation` の「2枚以上」が `exit` 済みも数える。** `summarizeClosingPanes` は `leaf.exit` を数えないので、**終了済みのペイン2枚のタブを閉じると「走行中のプロセス 0 件を終了します」というダイアログが出る**。tmux 有効時は `agent + shell` の2分割でも「何も終了しないのにダイアログ」 | ヘビー | **20〜40手/日**（この束ねで最大の手数削減） |
-| b | **分割タブの `Cmd+W` は `needsCloseConfirmation` を1度も通らない。** `App.tsx` の `case 'close-pane'` は、ペインが2枚以上あるとき `closeActivePane()` を直接呼ぶ。Issue #158 の残件 | a11y / ヘビー | — |
+| ~~b~~ | ~~分割タブの `Cmd+W` が `needsCloseConfirmation` を通らない~~ -> ⛔ **既に [#173](https://github.com/i-iwnl/ai-terminal/issues/173) として open**（#180 周8 の対象）。**ここに書くと二重管理になる。** レビューの指摘は #173 の裏付けとして使う: `App.tsx` の `case 'close-pane'` はペインが2枚以上あるとき `closeActivePane()` を直接呼ぶので、**今日でも分割中の gemini ペインは黙って閉じる** | a11y / ヘビー | #173 |
 | c | **確認ボタンの赤が `exiting === 0` でも付く。** `CloseTabConfirmDialog.tsx` が `--danger` を無条件に当てている。ラベルは「タブを閉じる」で本文は「作業は続きます」なのに警告色 -> **赤の意味が薄まる**。直し方は `CloseTabCopy` に `destructive: boolean` を足してクラスの付与条件だけ変える（CSS の値は触らないので `css-substitution-check` に影響しない） | macOS / ヘビー | 小 |
 | d | **`Cmd+Shift+T`（最近閉じたタブを開き直す）。** キーは空いている（`shortcuts.ts` の Shift 分岐に `t` が無い）。**確認ダイアログを消した安全網の、macOS ネイティブな代替はこれ** | macOS | 中 |
 | e | **確認ダイアログにフォーカストラップと復帰が無い。** `aria-modal="true"` は Tab を止めない（「終了する」から Tab で背後の `.xterm-helper-textarea` に入る）。キャンセル後にフォーカスが `body` に落ちる（2.4.3） | a11y | 小 |
@@ -537,8 +537,11 @@ Issue #155 の design-review（5ペルソナ）で出たが、その周のスコ
 
 ### 対処方針
 
-- [ ] **a と b はセットで周を1つ増やす**（どちらも `needsCloseConfirmation` の呼び出し条件の話で、
+- [ ] **a は #173（周8）と同じ周でやる**（どちらも `needsCloseConfirmation` の呼び出し条件の話で、
       別々にやると S90 / S62 が二重に動いて主語が分からなくなる）
+- ⛔ **b は書くべきではなかった。** 起票済みの Issue と同じ内容を known-issues に足すと、
+      **潰しても片方が残る**（このループが防ごうとしている二重管理そのもの）。
+      **known-issues に足す前に `gh issue list` と突き合わせる**
 - [ ] c / e / f は「確認ダイアログの手当て」として1周にまとめられる
 - [ ] d と g は独立。単独で価値がある
 - ⛔ **他の周のついでにやらない。** 判定の分母が変わると S90 と unit の意味が二重に動く
