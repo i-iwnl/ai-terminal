@@ -15,7 +15,7 @@ import { getAppPaths } from '../app-paths';
 import { getConfig } from '../config';
 import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
-import { listLiveAgentSessionIds } from '../pty/tmuxSessions';
+import { listLiveAgentSessions } from '../pty/tmuxSessions';
 import { listClaudeAgents } from './claude';
 import { computeYourTurnSince } from './yourTurnSince';
 
@@ -125,7 +125,8 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
 
   // 生きている tmux セッション（このアプリ由来）。**1周期につき tmux を1回だけ叩く。**
   // ⛔ ここで gemini を起動しないこと（会話0往復のセッションが消える。tmuxSessions.ts 冒頭）。
-  const liveSessionIds = listLiveAgentSessionIds();
+  const liveSessions = listLiveAgentSessions();
+  const liveSessionIds = new Set(liveSessions.map((s) => s.agentSessionId));
 
   const tasks: AgentTask[] = result.tasks.map((task) => ({
     ...task,
@@ -137,7 +138,13 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
     recoverable: liveSessionIds.has(task.sessionId),
   }));
 
-  return { tasks, error: result.error, errorKind: result.errorKind, fetchedAt: Date.now() };
+  return {
+    tasks,
+    liveSessions,
+    error: result.error,
+    errorKind: result.errorKind,
+    fetchedAt: Date.now(),
+  };
 }
 
 /**

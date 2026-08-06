@@ -34,6 +34,20 @@ set -uo pipefail
 # ${AI_TERMINAL_E2E_FIXTURES}/tmux-live-sessions.txt があればその中身を返し、
 # 無ければ本物の tmux が「サーバが動いていない」ときと同じく非ゼロで終わる。
 # spec 側はこのファイルを書くことで「セッションが生き残っている」状態を作れる。
+# list-panes: 生きているセッションの要約（session_name / 起動コマンド / cwd）。
+# アプリ（poller.ts -> tmuxSessions.ts）が3秒ごとに叩く。
+# ${AI_TERMINAL_E2E_FIXTURES}/tmux-live-panes.txt の中身をそのまま返す。
+# **区切りは 0x1f**（実装の FIELD_SEPARATOR と合わせること）。
+if [ "${1:-}" = "list-panes" ]; then
+  live="${AI_TERMINAL_E2E_FIXTURES:-}/tmux-live-panes.txt"
+  if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ] && [ -f "$live" ]; then
+    cat "$live"
+    exit 0
+  fi
+  echo "no server running" >&2
+  exit 1
+fi
+
 if [ "${1:-}" = "list-sessions" ]; then
   live="${AI_TERMINAL_E2E_FIXTURES:-}/tmux-live-sessions.txt"
   if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ] && [ -f "$live" ]; then

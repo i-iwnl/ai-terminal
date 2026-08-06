@@ -49,11 +49,103 @@ export function parseLiveAgentSessionIds(stdout: string): Set<string> {
 }
 
 /**
+ * 生きているセッション1本の要約。
+ *
+ * ⛔ **`pane_start_command` そのものをここに入れない。** 起動コマンドには採番した UUID が
+ * 生で載る。provider の判定にだけ使い、**文字列はこのモジュールの外へ出さない**。
+ */
+export interface LiveAgentSession {
+  /** `aiterm-` を剥がした ID。tmux 名の再現に使う。 */
+  agentSessionId: string;
+  /** 起動コマンドの先頭から確定した CLI。⭐ 名前から推測していない。 */
+  provider: 'claude' | 'gemini';
+  /** そのペインの現在のディレクトリ。表示とスコープ判定に使う。 */
+  cwd?: string;
+}
+
+/**
+ * `-F` の区切り。**空白や `|` は使えない**（起動コマンドにも cwd にも入りうる）。
+ * 0x1f（UNIT SEPARATOR）は argv にもパスにも実質現れない。
+ */
+const FIELD_SEPARATOR = '\x1f';
+
+/** tmux に渡す書式。フィールドを増やすときはパース側と必ず一緒に変えること。 */
+export const LIVE_SESSION_FORMAT = [
+  '#{session_name}',
+  '#{pane_start_command}',
+  '#{pane_current_path}',
+].join(FIELD_SEPARATOR);
+
+/** 起動コマンドの先頭語から CLI を確定する。⭐ セッション名からは推測しない。 */
+function providerOf(startCommand: string): LiveAgentSession['provider'] | undefined {
+  // 先頭語だけを見る（`claude --session-id …` / `gemini --session-id …`）。
+  const head = startCommand.trim().split(/\s+/)[0] ?? '';
+  const bin = head.slice(head.lastIndexOf('/') + 1);
+  if (bin === 'claude') return 'claude';
+  if (bin === 'gemini') return 'gemini';
+  return undefined;
+}
+
+/**
+ * `tmux list-panes -a -F <LIVE_SESSION_FORMAT>` の出力を解釈する。
+ *
+ * - `aiterm-` で始まらないセッション（利用者が自分で作ったもの）は落とす
+ * - **CLI を確定できない行も落とす**（シェルだけの tmux セッション等）。
+ *   ⛔ 「たぶん claude」と推測しない
+ * - **同じセッションが複数行来る**（利用者が tmux の中で自分でペインを分割した場合）。
+ *   **先勝ちで1本に畳む**
+ *
+ * 純粋関数。tmux を叩く側は `listLiveAgentSessions()`。
+ */
+export function parseLiveAgentSessions(stdout: string): LiveAgentSession[] {
+  const sessions: LiveAgentSession[] = [];
+  const seen = new Set<string>();
+
+  for (const line of stdout.split('\n')) {
+    if (line.trim() === '') continue;
+    const [rawName = '', startCommand = '', rawCwd = ''] = line.split(FIELD_SEPARATOR);
+
+    const name = rawName.trim();
+    if (!name.startsWith(SESSION_NAME_PREFIX)) continue;
+    const agentSessionId = name.slice(SESSION_NAME_PREFIX.length);
+    if (agentSessionId.length === 0) continue;
+    if (seen.has(agentSessionId)) continue;
+
+    const provider = providerOf(startCommand);
+    if (provider === undefined) continue;
+
+    seen.add(agentSessionId);
+    const cwd = rawCwd.trim();
+    sessions.push({ agentSessionId, provider, cwd: cwd.length > 0 ? cwd : undefined });
+  }
+  return sessions;
+}
+
+/**
+ * いま生きている、このアプリ由来のセッション。
+ *
+ * 失敗（tmux が無い / サーバが動いていない / タイムアウト）は**空**を返す。
+ * ⭐ **空に倒す向きが重要。** 倒れた先は「押せない行のまま」＝ 今までと同じ挙動で、
+ * 「生きていないのに押せる」（押すと新しいプロセスが生える）側には倒れない。
+ */
+export function listLiveAgentSessions(): LiveAgentSession[] {
+  try {
+    const result = spawnSync('tmux', ['list-panes', '-a', '-F', LIVE_SESSION_FORMAT], {
+      encoding: 'utf8',
+      timeout: TMUX_TIMEOUT_MS,
+    });
+    // サーバが動いていなければ status != 0（`no server running on ...`）。それは異常ではない。
+    if (result.status !== 0 || !result.stdout) return [];
+    return parseLiveAgentSessions(result.stdout);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * いま生きている、このアプリ由来の tmux セッションの `agentSessionId` 集合。
  *
- * 失敗（tmux が無い / サーバが動いていない / タイムアウト）は**空集合**を返す。
- * ⭐ **空集合に倒す向きが重要。** 倒れた先は「押せない行のまま」＝ 今までと同じ挙動で、
- * 「生きていないのに押せる」（押すと新しいプロセスが生える）側には倒れない。
+ * 失敗時は**空集合**（理由は `listLiveAgentSessions()` と同じ）。
  */
 export function listLiveAgentSessionIds(): Set<string> {
   try {
@@ -61,7 +153,6 @@ export function listLiveAgentSessionIds(): Set<string> {
       encoding: 'utf8',
       timeout: TMUX_TIMEOUT_MS,
     });
-    // サーバが動いていなければ status != 0（`no server running on ...`）。それは異常ではない。
     if (result.status !== 0 || !result.stdout) return new Set();
     return parseLiveAgentSessionIds(result.stdout);
   } catch {

@@ -73,12 +73,16 @@ test('S104 タブを閉じても tmux セッションが生きていればタス
   await window.keyboard.press('Meta+w');
   await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(0, { timeout: 15_000 });
 
-  // 偽 tmux は tmux-live-sessions.txt が無い間「サーバが動いていない」を返す。
+  // 偽 tmux は tmux-live-panes.txt が無い間「サーバが動いていない」を返す。
   await expect(row.locator('button.task-item__row')).toHaveCount(0, { timeout: 20_000 });
   await expect(row.locator('.task-item__row')).toHaveCount(1);
 
   // --- 3. tmux に生きている状態を作ると、押せる行に戻る ------------------------
-  writeFileSync(join(fixturesDir, 'tmux-live-sessions.txt'), `${sessionName}\n`);
+  // 区切りは 0x1f（実装の FIELD_SEPARATOR）。起動コマンドから provider が確定する。
+  writeFileSync(
+    join(fixturesDir, 'tmux-live-panes.txt'),
+    `${sessionName}\x1fclaude --session-id ${sessionId}\x1f${launched.workDir}\n`,
+  );
 
   const recoverButton = row.locator('button.task-item__row');
   await expect(recoverButton).toHaveCount(1, { timeout: 20_000 });
