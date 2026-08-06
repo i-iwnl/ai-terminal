@@ -188,8 +188,30 @@ export interface AgentTask {
 }
 
 /** タスク一覧のスナップショット（Main -> Renderer の push） */
+/**
+ * tmux で生きている、このアプリ由来のセッション1本の要約。
+ *
+ * **`claude agents --json` とは出自が違う。** こちらは tmux が答えるので、
+ * **`--list-sessions` に出ない gemini セッション（会話0往復）も入る**
+ * （`.claude/workspace/issue-180/known-issues.md` の 12番）。
+ *
+ * ⛔ **起動コマンドの文字列は載せない。** 採番した UUID が生で入るため
+ * （`src/main/pty/tmuxSessions.ts`）。provider は Main が確定してから渡す。
+ */
+export interface LiveAgentSession {
+  agentSessionId: string;
+  provider: 'claude' | 'gemini';
+  cwd?: string;
+}
+
 export interface AgentTasksEvent {
   tasks: AgentTask[];
+  /**
+   * tmux で生きている、このアプリ由来のセッション。
+   * **`tasks` とは別の出自**なので、重複は受け取り側（Renderer）が
+   * `agentSessionId` で突き合わせて落とす。取得できなければ空。
+   */
+  liveSessions?: LiveAgentSession[];
   /** 取得に失敗した場合の理由。成功時は undefined */
   error?: string;
   /**
