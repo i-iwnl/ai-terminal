@@ -23,6 +23,7 @@ import { subscribePty } from './ptyStream';
 import { shouldSendResize, type ResizeDims } from './resizeGate';
 import { shouldActivateLink } from './linkActivation';
 import { searchSeedFromSelection } from './searchSeed';
+import { arrowScrollSequence, consumeWheelScroll } from './wheelScroll';
 
 /** unicode-graphemes アドオンが登録する Unicode バージョン文字列 */
 const GRAPHEME_UNICODE_VERSION = '15-graphemes';
@@ -143,6 +144,11 @@ export function useTerminal(
   // インスタンススコープの ref に持つこと（ペインが増えても他インスタンスと混ざらない）。
   const lastResizeRef = useRef<ResizeDims | null>(null);
 
+  // 代替画面バッファでのホイールの端数（wheelScroll.ts）。1行に満たない分をここに溜め、
+  // 次のイベントへ繰り越す。捨てるとトラックパッドが永久に動かなくなる。
+  // resize と同じくインスタンススコープの ref に持つ（ペインごとに独立させる）。
+  const wheelCarryRef = useRef(0);
+
   /**
    * コンテナのサイズに合わせて fit し、値が変わっていれば PTY にも resize を伝える。
    * ResizeObserver / 初回 RAF（内部呼び出し）と TerminalHandle.fit（外部呼び出し）の
@@ -248,6 +254,46 @@ export function useTerminal(
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true;
       return matchShortcut(event) === null;
+    });
+
+    // 代替画面バッファでのホイールを、**行数ぶんの**矢印キーに変換して送る。
+    //
+    // xterm 6.0.0 は同じ場面で矢印を1個しか送らず、tmux ラップが既定の AI タブでは
+    // 1ノッチ回しても1行しか進まない（退化の詳細と根拠は `wheelScroll.ts` の冒頭）。
+    //
+    // 呼ばれる位置が効いている。xterm の wheel リスナーは
+    //   1. `requestedEvents.wheel`（マウス報告 ON）なら**何もせず return**
+    //   2. このカスタムハンドラ（false を返せばここで打ち切り）
+    //   3. スクロールバックが無いバッファなら矢印1個を送る
+    // の順。つまり **tmux mouse on / vim `set mouse=a` のようにアプリ側がホイールを
+    // 自分で欲しがっている場面では、そもそもここへ来ない**。マウス報告の有無を
+    // 自前で判定する必要はなく、判定してしまうと 1 と 3 の隙間（wheel を要求しない
+    // x10 モード等）で xterm 既定の「矢印1個」に落ちて逆に悪化する。
+    term.attachCustomWheelEventHandler((event) => {
+      // 通常バッファは xterm の Viewport が正しく処理している。触らない。
+      // `hasScrollback` は公開 API に無いので、等価な `buffer.active.type` で見る。
+      if (term.buffer.active.type !== 'alternate') return true;
+
+      const container = containerRef.current;
+      if (!container) return true;
+
+      const { lines, carry } = consumeWheelScroll(
+        event,
+        // 行高は `getCellMetrics()` と同じ逆算で出す（xterm は実セル高を公開しない）。
+        { cellHeightCssPx: term.rows > 0 ? container.clientHeight / term.rows : 0, rows: term.rows },
+        wheelCarryRef.current,
+      );
+      wheelCarryRef.current = carry;
+
+      const sequence = arrowScrollSequence(lines, term.modes.applicationCursorKeysMode);
+      // `term.input` は onData を経由するので、キーボード入力とまったく同じ経路で
+      // PTY へ流れる（`window.api.pty.input` を直接叩かないこと）。
+      if (sequence) term.input(sequence, true);
+
+      // xterm はカスタムハンドラが false を返したとき `cancel()` を呼ばずに抜けるため、
+      // 既定動作の抑止はこちらで行う。省くと親要素がスクロールしうる。
+      event.preventDefault();
+      return false;
     });
 
     const ptyId = optionsRef.current.ptyId;
