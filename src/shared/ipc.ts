@@ -174,6 +174,21 @@ export interface AgentTask {
   /** このアプリ自身が起動したセッションか */
   ownedByApp: boolean;
   /**
+   * **アプリ側がこのセッションを掴むためのキー。** タブの照合・アタッチ・重複排除は
+   * `sessionId` ではなく必ずこちらを使う（`taskSessionKey()` が唯一の正）。
+   *
+   * ⭐ **なぜ `sessionId` と別に要るか。** `claude` は CLI 内の `/resume` や `/clear` で
+   * **自分の sessionId を切り替える**。そうなると `claude agents --json` の `sessionId` は、
+   * アプリが `--session-id` で渡した UUID（= tmux 名 `aiterm-<id>` に埋まっている ID）と
+   * **別物になる**。アプリ側の突き合わせキーが UUID 1本しか無かったため、
+   * `ownedByApp` も `recoverable` もタブの照合も同時に外れ、**押しても何も起きない行が
+   * 「あなたの番」に居座り、同じ1本のプロセスが「タブに戻せる AI」にも二重に並んでいた。**
+   *
+   * Main が `pid` で tmux ペインと突き合わせて解決する（`src/main/agents/poller.ts`）。
+   * 解決できなければ undefined で、その場合は従来どおり `sessionId` を使う（縮退）。
+   */
+  appSessionId?: string;
+  /**
    * タブを閉じた（またはアプリを再起動した）あとでも、**そのセッションに戻せるか**。
    *
    * `aiterm-<sessionId>` の tmux セッションが生きていれば true。
@@ -219,6 +234,11 @@ export interface LiveAgentSession {
   agentSessionId: string;
   provider: 'claude' | 'gemini';
   cwd?: string;
+  /**
+   * ペインで直接動いているプロセスの pid。`AgentTask.pid` との突き合わせに使う
+   * （理由は `src/main/pty/tmuxSessions.ts` の同名フィールド）。取れなければ undefined。
+   */
+  panePid?: number;
 }
 
 export interface AgentTasksEvent {

@@ -44,3 +44,46 @@ jsonl は1行1 JSON オブジェクトで、`type` フィールドで種別が�
 - `firstPrompt`（`type: "user"` の冒頭テキスト由来）: 98.8%
 
 title が取れないセッションは `ai-title` 生成前に終了したものである可能性が高い。UI 側は `title` が無い場合 `firstPrompt` にフォールバックする前提で作られている。
+
+## ⛔ `sessionId` はアプリが渡した `--session-id` と一致し続けない
+
+**`claude` は CLI 内の `/resume` や `/clear` で自分の sessionId を切り替える。**
+そのあと `claude agents --json` が返す `sessionId` は、アプリが起動時に
+`--session-id <uuid>` で渡した値（= tmux 名 `aiterm-<uuid>` に埋まっている ID）と
+**別物になる**。
+
+実機で観測した形（2026-08-07）:
+
+```
+tmux 名  aiterm-119a69f7-…   pane_pid 60756   argv: claude --session-id 119a69f7-…
+agents --json:  pid 60756   sessionId 1adde719-…   status idle    ← 別 UUID
+```
+
+`~/.claude/projects/` を見ると、**旧 UUID の JSONL は存在せず**、新しいほうは前日の
+会話だった。CLI の中でセッションを乗り換えた結果、プロセスと ID の対応がずれている。
+
+**アプリ側の突き合わせキーが UUID 1本だと、これで全部が同時に外れる。**
+
+| 壊れるもの | 見え方 |
+|---|---|
+| `ownedByApp` | 「このアプリ」の印が消える |
+| `recoverable` | 行が**押せない `<div>`** になる（押しても何も起きない） |
+| タブの照合 | **タブを開いている最中ですら**「開いていない」判定 |
+| 重複排除 | 同じ1本のプロセスが「タブに戻せる AI」にも**二重に**並ぶ |
+| `Cmd+J` / タブバーの状態ドット | そのセッションだけ**無言で効かなくなる** |
+
+**pid は CLI 側の都合で変わらない**ので、これが2本目のキーになる。tmux の
+`#{pane_pid}` は**ペインで直接動いているプロセス = `claude` 本体そのもの**
+（実測で確認済み。シェルを挟まない）。
+
+解決は `src/main/agents/sessionMatch.ts` の `resolveAppSessionIds()` が一手に引き受け、
+結果を `AgentTask.appSessionId` に載せる。**Renderer 側は `taskSessionKey()`
+（`sidebar/taskRow.ts`）を必ず通すこと。`task.sessionId` を直接使ってよいのは、
+一覧の React key と表示名だけ。**
+
+⛔ 突き合わせの順序に意味がある。**UUID の直接一致を先に確定し、残りだけ pid で当てる。**
+先に pid で当てると、pid が使い回された異常時に正しい対応を横取りしうる。
+
+⛔ **`pid` / `panePid` が undefined のものを pid 一致に混ぜないこと**（`undefined === undefined`
+で全部が最初の1本に吸い寄せられる）。この防御はタスク側と tmux 側の2箇所にあり冗長なので、
+**片方を外しても単体テストは緑のまま**。「テストが通るから要らない」と消さないこと。

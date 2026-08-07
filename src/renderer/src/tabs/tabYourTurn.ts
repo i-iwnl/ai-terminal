@@ -13,6 +13,7 @@
 
 import { toTaskState } from '@shared/agent-status';
 import type { YourTurnJumpDirection } from '@shared/ipc';
+import { taskSessionKey } from '../sidebar/taskRow';
 import { flattenPaneTree, type PaneNode } from './paneTree';
 import type { PaneLocation } from './tabPane';
 
@@ -25,18 +26,26 @@ interface JumpableTab {
 
 interface JumpableTask {
   sessionId: string;
+  appSessionId?: string;
   status?: string;
 }
 
 /**
- * 「あなたの番」のタスクが持つ sessionId の集合。
+ * 「あなたの番」のタスクを、**タブ側の `agentSessionId` と突き合わせられる形**にした集合。
  *
  * 状態の意味の唯一の正は `src/shared/agent-status.ts` の `toTaskState`
  * （busy = 作業中、busy 以外 = あなたの番）。**ここで反転させない。**
+ *
+ * ⛔ **`task.sessionId` を素で入れないこと。** 突き合わせ先は `leaf.agentSessionId`
+ * （＝アプリが `--session-id` で採番した UUID）だが、`claude` は CLI 内の `/resume` や
+ * `/clear` で**自分の sessionId を切り替える**ため、`claude agents --json` の
+ * `sessionId` はその UUID と別物になりうる。素で入れると、そのセッションだけ
+ * **`Cmd+J` が飛ばなくなり、タブバーの状態ドットも消える**（どちらも無言で壊れる）。
+ * 変換の正は `taskSessionKey`（`../sidebar/taskRow`）。
  */
 export function yourTurnSessionIds(tasks: readonly JumpableTask[]): Set<string> {
   return new Set(
-    tasks.filter((task) => toTaskState(task.status) === 'your-turn').map((task) => task.sessionId),
+    tasks.filter((task) => toTaskState(task.status) === 'your-turn').map(taskSessionKey),
   );
 }
 

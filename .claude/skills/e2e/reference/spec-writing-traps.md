@@ -170,3 +170,41 @@ await expect(checkbox).toBeChecked();      // 待つ
 **同じ形は「値が Main を往復してから画面に返る」入力すべてに当てはまる。**
 `fill()` のあと `expect.poll` で確かめている既存の spec（S31）と同じ理由。
 
+
+## 外部コマンドの出力を手で組み立てたフィクスチャは、書式が変わると黙ってずれる
+
+**実装の `LIVE_SESSION_FORMAT`（`src/main/pty/tmuxSessions.ts`）にフィールドを1つ足したとき、
+パース側は直したのに E2E フィクスチャ2本を取り残した**（2026-08-07）。
+
+```ts
+// 取り残された側（S104 / S105）。3フィールドのまま
+`${sessionName}\x1fclaude --session-id ${sessionId}\x1f${workDir}\n`
+```
+
+全フィールドが1つずれ、`providerOf()` が **cwd を起動コマンドとして読んで `undefined`**
+を返し、**行が丸ごと捨てられて `recoverable` が永久に false** になった。
+
+**気づく手段が `make e2e` しか無かった。**
+
+| 関門 | 検出したか |
+|---|---|
+| `npm run typecheck` | ✗（フィクスチャはただの文字列。型が付かない） |
+| `npm run lint` | ✗ |
+| `make unit` | ✗（パーサ側の単体テストも手組みの文字列を食わせていた） |
+| `scripts/lint-e2e.mjs` | ✗（id とファイル名とタイトルの対応しか見ない） |
+| `make e2e` | ○ |
+
+### 対処: 書式そのものから行を組み立てる
+
+`e2e/fixtures/tmuxLivePanes.ts` の `livePanesFile()` は `LIVE_SESSION_FORMAT` を
+`split` して、書式指定子ごとに値を差し込む。**フィールドが増えても順序が変わっても
+フィクスチャは自動的に追従し、値を持たない新フィールドが現れたら例外を投げる**
+ので、取り残しがその場で分かる。
+
+単体テスト側にも同じ機構を置いてある（`test/unit/tmux-sessions.test.ts` の
+「`LIVE_SESSION_FORMAT` とパーサの対応」）。**手組みの行を食わせるテストは、
+書式を1つも縛らない**ことに注意する。
+
+⛔ **`join('\x1f')` を spec に直接書かないこと。** 区切りとフィールド順を知っているのは
+実装側だけにする。同型の外部フォーマット（`claude agents --json` の項目追加など）でも
+同じ判断をすること。

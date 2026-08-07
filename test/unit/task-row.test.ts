@@ -12,9 +12,29 @@ import {
   resolveTaskRowAction,
   selectRecoverableSessions,
   taskRowActionLabel,
+  taskSessionKey,
 } from '../../src/renderer/src/sidebar/taskRow';
 
 const owned = { ownedByApp: true };
+
+// ⭐ 「押せないゾンビ行」の再発防止。CLI 内の `/resume` で sessionId が
+// アプリの採番値からずれたとき、掴むためのキーは appSessionId のほうになる。
+// 解決そのものは Main 側（session-match.test.ts）が担保し、ここは
+// **Renderer がどちらを使うか**だけを固定する。
+describe('taskSessionKey', () => {
+  it('乖離していれば appSessionId を使う', () => {
+    expect(taskSessionKey({ sessionId: '1adde719', appSessionId: '119a69f7' })).toBe('119a69f7');
+  });
+
+  it('解決できていなければ sessionId に倒す（従来どおりの挙動）', () => {
+    expect(taskSessionKey({ sessionId: '1adde719' })).toBe('1adde719');
+    expect(taskSessionKey({ sessionId: '1adde719', appSessionId: undefined })).toBe('1adde719');
+  });
+
+  it('一致しているときはどちらでも同じ値になる', () => {
+    expect(taskSessionKey({ sessionId: 'aaa', appSessionId: 'aaa' })).toBe('aaa');
+  });
+});
 
 describe('resolveTaskRowAction', () => {
   it('タブが開いていれば、そのタブへ移動する', () => {
@@ -106,6 +126,20 @@ describe('selectRecoverableSessions', () => {
 
   it('全部出ていれば空になる（節ごと消える）', () => {
     expect(selectRecoverableSessions(live, new Set(['a', 'b', 'c']), new Set())).toEqual([]);
+  });
+
+  // ⭐ 二重表示の再発防止。呼び出し側が `sessionId` で集合を作ると、乖離した1本が
+  // 状態グループとこの節の両方に並ぶ（実機で観測した形）。集合の作り方が
+  // `taskSessionKey` を通っていることを、ここで結合させて示す。
+  it('乖離したタスクでも、taskSessionKey で作った集合なら二重に出さない', () => {
+    const tasks = [{ sessionId: '1adde719', appSessionId: 'a' }];
+    const bySessionId = new Set(tasks.map((t) => t.sessionId));
+    const byKey = new Set(tasks.map((t) => taskSessionKey(t)));
+
+    // 素の sessionId で突き合わせると素通りしてしまう（これが不具合の形）。
+    expect(selectRecoverableSessions(live, bySessionId, new Set()).map((s) => s.agentSessionId)).toContain('a');
+    // taskSessionKey を通せば落ちる。
+    expect(selectRecoverableSessions(live, byKey, new Set()).map((s) => s.agentSessionId)).not.toContain('a');
   });
 });
 

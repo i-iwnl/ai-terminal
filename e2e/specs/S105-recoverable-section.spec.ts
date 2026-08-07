@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
+import { livePanesFile } from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
@@ -41,13 +42,21 @@ test('S105 tmux で生きている gemini が「タブに戻せる AI」の節�
   // --- 2. gemini と、タスク一覧に既にある claude を tmux に置く ---------------
   // 既定の agents.json は sessionId が aaaaaaaa-… / bbbbbbbb-… の2件。
   // その片方を tmux にも置き、**この節には重複して出ない**ことを見る。
-  const SEP = '\x1f';
+  // ⛔ 行を手で組み立てないこと（理由は `e2e/fixtures/tmuxLivePanes.ts` の冒頭）。
   writeFileSync(
     join(fixturesDir, 'tmux-live-panes.txt'),
-    [
-      ['aiterm-99999999-9999-4999-8999-999999999999', 'gemini --session-id 99999999', '/work/g'].join(SEP),
-      ['aiterm-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'claude --session-id aaaaaaaa', '/work/c'].join(SEP),
-    ].join('\n') + '\n',
+    livePanesFile([
+      {
+        sessionName: 'aiterm-99999999-9999-4999-8999-999999999999',
+        startCommand: 'gemini --session-id 99999999',
+        cwd: '/work/g',
+      },
+      {
+        sessionName: 'aiterm-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        startCommand: 'claude --session-id aaaaaaaa',
+        cwd: '/work/c',
+      },
+    ]),
   );
 
   await expect(section).toHaveCount(1, { timeout: 20_000 });
