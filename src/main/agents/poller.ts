@@ -9,7 +9,7 @@ import {
   type ListAgentsRequest,
 } from '@shared/ipc';
 // 状態の意味の単一の正。表示（TaskList）と同じ判定を使う。
-import { becameYourTurn, countYourTurn } from '@shared/agent-status';
+import { countYourTurn } from '@shared/agent-status';
 
 import { getAppPaths } from '../app-paths';
 import { getConfig } from '../config';
@@ -17,7 +17,9 @@ import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
 import { listLiveAgentSessions } from '../pty/tmuxSessions';
 import { listClaudeAgents } from './claude';
+import { selectCompletedTasks } from './completionNotice';
 import { resolveAppSessionIds } from './sessionMatch';
+import { taskIdentity } from './taskIdentity';
 import { computeYourTurnSince } from './yourTurnSince';
 
 // エージェント（実行中タスク一覧）の取得とポーリング。
@@ -57,7 +59,8 @@ let lastKnownCwd: string | undefined = getAppPaths().cwd;
 let previousTasks: AgentTask[] | undefined;
 
 /**
- * セッションごとの「あなたの番になった時刻」（epoch ミリ秒）。
+ * プロセスごとの「あなたの番になった時刻」（epoch ミリ秒）。**キーは `taskIdentity()`**
+ * （`sessionId` は一意ではない。理由は taskIdentity.ts）。
  *
  * プロセス内メモリのみに保持する（永続化しない）。**アプリ / Main プロセスの再起動で
  * 失われる。** 再起動直後にちょうど「あなたの番」のセッションがあっても、次に
@@ -144,7 +147,7 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
         (appSessionId !== undefined && ownedSessionIds.has(appSessionId)),
       // 直近の遷移検知（updateYourTurnSince）の結果をそのまま載せる。
       // ここでは検知そのものは行わない（前回との比較が要るため runPollCycle 側の責務）。
-      yourTurnSince: yourTurnSince.get(task.sessionId),
+      yourTurnSince: yourTurnSince.get(taskIdentity(task)),
       // タブが無くても、tmux セッションが生きていれば `-A` で戻せる。
       // **解決できた時点で生きている tmux セッションが在ることが確定している**ので、
       // ID 集合を別に引き直す必要は無い。
@@ -166,7 +169,7 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
  * `yourTurnSince`）を更新する。判定そのもの（遷移の検知・記録の消去）は
  * `computeYourTurnSince`（純粋関数。単体テストはそちらが持つ）に委ねる。
  *
- * `detectAndNotifyCompletions` と判定基準（becameYourTurn）は同じだが、
+ * `selectCompletedTasks`（完了通知の判定）と判定基準（becameYourTurn）は同じだが、
  * こちらは `config.notifyOnIdle` に関係なく常に動く。**「待たせている時間」の表示は
  * 通知設定とは独立した機能**（通知を切っている人も一覧の待ち時間は見たい）。
  */
@@ -176,7 +179,7 @@ function updateYourTurnSince(previous: AgentTask[] | undefined, current: AgentTa
 
 /** yourTurnSince マップの最新値で AgentTask[] を作り直す（更新直後に呼ぶ）。 */
 function withYourTurnSince(tasks: AgentTask[]): AgentTask[] {
-  return tasks.map((task) => ({ ...task, yourTurnSince: yourTurnSince.get(task.sessionId) }));
+  return tasks.map((task) => ({ ...task, yourTurnSince: yourTurnSince.get(taskIdentity(task)) }));
 }
 
 /** 1回分のポーリングサイクル。完了後、必ず次回をスケジュールする。 */
@@ -248,41 +251,20 @@ function focusSession(agentSessionId: string): void {
 }
 
 /**
- * 前回と今回の一覧を比較し、busy から busy 以外へ遷移したセッションを通知する。
+ * 前回と今回の一覧を比較し、作業を終えたセッションを通知する。
  *
- * 「一覧から消えた（プロセス終了）」セッションについては、消える直前が busy だった
- * ものだけを完了扱いにする。busy -> idle の遷移で既に通知済みのセッションが
- * その後一覧から消えても、その時点の status は idle なので再度は通知されない
- * （= 1回の完了につき通知は1回だけにする方針）。
+ * **どれを通知するかの判定は `selectCompletedTasks`（純粋関数）が持つ。** ここに残すのは
+ * 副作用（設定の参照・通知・Dock バウンス・前回分の更新）だけにする。判定をこの関数に
+ * 埋め込んだままにしていたため、**単体テストも E2E も一度も実行しない区間**ができ、
+ * 通知が毎ポーリング鳴り続ける不具合（Issue #241）を素通しした。
  */
 function detectAndNotifyCompletions(current: AgentTask[]): void {
   const config = getConfig();
 
-  if (previousTasks === undefined) {
-    // 初回ポーリングは比較対象が無いので、起動直後の大量通知を避けるためスキップする。
-    previousTasks = current;
-    return;
-  }
-
-  if (!config.notifyOnIdle) {
-    previousTasks = current;
-    return;
-  }
-
-  const prevById = new Map(previousTasks.map((task) => [task.sessionId, task]));
-  const currentIds = new Set(current.map((task) => task.sessionId));
-
-  for (const task of current) {
-    const prev = prevById.get(task.sessionId);
-    if (prev && becameYourTurn(prev.status, task.status)) {
+  // 初回ポーリング（比較対象が無い）と通知 off のときは、判定にかけずに前回分だけ更新する。
+  if (previousTasks !== undefined && config.notifyOnIdle) {
+    for (const task of selectCompletedTasks(previousTasks, current)) {
       notifyCompletion(task);
-    }
-  }
-
-  for (const prev of previousTasks) {
-    // 一覧から消えた（プロセスが終わった）ものは「作業中でなくなった」とみなす
-    if (!currentIds.has(prev.sessionId) && becameYourTurn(prev.status, undefined)) {
-      notifyCompletion(prev);
     }
   }
 
