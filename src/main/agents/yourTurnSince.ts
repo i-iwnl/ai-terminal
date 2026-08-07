@@ -11,9 +11,10 @@
 
 import { becameYourTurn, toTaskState } from '@shared/agent-status';
 
-/** この判定が必要とする最小限の形。AgentTask のうち sessionId と status だけを見る。 */
-export interface YourTurnTask {
-  sessionId: string;
+import { indexByIdentity, taskIdentity, type IdentifiableTask } from './taskIdentity';
+
+/** この判定が必要とする最小限の形。AgentTask のうち突き合わせキーと status だけを見る。 */
+export interface YourTurnTask extends IdentifiableTask {
   status?: string;
 }
 
@@ -32,6 +33,10 @@ export interface YourTurnTask {
  *
  * `previousRecord` は書き換えない（新しい Map を返す）。`nowMs` は呼び出し側から
  * 受け取る（テストで時刻を固定するため。関数内で Date.now() を呼ばない）。
+ *
+ * **キーは `sessionId` ではなく `taskIdentity()`**（理由は taskIdentity.ts）。`sessionId` で
+ * 畳むと、同じ ID を持つ別プロセスが2件あるときに一方の `set` ともう一方の `delete` が
+ * 打ち消し合い、その行の待ち時間が永久に出ない。呼び出し側（poller.ts）も同じキーで引く。
  */
 export function computeYourTurnSince(
   previousRecord: ReadonlyMap<string, number>,
@@ -42,21 +47,22 @@ export function computeYourTurnSince(
   const next = new Map(previousRecord);
 
   if (previousTasks !== undefined) {
-    const prevById = new Map(previousTasks.map((task) => [task.sessionId, task]));
+    const previousByIdentity = indexByIdentity(previousTasks);
 
     for (const task of currentTasks) {
-      const prev = prevById.get(task.sessionId);
+      const identity = taskIdentity(task);
+      const prev = previousByIdentity.get(identity);
       if (prev && becameYourTurn(prev.status, task.status)) {
-        next.set(task.sessionId, nowMs);
+        next.set(identity, nowMs);
       } else if (toTaskState(task.status) === 'working') {
-        next.delete(task.sessionId);
+        next.delete(identity);
       }
     }
   }
 
-  const currentIds = new Set(currentTasks.map((task) => task.sessionId));
-  for (const sessionId of next.keys()) {
-    if (!currentIds.has(sessionId)) next.delete(sessionId);
+  const currentIdentities = new Set(currentTasks.map((task) => taskIdentity(task)));
+  for (const identity of next.keys()) {
+    if (!currentIdentities.has(identity)) next.delete(identity);
   }
 
   return next;
