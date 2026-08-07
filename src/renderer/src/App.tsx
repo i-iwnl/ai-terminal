@@ -69,9 +69,11 @@ import CloseTabConfirmDialog from './tabs/CloseTabConfirmDialog';
 import {
   closeTabCopy,
   closedTabAnnouncement,
+  closedTabChannel,
   needsCloseConfirmation,
   summarizeClosingPanes,
   type CloseTabCopy,
+  type ClosingPaneSummary,
 } from './tabs/closeTabCopy';
 import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
@@ -304,17 +306,34 @@ export default function App(): ReactElement {
     else splitterRefsRef.current.delete(key);
   }, []);
 
+  /**
+   * 閉じたことの告知を、`closedTabChannel()` が決めた面へ流す。
+   *
+   * ⛔ **呼び出し側で面を選ばないこと。** 「両方に流さない」を守るために、
+   * 判定は `closeTabCopy.ts` の1箇所に集めてある。
+   */
+  const announceClosed = useCallback(
+    (summary: ClosingPaneSummary, message: string): void => {
+      if (closedTabChannel(summary) === 'notice') {
+        showNotice(message, 'info');
+        return;
+      }
+      announce(message);
+    },
+    [announce, showNotice],
+  );
+
   // タブを実際に閉じる（確認が要らない、または確認済みの経路）。
-  // 閉じたあと role="status" で結果を告知する（design-review.md 提案 E'）。
+  // 閉じたあと結果を告知する（design-review.md 提案 E'）。
   // ⭐ **内訳は閉じる前に数える**（閉じたあとでは leaf がもう無い）。
   const performCloseTab = useCallback(
     async (tabId: string): Promise<void> => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
       const summary = summarizeClosingPanes(tab ? flattenPaneTree(tab.layout) : []);
       await tabsApiRef.current.closeTab(tabId);
-      announce(closedTabAnnouncement(summary));
+      announceClosed(summary, closedTabAnnouncement(summary));
     },
-    [announce],
+    [announceClosed],
   );
 
   /**
@@ -583,12 +602,15 @@ export default function App(): ReactElement {
           const paneSummary = summarizeClosingPanes(closingPane ? [closingPane] : []);
           void api.closeActivePane().then((outcome) => {
             if (outcome.kind === 'tab-closed') {
-              announce(closedTabAnnouncement(paneSummary));
+              announceClosed(paneSummary, closedTabAnnouncement(paneSummary));
               return;
             }
-            const persistent = paneSummary.persistentResumable + paneSummary.persistentOrphaned;
-            announce(
-              persistent > 0
+            // ペイン1枚を閉じたときは語を「ペイン」に替えるだけ。**面の選び方は
+            // タブのときと同じ**（`closedTabChannel`）なので、ここでも自前で
+            // `persistent > 0` を書き直さない。
+            announceClosed(
+              paneSummary,
+              closedTabChannel(paneSummary) === 'notice'
                 ? closedTabAnnouncement(paneSummary).replace('タブを閉じました', 'ペインを閉じました')
                 : 'ペインを閉じました',
             );
