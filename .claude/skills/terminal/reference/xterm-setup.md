@@ -106,3 +106,48 @@ useEffect(() => {
 ペインに名前を付けて作る。**「名前が付いた」だけを見る検査は、
 全ペインに同じ名前を付ける実装でも通る**ので、リネーム後に別々になるところまで見る。
 
+
+## 代替画面バッファでのホイールは、自前で行数ぶんの矢印に変換する（xterm 6 の退化）
+
+**xterm.js 6.0.0 は、スクロールバックを持たないバッファ（= 代替画面）でホイールを受けたとき、
+矢印キーを1個しか送らない。** `CoreBrowserTerminal.ts` の wheel ハンドラは
+`coreMouseService.consumeWheelEvent()` でスクロール行数を計算しておきながら、
+**0 かどうかの判定にしか使っていない**。上流のコメント自身が退化を自認している:
+
+> This used implementation used get the actual lines/partial lines scrolled from the
+> viewport but since moving to the new viewport implementation has been **simplified to
+> simply send a single up or down sequence**.
+
+5系は `for (let i = 0; i < Math.abs(amount); i++)` で行数ぶん送っていた。
+
+**このアプリでは常時踏む。** `useTmux` の既定が true で claude / gemini タブを全部
+tmux でラップするため、**AI タブは必ず代替画面バッファ**にいる。実測（2026-08-07、
+行高 15.28px）:
+
+| | ホイール1ノッチ（deltaY=100） |
+|---|---|
+| xterm 既定 | **1行** |
+| 自前ハンドラ | **6行**（100 ÷ 15.28 = 6.5） |
+
+対処は `term.attachCustomWheelEventHandler()`（`useTerminal.ts`）。判定は
+`wheelScroll.ts` の純粋関数で、単体テストが「1イベント = 矢印1個」への逆戻りを検出する。
+
+**呼ばれる位置に意味がある。** xterm の wheel リスナーは
+
+1. `requestedEvents.wheel`（マウス報告 ON）なら**何もせず return**
+2. カスタムハンドラ（`false` を返せば打ち切り）
+3. スクロールバックが無いバッファなら矢印1個を送る
+
+の順。つまり **tmux `mouse on` / vim `set mouse=a` のようにアプリ側がホイールを
+自分で欲しがっている場面には、そもそも来ない。**
+
+⛔ **`term.modes.mouseTrackingMode` を自前で見て早期 return しないこと。**
+1 と 3 の隙間（wheel を要求しない `x10` モード等）で xterm 既定の「矢印1個」に落ちて
+**かえって悪化する**。マウス報告の判定は 1 が既に正確にやっている。
+
+⛔ **`event.preventDefault()` を省かないこと。** xterm はカスタムハンドラが `false` を
+返したとき `cancel()` を呼ばずに抜けるので、抑止はこちらの責任。省くと親要素がスクロールしうる。
+
+⚠ **通常バッファには介入しない。** そちらは `Viewport` が `scrollSensitivity` ごと
+正しく処理しており壊れていない。判定は `term.buffer.active.type === 'alternate'`
+（`hasScrollback` は公開 API に無い）。
