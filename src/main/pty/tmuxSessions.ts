@@ -61,6 +61,23 @@ export interface LiveAgentSession {
   provider: 'claude' | 'gemini';
   /** そのペインの現在のディレクトリ。表示とスコープ判定に使う。 */
   cwd?: string;
+  /**
+   * ペインで直接動いているプロセスの pid（= `claude` / `gemini` 本体）。
+   *
+   * ⭐ **`agentSessionId` が当てにならなくなったときの、もう1本の突き合わせキー。**
+   * `claude` は CLI 内の `/resume` や `/clear` で**自分の sessionId を切り替える**ため、
+   * `claude agents --json` が返す `sessionId` が、アプリが `--session-id` で渡した UUID
+   * （= tmux 名に埋まっている ID）と**別物になる**。そうなると UUID だけを見ている
+   * 突き合わせが全部外れ、**押しても何も起きない行が「あなたの番」に居座り、
+   * 同じ1本のプロセスが「タブに戻せる AI」にも二重に並ぶ**。
+   *
+   * pid は CLI 側の都合で変わらないので、この乖離を跨いで対応が付く
+   * （実測: pane_pid 60756 = `agents --json` の pid、tmux 名は別 UUID）。
+   *
+   * 取れなければ undefined（tmux の書式が変わった場合など）。**そのときは
+   * 従来どおり UUID だけで突き合わせる**ので、縮退しても今より悪くはならない。
+   */
+  panePid?: number;
 }
 
 /**
@@ -72,6 +89,7 @@ const FIELD_SEPARATOR = '\x1f';
 /** tmux に渡す書式。フィールドを増やすときはパース側と必ず一緒に変えること。 */
 export const LIVE_SESSION_FORMAT = [
   '#{session_name}',
+  '#{pane_pid}',
   '#{pane_start_command}',
   '#{pane_current_path}',
 ].join(FIELD_SEPARATOR);
@@ -103,7 +121,8 @@ export function parseLiveAgentSessions(stdout: string): LiveAgentSession[] {
 
   for (const line of stdout.split('\n')) {
     if (line.trim() === '') continue;
-    const [rawName = '', startCommand = '', rawCwd = ''] = line.split(FIELD_SEPARATOR);
+    const [rawName = '', rawPanePid = '', startCommand = '', rawCwd = ''] =
+      line.split(FIELD_SEPARATOR);
 
     const name = rawName.trim();
     if (!name.startsWith(SESSION_NAME_PREFIX)) continue;
@@ -116,9 +135,24 @@ export function parseLiveAgentSessions(stdout: string): LiveAgentSession[] {
 
     seen.add(agentSessionId);
     const cwd = rawCwd.trim();
-    sessions.push({ agentSessionId, provider, cwd: cwd.length > 0 ? cwd : undefined });
+    sessions.push({
+      agentSessionId,
+      provider,
+      cwd: cwd.length > 0 ? cwd : undefined,
+      panePid: parsePanePid(rawPanePid),
+    });
   }
   return sessions;
+}
+
+/**
+ * `#{pane_pid}` の値を数値にする。**正の整数でなければ undefined に倒す**
+ * （書式が変わって別のフィールドが来ても、pid として使わない）。
+ */
+function parsePanePid(raw: string): number | undefined {
+  const value = Number(raw.trim());
+  if (!Number.isInteger(value) || value <= 0) return undefined;
+  return value;
 }
 
 /**

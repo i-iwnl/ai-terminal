@@ -25,6 +25,7 @@ import {
   liveSessionProviderLabel,
   resolveTaskRowAction,
   selectRecoverableSessions,
+  taskSessionKey,
   taskRowActionLabel,
 } from './taskRow';
 // タスク一覧の購読はここで直接 window.api.agents を呼ばず、共有ハブに委ねる
@@ -160,9 +161,13 @@ export default function TaskList({
   const groups = groupTasksForDisplay(tasks);
 
   // 上の状態グループにも、開いているタブにも無いものだけを別の節へ回す。
+  //
+  // ⛔ **`t.sessionId` で突き合わせないこと。** CLI 内の `/resume` で sessionId が
+  // ずれると重複排除が素通りし、**同じ1本のプロセスが状態グループとこの節に
+  // 二重に並ぶ**（実機で観測）。突き合わせキーの正は `taskSessionKey`。
   const recoverable = selectRecoverableSessions(
     liveSessions,
-    new Set(tasks.map((t) => t.sessionId)),
+    new Set(tasks.map((t) => taskSessionKey(t))),
     new Set(liveSessions.filter((s) => canFocus(s.agentSessionId)).map((s) => s.agentSessionId)),
   );
 
@@ -171,7 +176,10 @@ export default function TaskList({
     // ⛔ ここで ownedByApp を重ねて見ないこと（Main のメモリで、再起動すると空になる）。
     // ⭐ ここに条件を書き足さないこと。判定そのものが不具合の本体だったので
     // 純粋関数へ出して単体で固定している。
-    const action = resolveTaskRowAction(task, canFocus(task.sessionId));
+    // ⛔ 渡すのは `task.sessionId` ではなく `taskSessionKey(task)`。CLI 内の `/resume` で
+    // sessionId がずれると、**タブを開いている最中ですら**「開いていない」と判定される。
+    const sessionKey = taskSessionKey(task);
+    const action = resolveTaskRowAction(task, canFocus(sessionKey));
     const clickable = action !== 'none';
     const state = toTaskState(task.status);
     const name = task.name ?? `セッション ${task.sessionId.slice(0, 8)}`;
@@ -249,7 +257,7 @@ export default function TaskList({
             type="button"
             className="task-item__row"
             aria-label={ariaLabel}
-            onClick={() => onFocusTab(task.sessionId)}
+            onClick={() => onFocusTab(sessionKey)}
           >
             {bodyContent}
           </button>

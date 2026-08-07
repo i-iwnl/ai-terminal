@@ -11,6 +11,23 @@
 
 import type { AgentTask } from '@shared/ipc';
 
+/**
+ * アプリ側がこのタスクを掴むためのキー。**タブの照合・アタッチ・重複排除は
+ * すべてこれを通す。** `task.sessionId` を直接使ってよいのは、一覧の React key と
+ * 表示名だけ。
+ *
+ * ⭐ **`sessionId` をそのまま使ってはいけない理由。** `claude` は CLI 内の `/resume` や
+ * `/clear` で自分の sessionId を切り替えるので、**アプリが `--session-id` で渡した UUID
+ * （tmux 名 `aiterm-<id>` に埋まっている値）とずれる**。Main が pid で解決した結果が
+ * `appSessionId` に載っている（`src/main/agents/sessionMatch.ts`）。
+ *
+ * 解決できなかった場合（tmux が無い / アプリ外で起動された claude）は `sessionId` に
+ * 倒す。**その場合はどのみちアプリから掴めるものが無い**ので、従来どおりの挙動になる。
+ */
+export function taskSessionKey(task: Pick<AgentTask, 'sessionId' | 'appSessionId'>): string {
+  return task.appSessionId ?? task.sessionId;
+}
+
 /** 行を押したときに起きること。 */
 export type TaskRowAction =
   /** 押せない（このアプリが起動していない / 戻る先が無い）。 */

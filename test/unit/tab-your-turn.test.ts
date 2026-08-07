@@ -251,3 +251,30 @@ describe('tabHasYourTurn（Issue #119 周5: タブバーの状態スロット）
     expect(tabHasYourTurn(leaf({ paneId: 'a' }), ids)).toBe(false);
   });
 });
+
+// ⭐ CLI 内の `/resume` で sessionId がアプリの採番値からずれたとき、
+// **Cmd+J とタブバーの状態ドットが無言で壊れる**ことの再発防止（2026-08-07）。
+//
+// 突き合わせ先は `leaf.agentSessionId`（アプリが `--session-id` で渡した UUID）で、
+// タスク側の `sessionId` はそれと別物になりうる。素で入れると、そのセッションだけ
+// ジャンプが飛ばず、タブバーの印も出なくなる。どちらも「静かに効かなくなる」ので
+// 気づく手段がここしか無い。
+describe('yourTurnSessionIds は appSessionId を優先する', () => {
+  it('乖離していれば appSessionId のほうを集合に入れる', () => {
+    const ids = yourTurnSessionIds([
+      { sessionId: '1adde719', appSessionId: '119a69f7', status: 'idle' },
+    ]);
+    expect(ids.has('119a69f7')).toBe(true);
+    expect(ids.has('1adde719')).toBe(false);
+  });
+
+  it('解決できていなければ sessionId に倒す（従来どおり）', () => {
+    expect(yourTurnSessionIds([{ sessionId: 'aaa', status: 'idle' }]).has('aaa')).toBe(true);
+  });
+
+  it('作業中は入れない（状態の判定は従来どおり）', () => {
+    expect(
+      yourTurnSessionIds([{ sessionId: 'aaa', appSessionId: 'bbb', status: 'busy' }]).size,
+    ).toBe(0);
+  });
+});

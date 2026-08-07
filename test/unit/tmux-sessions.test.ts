@@ -8,7 +8,11 @@
 // （このリポジトリの既定の作法）。
 
 import { describe, expect, it } from 'vitest';
-import { parseLiveAgentSessionIds, parseLiveAgentSessions } from '../../src/main/pty/tmuxSessions';
+import {
+  LIVE_SESSION_FORMAT,
+  parseLiveAgentSessionIds,
+  parseLiveAgentSessions,
+} from '../../src/main/pty/tmuxSessions';
 import { buildTmuxSessionName } from '../../src/main/pty/tmux';
 
 describe('parseLiveAgentSessionIds', () => {
@@ -53,7 +57,9 @@ describe('parseLiveAgentSessionIds', () => {
 // ⭐ **provider は `pane_start_command` の先頭語から確定する。セッション名から推測しない。**
 describe('parseLiveAgentSessions', () => {
   const SEP = '\x1f';
-  const line = (name: string, cmd: string, cwd: string) => [name, cmd, cwd].join(SEP);
+  // フィールド順は LIVE_SESSION_FORMAT と同じ（name / pane_pid / start_command / cwd）。
+  const line = (name: string, cmd: string, cwd: string, pid = '1234') =>
+    [name, pid, cmd, cwd].join(SEP);
 
   it('claude / gemini を起動コマンドから確定する', () => {
     const out = [
@@ -61,8 +67,8 @@ describe('parseLiveAgentSessions', () => {
       line('aiterm-bbb', 'gemini --session-id bbb', '/work/b'),
     ].join('\n');
     expect(parseLiveAgentSessions(out)).toEqual([
-      { agentSessionId: 'aaa', provider: 'claude', cwd: '/work/a' },
-      { agentSessionId: 'bbb', provider: 'gemini', cwd: '/work/b' },
+      { agentSessionId: 'aaa', provider: 'claude', cwd: '/work/a', panePid: 1234 },
+      { agentSessionId: 'bbb', provider: 'gemini', cwd: '/work/b', panePid: 1234 },
     ]);
   });
 
@@ -70,8 +76,39 @@ describe('parseLiveAgentSessions', () => {
   it('会話0往復の gemini も拾える（tmux は往復数を知らない）', () => {
     const out = line('aiterm-zero', 'gemini --session-id zero', '/tmp/x');
     expect(parseLiveAgentSessions(out)).toEqual([
-      { agentSessionId: 'zero', provider: 'gemini', cwd: '/tmp/x' },
+      { agentSessionId: 'zero', provider: 'gemini', cwd: '/tmp/x', panePid: 1234 },
     ]);
+  });
+
+  // ⭐ sessionId が乖離したときの唯一の突き合わせ材料（session-match.test.ts が使う）。
+  describe('pane_pid', () => {
+    it('ペインの pid を数値で取り出す', () => {
+      const out = line('aiterm-aaa', 'claude --session-id aaa', '/w', '60756');
+      expect(parseLiveAgentSessions(out)[0]?.panePid).toBe(60756);
+    });
+
+    it('前後に空白があっても読める', () => {
+      const out = line('aiterm-aaa', 'claude --session-id aaa', '/w', '  60756 ');
+      expect(parseLiveAgentSessions(out)[0]?.panePid).toBe(60756);
+    });
+
+    it('数値でなければ undefined に倒す（書式が変わっても pid として使わない）', () => {
+      expect(parseLiveAgentSessions(line('aiterm-a', 'claude', '/w', ''))[0]?.panePid).toBeUndefined();
+      expect(
+        parseLiveAgentSessions(line('aiterm-a', 'claude', '/w', 'abc'))[0]?.panePid,
+      ).toBeUndefined();
+    });
+
+    it('0 や負の値は pid ではないので undefined に倒す', () => {
+      expect(parseLiveAgentSessions(line('aiterm-a', 'claude', '/w', '0'))[0]?.panePid).toBeUndefined();
+      expect(parseLiveAgentSessions(line('aiterm-a', 'claude', '/w', '-1'))[0]?.panePid).toBeUndefined();
+    });
+
+    it('小数は pid ではないので undefined に倒す', () => {
+      expect(
+        parseLiveAgentSessions(line('aiterm-a', 'claude', '/w', '12.5'))[0]?.panePid,
+      ).toBeUndefined();
+    });
   });
 
   it('絶対パスで起動されていても CLI を判別できる', () => {
@@ -97,7 +134,7 @@ describe('parseLiveAgentSessions', () => {
       line('aiterm-ggg', 'zsh', '/w/sub'),
     ].join('\n');
     expect(parseLiveAgentSessions(out)).toEqual([
-      { agentSessionId: 'ggg', provider: 'claude', cwd: '/w' },
+      { agentSessionId: 'ggg', provider: 'claude', cwd: '/w', panePid: 1234 },
     ]);
   });
 
@@ -120,5 +157,44 @@ describe('parseLiveAgentSessions', () => {
   it('戻り値に起動コマンドの文字列を含めない', () => {
     const out = line('aiterm-jjj', 'claude --session-id jjj', '/w');
     expect(JSON.stringify(parseLiveAgentSessions(out))).not.toContain('--session-id');
+  });
+});
+
+// ⭐ **書式とパーサがずれたことを検出する唯一の関門。**
+//
+// 上の `parseLiveAgentSessions` のテストは**手で組んだ行**を食わせているので、
+// `LIVE_SESSION_FORMAT` 側だけを変えても1本も落ちない。実際、`pane_pid` を
+// 足す周で「書式からフィールドを1つ落とす」壊し方を試したところ**全部緑のまま**だった
+// （2026-08-07 実測）。
+//
+// これは無害な取りこぼしではない。フィールドが1つずれると
+// **provider を cwd から読もうとして全行が捨てられ、一覧が丸ごと空になる**
+// （= 走っているセッションが全部「押せない行」に戻る）。しかも tmux を叩く側は
+// 単体で回せないので、E2E でも実機でしか気づけない。
+//
+// **書式そのものから行を組み立てて**パースさせることで、両者を縛る。
+describe('LIVE_SESSION_FORMAT とパーサの対応', () => {
+  const SEP = '\x1f';
+
+  /** 書式に現れてよいフィールドと、そこに来る想定の値。 */
+  const SPECIMEN: Record<string, string> = {
+    '#{session_name}': 'aiterm-aaa',
+    '#{pane_pid}': '60756',
+    '#{pane_start_command}': 'claude --session-id aaa',
+    '#{pane_current_path}': '/work/a',
+  };
+
+  const fields = LIVE_SESSION_FORMAT.split(SEP);
+
+  // 書式にフィールドを足したのにパーサを直し忘れた場合、まずここで気づける。
+  it('書式に未知のフィールドが増えていない', () => {
+    expect(fields.filter((f) => !(f in SPECIMEN))).toEqual([]);
+  });
+
+  it('書式から組み立てた行を、パーサが同じ並びで読める', () => {
+    const out = fields.map((f) => SPECIMEN[f] ?? '').join(SEP);
+    expect(parseLiveAgentSessions(out)).toEqual([
+      { agentSessionId: 'aaa', provider: 'claude', cwd: '/work/a', panePid: 60756 },
+    ]);
   });
 });

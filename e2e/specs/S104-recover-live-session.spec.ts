@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, setAgentEntries, type LaunchedApp } from '../fixtures/harness';
+import { livePanesFile } from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
@@ -78,10 +79,18 @@ test('S104 タブを閉じても tmux セッションが生きていればタス
   await expect(row.locator('.task-item__row')).toHaveCount(1);
 
   // --- 3. tmux に生きている状態を作ると、押せる行に戻る ------------------------
-  // 区切りは 0x1f（実装の FIELD_SEPARATOR）。起動コマンドから provider が確定する。
+  // ⛔ 行を手で組み立てないこと。実装の `LIVE_SESSION_FORMAT` にフィールドが増えると
+  // 全部が1つずれて行ごと捨てられ、**この spec だけが理由不明で落ちる**（実際に起きた）。
+  // 組み立ての正は `e2e/fixtures/tmuxLivePanes.ts`。
   writeFileSync(
     join(fixturesDir, 'tmux-live-panes.txt'),
-    `${sessionName}\x1fclaude --session-id ${sessionId}\x1f${launched.workDir}\n`,
+    livePanesFile([
+      {
+        sessionName,
+        startCommand: `claude --session-id ${sessionId}`,
+        cwd: launched.workDir,
+      },
+    ]),
   );
 
   const recoverButton = row.locator('button.task-item__row');

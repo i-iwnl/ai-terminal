@@ -17,6 +17,7 @@ import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
 import { listLiveAgentSessions } from '../pty/tmuxSessions';
 import { listClaudeAgents } from './claude';
+import { resolveAppSessionIds } from './sessionMatch';
 import { computeYourTurnSince } from './yourTurnSince';
 
 // エージェント（実行中タスク一覧）の取得とポーリング。
@@ -126,17 +127,30 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
   // 生きている tmux セッション（このアプリ由来）。**1周期につき tmux を1回だけ叩く。**
   // ⛔ ここで gemini を起動しないこと（会話0往復のセッションが消える。tmuxSessions.ts 冒頭）。
   const liveSessions = listLiveAgentSessions();
-  const liveSessionIds = new Set(liveSessions.map((s) => s.agentSessionId));
 
-  const tasks: AgentTask[] = result.tasks.map((task) => ({
-    ...task,
-    ownedByApp: ownedSessionIds.has(task.sessionId),
-    // 直近の遷移検知（updateYourTurnSince）の結果をそのまま載せる。
-    // ここでは検知そのものは行わない（前回との比較が要るため runPollCycle 側の責務）。
-    yourTurnSince: yourTurnSince.get(task.sessionId),
-    // タブが無くても、tmux セッションが生きていれば `-A` で戻せる。
-    recoverable: liveSessionIds.has(task.sessionId),
-  }));
+  // ⭐ **アプリ側の突き合わせキーをここで確定する。** CLI 内の `/resume` や `/clear` で
+  // `sessionId` がアプリの採番値から乖離するため、UUID だけでは対応が付かない
+  // （判定と理由の正は `sessionMatch.ts`）。
+  const appSessionIds = resolveAppSessionIds(result.tasks, liveSessions);
+
+  const tasks: AgentTask[] = result.tasks.map((task) => {
+    const appSessionId = appSessionIds.get(task.sessionId);
+    return {
+      ...task,
+      appSessionId,
+      // 乖離していても、tmux 名から辿れたほうの ID で「このアプリが起動した」を判定する。
+      ownedByApp:
+        ownedSessionIds.has(task.sessionId) ||
+        (appSessionId !== undefined && ownedSessionIds.has(appSessionId)),
+      // 直近の遷移検知（updateYourTurnSince）の結果をそのまま載せる。
+      // ここでは検知そのものは行わない（前回との比較が要るため runPollCycle 側の責務）。
+      yourTurnSince: yourTurnSince.get(task.sessionId),
+      // タブが無くても、tmux セッションが生きていれば `-A` で戻せる。
+      // **解決できた時点で生きている tmux セッションが在ることが確定している**ので、
+      // ID 集合を別に引き直す必要は無い。
+      recoverable: appSessionId !== undefined,
+    };
+  });
 
   return {
     tasks,
@@ -283,7 +297,9 @@ function notifyCompletion(task: AgentTask): void {
       title: 'Claude の作業が完了しました',
       body: label,
     },
-    { onClick: () => focusSession(task.sessionId) },
+    // ⛔ `sessionId` を直接渡さない。CLI 内の `/resume` でずれていると、通知を押しても
+    // Renderer 側がタブを見つけられず**新しいタブが生える**。掴むためのキーは appSessionId。
+    { onClick: () => focusSession(task.appSessionId ?? task.sessionId) },
   );
 
   // ウィンドウが前に無いときだけ Dock を弾ませる。
