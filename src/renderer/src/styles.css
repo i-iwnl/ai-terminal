@@ -1871,6 +1871,25 @@ button.task-item__row:hover {
   white-space: nowrap;
 }
 
+/* ⛔ **`.task-item__name` は flex コンテナなので、そこに書いた `text-overflow: ellipsis` は
+   効かない。** 効かせる相手は子のほうで、しかも `min-width: 0` を与えないと
+   flex の自動最小サイズ（= min-content = 文字列の全幅）で**縮まない**。
+
+   縮まないと、あふれた分は親の `overflow: hidden` に押し出される。押し出されるのは
+   `flex-shrink: 0` の後続要素、つまり**バッジ**で、しかも省略記号すら出ないので
+   「切れている」という手がかりが1つも残らない。
+
+   実測（サイドバー既定 260px。design-review で5人中4人が独立に指摘）:
+   名前欄 146px に対し「このアプリ」バッジ 65px + gap 8px。名前が 12 文字を超えた時点で
+   **既存の「このアプリ」バッジが画面外へ消えていた**。`docs/images/` の13枚のどれにも
+   バッジが写っていないのは、フィクスチャの `ownedByApp` が false だからで、
+   **画素の関門が1つも掛かっていない**（誰も見ていなかった）。 */
+.task-item__name > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .task-item__badge {
   font-size: var(--fs-xs);
   /* 親 .task-item__name が headline（semibold）になったため、バッジは

@@ -201,7 +201,7 @@ export function closeTabCopy(summary: ClosingPaneSummary): CloseTabCopy {
  * ダイアログ（同意を求める割り込み）から通知（事後の告知）への**降格**であって、削除ではない。
  *
  * ⛔ **通知バナーと live region の両方に同じ文を流さない**（VoiceOver が2回読む）。
- * 呼び出し側は `announce` だけに渡すこと。
+ * どちらへ流すかは `closedTabChannel()` が決める。呼び出し側で分岐を書かないこと。
  */
 export function closedTabAnnouncement(summary: ClosingPaneSummary): string {
   const persistent = summary.persistentResumable + summary.persistentOrphaned;
@@ -214,6 +214,41 @@ export function closedTabAnnouncement(summary: ClosingPaneSummary): string {
       : '',
   ];
   return notes.filter(Boolean).join('');
+}
+
+/** `closedTabAnnouncement()` の文を、どの面へ流すか。 */
+export type ClosedTabChannel =
+  /** 視覚的な通知バナー（`.notice-list`）。error が無ければ `role="status"` なので読み上げも届く。 */
+  | 'notice'
+  /** 視覚的に隠された live region（`.app-status`）。目で見れば分かることだけをここへ流す。 */
+  | 'announce';
+
+/**
+ * 閉じたことの告知を、通知バナーと live region のどちらへ流すか。
+ *
+ * ⭐ **これが無いと、視覚利用者にだけ情報が届かない状態になる。**
+ * 確認ダイアログを外したとき（Issue #155）、受け皿として `closedTabAnnouncement()` を
+ * 作って `announce()` に流した。ところが `.app-status` は `clip: rect(0,0,0,0)` で
+ * **画面から隠されている**ので、「タブを閉じても AI は走り続けている」という、
+ * この操作でいちばん驚く事実が**支援技術利用者にしか届いていなかった**。
+ *
+ * Issue #155 の設計メモが心配していた非対称（「得をするのが晴眼キーボード利用者だけ」）が、
+ * **ちょうど裏返しの形で実現していた**。design-review で5人中4人が独立に指摘した
+ * （2026-08-07）。
+ *
+ * 分け方:
+ *
+ * - **走り続けているものがある** -> `notice`。目で見えないと気づけない事実なので、
+ *   視覚面に出す。`.notice-list` は error が無ければ `role="status"` なので、
+ *   **同じ文がバナーと読み上げの両方に1回ずつ**届く（2回読まれない）
+ * - **何も残らない** -> `announce`。タブが消えたことは目で見れば分かるので、
+ *   バナーを出すとただの雑音になる。読み上げにだけ残す
+ *
+ * ⛔ **呼び出し側で `persistent > 0` を書き直さないこと。** 判定が2箇所になると、
+ * 片方だけ直したときに「両方に流す」「どちらにも流さない」が静かに生まれる。
+ */
+export function closedTabChannel(summary: ClosingPaneSummary): ClosedTabChannel {
+  return summary.persistentResumable + summary.persistentOrphaned > 0 ? 'notice' : 'announce';
 }
 
 /**

@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  closedTabChannel,
   closeTabCopy,
   closedTabAnnouncement,
   needsCloseConfirmation,
@@ -354,5 +355,48 @@ describe('needsCloseConfirmation', () => {
     expect(needsCloseConfirmation([gemini])).toBe(true);
     // 同じ木でも、閉じるのがシェル1枚なら確認しない
     expect(needsCloseConfirmation([leaf({ paneId: 's' })])).toBe(false);
+  });
+});
+
+// ⭐ 「閉じても AI は走り続けている」を、どの面へ流すか（2026-08-07）。
+//
+// **この判定が無かった間、その事実は `.app-status`（`clip: rect(0,0,0,0)` で
+// 画面から隠された live region）にしか流れていなかった。** Issue #155 が
+// 「確認ダイアログを消すと得をするのが晴眼キーボード利用者だけになる」と
+// 心配した非対称が、ちょうど裏返しの形で実現していた（design-review で
+// 5人中4人が独立に指摘）。
+//
+// ⛔ 「両方に流さない」を守る唯一の場所なので、呼び出し側に分岐を戻さないこと。
+describe('closedTabChannel', () => {
+  const summary = (over: Partial<ClosingPaneSummary> = {}): ClosingPaneSummary => ({
+    exiting: 0,
+    persistentResumable: 0,
+    resumableByProvider: {},
+    persistentOrphaned: 0,
+    ...over,
+  });
+
+  it('再開できるものが残るなら、視覚に出る通知バナーへ流す', () => {
+    expect(closedTabChannel(summary({ persistentResumable: 1 }))).toBe('notice');
+  });
+
+  it('拾い直せないものが残るなら、なおさら通知バナーへ流す', () => {
+    expect(closedTabChannel(summary({ persistentOrphaned: 1 }))).toBe('notice');
+  });
+
+  it('両方あるときも通知バナー', () => {
+    expect(closedTabChannel(summary({ persistentResumable: 2, persistentOrphaned: 1 }))).toBe(
+      'notice',
+    );
+  });
+
+  it('何も残らないなら live region だけ（タブが消えたのは目で見れば分かる）', () => {
+    expect(closedTabChannel(summary())).toBe('announce');
+  });
+
+  // ⛔ `exiting` は「本当に終了した」= 残っていない、なので通知バナーへ出さない。
+  // ここを混ぜると、シェルタブを閉じるたびにバナーが出て雑音になる。
+  it('本当に終了しただけならバナーを出さない', () => {
+    expect(closedTabChannel(summary({ exiting: 3 }))).toBe('announce');
   });
 });

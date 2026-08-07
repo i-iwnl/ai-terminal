@@ -85,31 +85,37 @@ test('S90 Cmd+W で回収できる gemini ペインは確認なしで閉じ、2�
   // ⭐ **確認を消した分の受け皿が実際に鳴っていること**（design-review で4人が
   // 「削除ではなく降格にせよ」と指摘した本体）。ここを見ないと、
   // 「確認をやめただけで何も伝えない」実装でも green になる。
-  const status = window.locator('.app-status');
-  await expect(status).toContainText('終了せず残っています');
-  await expect(status).toContainText('Gemini 1 件');
+  //
+  // ⛔ **行き先は `.app-status` ではなく通知バナー**（2026-08-07 に変更）。
+  // `.app-status` は `clip: rect(0,0,0,0)` で**画面から隠されている**ので、
+  // そこへ流していた間、「タブを閉じても AI は走り続けている」という
+  // この操作でいちばん驚く事実が**支援技術利用者にしか届いていなかった**。
+  // Issue #155 が心配した非対称が、ちょうど裏返しの形で実現していた
+  // （design-review で5人中4人が独立に指摘）。
+  //
+  // `.notice-list` は error が無ければ `role="status"` なので、**視覚と読み上げの
+  // 両方に1回ずつ**届く。判定の正は `closedTabChannel`（`test/unit/close-tab-copy.test.ts`）。
+  const notices = window.locator('.notice-banner');
+  await expect(notices).toContainText(['終了せず残っています']);
+  await expect(notices).toContainText(['Gemini 1 件']);
 
-  // ⛔ **同じ文言を連続で告知しても鳴ること**（Issue #155 の design-review で
-  // a11y が「受け皿が成立する前提条件」と指摘）。`useState<string>` のままだと
-  // 同じ値では React が再レンダーを打ち切り、**DOM のテキストが変化しないので
-  // live region が鳴らない**。key で要素ごと差し替えているかを、
-  // **ノードが同一かどうか**で見る（テキストは同じなので、内容では区別できない）。
-  await status.evaluate((el) => {
-    (el as HTMLElement & { __s90mark?: number }).__s90mark = 1;
-  });
+  // ⛔ **同じ文言を2回告知したら2回とも届くこと**（Issue #155 の design-review で
+  // a11y が「受け皿が成立する前提条件」と指摘）。バナーは1件ごとに別 key で
+  // 積まれるので（`pushNotice`）、2回目は**新しい要素として増える**。
+  // 同じ文言をまとめてしまう実装（dedupe）に変えると、ここが 1 のままで落ちる。
+  const persistentNotices = window.locator('.notice-banner', { hasText: '終了せず残っています' });
+  await expect(persistentNotices).toHaveCount(1);
 
   await window.keyboard.press('Meta+Shift+E');
   await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
   await window.keyboard.press('Meta+w');
   await expect(tabs).toHaveCount(1, { timeout: 15_000 });
-  await expect(status).toContainText('Gemini 1 件');
+  await expect(persistentNotices).toHaveCount(2, { timeout: 15_000 });
 
-  expect(
-    await status.evaluate(
-      (el) => (el as HTMLElement & { __s90mark?: number }).__s90mark === undefined,
-    ),
-    '同じ文言を2回告知したときに live region の要素が差し替わっていない（2回目が読み上げられない）',
-  ).toBe(true);
+  // ⛔ **同じ文を live region にも流していないこと**（VoiceOver が2回読む）。
+  // 「両方に流さない」は `closedTabChannel` が守っている唯一の規約なので、
+  // 破ったら気づけるようにここで見る。
+  await expect(window.locator('.app-status')).not.toContainText('終了せず残っています');
 
   // --- 本題2: 2枚を一度に閉じるときは、いまも確認が出る -------------------------
   //
