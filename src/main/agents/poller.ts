@@ -9,7 +9,8 @@ import {
   type ListAgentsRequest,
 } from '@shared/ipc';
 // 状態の意味の単一の正。表示（TaskList）と同じ判定を使う。
-import { countYourTurn } from '@shared/agent-status';
+import { countYourTurn, describeWaitingFor } from '@shared/agent-status';
+import { taskIdentity } from '@shared/taskIdentity';
 
 import { getAppPaths } from '../app-paths';
 import { getConfig } from '../config';
@@ -19,7 +20,6 @@ import { listLiveAgentSessions } from '../pty/tmuxSessions';
 import { listClaudeAgents } from './claude';
 import { selectCompletedTasks } from './completionNotice';
 import { resolveAppSessionIds } from './sessionMatch';
-import { taskIdentity } from './taskIdentity';
 import { computeYourTurnSince } from './yourTurnSince';
 
 // エージェント（実行中タスク一覧）の取得とポーリング。
@@ -271,12 +271,29 @@ function detectAndNotifyCompletions(current: AgentTask[]): void {
   previousTasks = current;
 }
 
+/**
+ * 通知タイトル。**「完了しました」と言い切ってよいのは、本当に手が空いたときだけ。**
+ *
+ * `becameYourTurn` は busy から `waiting`（許可プロンプト等）への遷移も発火させる。
+ * そこで一律に「作業が完了しました」と出していたため、**許可を押さないと1歩も進まない
+ * セッションについて「完了」と通知していた**（同じ文字列が Slack / Discord にも飛ぶ）。
+ * 「完了」と読んだ人は結果を見に戻るだけで、急がない。実機で5時間31分放置された
+ * セッションが2本あった（Issue #241 周2。design-review で3人が独立に指摘）。
+ */
+function completionTitle(task: AgentTask): string {
+  const waitingFor = describeWaitingFor(task.waitingFor);
+  if (task.status === 'waiting' && waitingFor !== undefined) {
+    return `Claude が${waitingFor}です`;
+  }
+  return 'Claude の作業が完了しました';
+}
+
 function notifyCompletion(task: AgentTask): void {
   const label =
     task.name ?? (task.cwd ? basename(task.cwd) : undefined) ?? task.sessionId.slice(0, 8);
   notify(
     {
-      title: 'Claude の作業が完了しました',
+      title: completionTitle(task),
       body: label,
     },
     // ⛔ `sessionId` を直接渡さない。CLI 内の `/resume` でずれていると、通知を押しても

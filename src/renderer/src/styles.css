@@ -1816,7 +1816,7 @@ button.task-item__row:hover {
 /* 強調するのは「あなたの番」の側。
    CLI の busy は「エージェントが動いている」= 人間は待たなくてよい状態なので、
    ここを光らせると放っておいてよい行だけが一日中光ることになる（実際そうなっていた）。
-   状態の対応は TaskList.tsx の toTaskState() が唯一の正。
+   状態の対応は src/shared/agent-status.ts の toTaskState() が唯一の正。
    未知の状態（--unknown）は上の既定色 var(--status-unknown) のままにする。 */
 .task-item--your-turn .task-item__status-dot {
   background: var(--status-your-turn);

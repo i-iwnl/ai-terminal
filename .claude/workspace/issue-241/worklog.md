@@ -193,3 +193,82 @@
 ---
 
 <!-- 以降、作業のたびにセクションを追記 -->
+## 2026-08-07 - 周2: `waiting` の意味づけ（実装・検証・文書）
+
+### 実施内容
+
+- 周2-a: `taskIdentity.ts` を `src/shared/` へ移動（中身は変えず）。`TaskList.tsx` の React key を `taskIdentity(task)` に
+- 周2-b: `claude.ts` の `parseAgentsJson` を export し、`test/unit/claude-agents.test.ts` を新設（13件）
+- 周2-c: `AgentTask.waitingFor` を追加し `claude.ts` でパース（**ユニオン型に絞らない**。鉄則5）
+- 周2-d: **関門を先に作った。** `e2e/specs/S106-waiting-status.spec.ts` + `scenarios.yml`
+- 周2-e: `toTaskState` に `waiting -> your-turn`。`agent-status.ts` の原則を
+  「翻訳してよいのは値の集合を実測で確定できた語だけ」に書き換え
+- 周2-f: 通知タイトルを `completionTitle()` で出し分け（`Claude が実行許可待ちです`）
+- 周2-g: `describeWaitingFor()` を `agent-status.ts` に置き、メタ行と `aria-label` の両方に出す
+- コメント齟齬4箇所（`tabYourTurn.ts` x2 / `menu.ts` / `styles.css`）と `docs/PLAN.md` の実機出力、README を更新
+
+### ⭐ 関門が本物の穴を捕まえた（計画の修正）
+
+**`aria-label` にだけ足す**という周2-g の当初計画は**間違いだった。** S106 を書いて回したら
+`aria-label` が `null` で落ちた。**押せる行だけが `<button aria-label>` で、押せない行は
+`<div>`（アクセシブル名を持たない）**。つまり:
+
+| 実装 | 押せる行 | 押せない行 |
+|---|---|---|
+| `aria-label` にだけ足す（当初計画） | 届く | **届かない** |
+| 視覚にだけ足す | **届かない**（`aria-label` が子要素を上書き） | 届く |
+| **両方に足す（採用）** | 届く | 届く |
+
+design-review の a11y は「行は `<button aria-label>` なので視覚だけでは届かない」と正しく指摘したが、
+**その裏返し（押せない行には `aria-label` が無い）は5人とも書いていなかった。**
+`known-issues.md` 3番の「視覚配置は次周」は**この周に前倒しせざるを得なかった**。
+
+### 検証: S106 が赤くなることの確認（壊し方5通り）
+
+| 壊し方 | 結果 |
+|---|---|
+| `toTaskState` から `waiting` の翻訳を外す | **1 failed** |
+| 視覚（メタ行）から `waitingFor` を消す | **1 failed** |
+| `aria-label` から `waitingFor` を消す | **1 failed** |
+| 未知の `waitingFor` を「不明」で潰す | **1 failed** |
+| 語を「許可待ち」単独に戻す | **1 failed** |
+
+### 検証: 関門・実機
+
+| 確認したこと | 結果 |
+|---|---|
+| `make check` | 825 passed（53 files） |
+| `make e2e` | **0 failed / 112 passed**（flaky 5件はリトライで green・本 PR の対象外） |
+| `make e2e-lint` | PASS=847 FAIL=0 |
+| `make e2e-screenshots` | **回していない**。既定フィクスチャに `waiting` が無いので画素は動かない |
+| 実機: グループ見出し | `あなたの番 7件 / 作業中 1件 / タブに戻せる AI 1件`（**「不明」が消えた**） |
+| 実機: 待ち行のメタ行 | `実行許可待ちgecipe-esports-englishwaiting6時間51分` |
+| 実機: 待ち行の `aria-label` | `あなたの番、gecipe-esports-english-15、タブに戻す、実行許可待ち、gecipe-esports-english、CLI の生の状態は waiting、6時間51分` |
+| 実機: サイドバー幅 | 260px（既定） |
+| ⚠ 実機: **待ち行だけメタ行が2行になる** | メタ行の高さ **14px -> 33px**、行高 **55px -> 73px**（+18px） |
+| 実機: `afplay` の起動（25秒） | **0 回**（周1 の修正が効いたまま） |
+
+### 設計判断
+
+- **表示語は `agent-status.ts` に置く**（パースは `claude.ts`）。鉄則4 は「パースを1ファイルに閉じ込める」で、
+  日本語ラベルまで置くと「パース」と「表示語」が同居し、CLI 更新で直す場所が2種類の理由で混ざる
+- **「許可待ち」単独にしない。** macOS の権限（通知・アクセシビリティ）と誤読される。
+  このアプリはそれらの許可を求める側でもあるので実際に紛らわしい -> `実行許可待ち`
+- **`waitingFor` を3値のユニオン型にしない。** 実測は 2.1.224 時点のもので CLI の約束ではない。
+  絞ると4つ目が来た瞬間にパースが落とす（鉄則5）
+
+### 教訓
+
+- ⭐ **「支援技術に届ける」は要素の種類で分岐する。** 同じコンポーネントでも押せる行と押せない行で
+  アクセシブル名の作られ方が違う。**片方だけ見て「届いた」と言えない**
+- ⭐ **5人のレビューでも裏返しは出ないことがある。** a11y は `aria-label` の上書きを正確に指摘したが、
+  `aria-label` が無い側は誰も見ていなかった。**関門を先に作ったから捕まえられた**
+  （実装 -> 関門の順だったら、押せない行で届かないまま出荷していた）
+
+### 次に再開するとき最初に読むべきこと
+
+- **周2 は完了。`overview.md` の完了条件はすべて [x]。**
+- 残っている判断は1つ: **`waitingFor` の視覚配置**。いまはメタ行の先頭に置いており、
+  **待ち行だけ行高が 55px -> 73px に増える**（実測）。design-review では5人の対案が割れたので、
+  1週間使ってから決める。数字は上の表にある
+- `known-issues.md` 6番に、レビューが見つけた**この Issue の外の課題が9件**ある。⛔ ここから起票しない

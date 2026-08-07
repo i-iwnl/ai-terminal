@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { indexByIdentity, taskIdentity } from '../../src/main/agents/taskIdentity';
+import { indexByIdentity, taskIdentity } from '../../src/shared/taskIdentity';
 
 describe('taskIdentity', () => {
   it('pid があれば pid を使う（sessionId が /resume で変わっても同じキーになる）', () => {

@@ -16,6 +16,11 @@
 //
 // **pid は CLI 側の `/resume` を跨いで変わらない**（`sessionMatch.ts` で実測済み）ので、
 // 「同じ1本のプロセス」を指すキーとしては pid のほうが強い。
+//
+// **`src/shared/` に置くのは Renderer からも同じキーで数えるため。** Main の「同じ1本の
+// プロセスか」（通知の遷移検知）と Renderer の「同じ1行か」（React の key）が別々の規則で
+// 決まると、**通知が2件と数えるものを一覧が1行に潰す**形が構造的に残る。
+// `src/main` は `tsconfig.web.json` の include に無いので、Renderer からは import できない。
 
 /** 突き合わせに使う最小限の形。`AgentTask` のうち sessionId と pid だけを見る。 */
 export interface IdentifiableTask {

@@ -165,8 +165,20 @@ export interface AgentTask {
   cwd?: string;
   /** 'interactive' など。CLI が返した値をそのまま持つ */
   kind?: string;
-  /** 'busy' | 'idle' など。CLI が返した値をそのまま持つ */
+  /** 'busy' | 'idle' | 'waiting' など。CLI が返した値をそのまま持つ */
   status?: string;
+  /**
+   * `status: 'waiting'` のときに CLI が添えてくる「何を待っているか」。
+   *
+   * 2.1.224 のバイナリを読んで確認した値は `'permission prompt'` / `'input needed'` /
+   * `'dialog open'` の3つで、**いずれも人間が操作するまで進まない**（`toTaskState` が
+   * `waiting` を `your-turn` に翻訳している根拠）。
+   *
+   * ⛔ **ユニオン型に絞らない。** 上は実測であって CLI の約束ではない。絞ると4つ目が
+   * 来た瞬間にパースが落とし、鉄則5に反する。表示語への変換は `describeWaitingFor()`
+   * （`@shared/agent-status`）が唯一の正で、辞書に無い値は生のまま出す。
+   */
+  waitingFor?: string;
   /** 表示名 */
   name?: string;
   /** 起動時刻（epoch ミリ秒） */

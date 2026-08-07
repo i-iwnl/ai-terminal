@@ -74,6 +74,24 @@
 - Web 上の二次情報は「バックグラウンド agent しか出ない」と書いているが、**実機では対話セッションも列挙された**（実機が正）
 - **左サイドバーの「実行中タスク一覧」は、これを数秒間隔でポーリングするだけで作れる**
 
+**2026-08-07 追記（claude 2.1.224 で再測定）。この形式は実際に変わった。**
+
+```jsonc
+[
+  { "pid": 47307, "cwd": "/Users/.../gecipe-esports-english",
+    "kind": "interactive", "startedAt": 1786089581160,
+    "sessionId": "82dae66a-...", "name": "...",
+    "status": "waiting", "waitingFor": "permission prompt" }
+]
+```
+
+- **`status` に `waiting` が増えた。** `waitingFor` が添えて返り、バイナリを読んで確認した値は
+  `permission prompt` / `input needed` / `dialog open` の3つ。いずれも人間が操作するまで進まない
+  （`src/shared/agent-status.ts` が `your-turn` に翻訳している根拠。Issue #241 周2）
+- ⛔ **`sessionId` は一意ではない。** CLI 内の `/resume` で**同じ `sessionId` を持つ別プロセスが
+  複数返る**。突き合わせに使えるのは pid のほう（`src/shared/taskIdentity.ts`）。
+  これを sessionId で畳んでいたために、完了通知が3秒ごとに鳴り続けていた（Issue #241 周1）
+
 #### セッション履歴の在り処
 
 - `~/.claude/projects/<パスの / を - に置換>/​<sessionId>.jsonl`
