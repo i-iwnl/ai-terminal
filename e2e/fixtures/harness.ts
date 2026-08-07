@@ -94,6 +94,11 @@ export interface AgentFixtureEntry {
   sessionId: string;
   name: string;
   status: string;
+  /**
+   * `status: 'waiting'` に添えて実 CLI が返す「何を待っているか」（Issue #241 周2）。
+   * 既定フィクスチャは持たない。`setAgentEntries()` で注入するときだけ使う。
+   */
+  waitingFor?: string;
 }
 
 /**

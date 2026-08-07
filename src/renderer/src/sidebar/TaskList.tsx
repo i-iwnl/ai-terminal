@@ -17,8 +17,11 @@ import {
   toTaskState,
   groupTasksForDisplay,
   formatGroupHeading,
+  describeWaitingFor,
   TASK_STATE_LABEL,
 } from '@shared/agent-status';
+// 行の一意キー。Main の遷移検知（通知）と同じ規則で「同じ1本か」を決める。
+import { taskIdentity } from '@shared/taskIdentity';
 import { basename, formatElapsed, formatWaitingSince } from '../lib/format';
 import {
   liveSessionDisplayName,
@@ -200,6 +203,19 @@ export default function TaskList({
     // そのまま読み上げの文にする。ボタン化に伴い aria-label が子要素のテキストより
     // 優先されるため、押せる行が何のセッションで今どの状態かはここだけで完結させる。
     // 状態語を先頭にするのは、視覚的な行の先頭（状態語）と同じ順にするため。
+    //
+    // ⭐ **`waitingFor` は視覚と読み上げの両方に出す。片方だけにしない。**
+    // `aria-label` が付くのは押せる行（`<button>`）だけで、押せない行は `<div>` のまま
+    // ＝ 名前が付かない。**読み上げにだけ足すと、押せない行では1文字も届かない**
+    // （S106 が実際にこれを捕まえた）。逆に視覚だけに足すと、押せる行では
+    // `aria-label` が子要素のテキストを上書きするので、やはり届かない。
+    //
+    // 届ける必要がある理由: 既定構成では `screenReaderMode` が false かつ WebGL
+    // レンダラなので、**許可プロンプトの本文そのものは支援技術に原理的に届いていない**
+    // （`terminal/useTerminal.ts` 冒頭）。この行が「何を待っているか」の唯一の窓口で、
+    // 「実行許可待ち」と分かればターミナルの中身を読まずに次の行動を決められる。
+    const waitingForLabel = describeWaitingFor(task.waitingFor);
+
     const ariaLabel = [
       stateLabel,
       name,
@@ -207,6 +223,8 @@ export default function TaskList({
       // 押したときに何が起きるかを、押せる行だけで言い分ける。
       // ⛔ 「回収」は内部語なので画面にも読み上げにも出さない。
       taskRowActionLabel(action),
+      // 以下はメタ行と同じ順（視覚的な並びをそのまま読み上げの文にする）。
+      waitingForLabel,
       basename(task.cwd),
       // CLI が返した生の値も読み上げに残す（鉄則4/5: CLI が言ったことを隠さない）。
       task.status !== undefined ? `CLI の生の状態は ${task.status}` : undefined,
@@ -230,6 +248,16 @@ export default function TaskList({
             {task.ownedByApp && <span className="task-item__badge">このアプリ</span>}
           </div>
           <div className="task-item__meta">
+            {/* 何を待っているか（`status: waiting` のときだけ）。**メタ行の先頭に置く。**
+                「あなたの番」に idle（返事を書く）と waiting（押すだけ）が混ざるので、
+                どれが1文字も打たずに済むかがここで分かる。
+                語は4〜5文字に揃えてある（`describeWaitingFor`）。260px のメタ行は既に
+                折り返しており、長い語を混ぜるとその行だけ折り返し位置が変わる。
+                ⛔ 名前行（`.task-item__name`）に足さないこと。名前が12文字を超えると
+                「このアプリ」バッジが画面外へ消えた実測がある（styles.css）。 */}
+            {waitingForLabel !== undefined && (
+              <span className="task-item__waiting-for">{waitingForLabel}</span>
+            )}
             <span>{basename(task.cwd)}</span>
             {/* CLI が返した生の値も残す。翻訳で潰すと、CLI 側の仕様変更に
                 気づく手がかりが画面から消える（鉄則4/5） */}
@@ -244,7 +272,12 @@ export default function TaskList({
 
     return (
       <li
-        key={task.sessionId}
+        // ⛔ `task.sessionId` を key にしない。CLI 内の `/resume` で**同じ `sessionId` を持つ
+        // 別プロセスが2件返る**ことがある（`@shared/taskIdentity` に実測を記録）。
+        // いまは状態が違えば `groupTasksForDisplay` が別グループの別 `<ul>` へ振り分けるので
+        // 兄弟にならず表面化しないが、**同じ status で重複した瞬間に key が衝突する**。
+        // Main 側の遷移検知と同じキーで数える（片方だけ潰れる形を作らない）。
+        key={taskIdentity(task)}
         // 押せるかどうかは modifier クラスではなく要素の種類（button か div か）で
         // 表す。CSS もそちらを見ているので、クラスを残すと「どちらが正か」が
         // 2つになる。

@@ -92,8 +92,13 @@ function describeExecError(err: unknown): { message: string; kind: 'not-found' |
  * JSON.parse の結果は unknown として受け、配列であることを確認したうえで、
  * 要素ごとに sessionId が文字列であるものだけを AgentTask として採用する。
  * それ以外のフィールドは型が合えば拾い、合わなければ undefined にする。
+ *
+ * **単体テストのために export している。** 非 export のままでは
+ * `listClaudeAgents` 経由でしか到達できず、テストが実 CLI の起動を要求してしまう
+ * （このファイルは単体テストが1本も無い状態が長く続き、`waitingFor` のような
+ * 新しいフィールドの取りこぼしを検出する手段が無かった。Issue #241）。
  */
-function parseAgentsJson(stdout: string): ClaudeAgentsResult {
+export function parseAgentsJson(stdout: string): ClaudeAgentsResult {
   const trimmed = stdout.trim();
   if (trimmed.length === 0) {
     // 実行中セッションが無いだけの可能性が高いので、空配列として扱う（エラー扱いしない）
@@ -135,6 +140,11 @@ function toAgentTask(item: unknown): AgentTask | undefined {
     cwd: typeof src.cwd === 'string' ? src.cwd : undefined,
     kind: typeof src.kind === 'string' ? src.kind : undefined,
     status: typeof src.status === 'string' ? src.status : undefined,
+    // `status: "waiting"` に添えて返る「何を待っているか」。
+    // ⛔ **3値のユニオン型に絞らないこと。** 実測できたのは 2.1.224 時点の3つ
+    //（permission prompt / input needed / dialog open）だけで、CLI 側の約束ではない。
+    // 絞ると4つ目が来た瞬間にここで**落として**しまい、鉄則5（CLI が言ったことを隠さない）に反する。
+    waitingFor: typeof src.waitingFor === 'string' ? src.waitingFor : undefined,
     name: typeof src.name === 'string' ? src.name : undefined,
     startedAt: typeof src.startedAt === 'number' ? src.startedAt : undefined,
     // このアプリが起動したセッションかどうかは poller.ts 側（markOwnedSession）が確定させる。

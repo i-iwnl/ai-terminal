@@ -11,7 +11,7 @@
 
 import { becameYourTurn, toTaskState } from '@shared/agent-status';
 
-import { indexByIdentity, taskIdentity, type IdentifiableTask } from './taskIdentity';
+import { indexByIdentity, taskIdentity, type IdentifiableTask } from '@shared/taskIdentity';
 
 /** この判定が必要とする最小限の形。AgentTask のうち突き合わせキーと status だけを見る。 */
 export interface YourTurnTask extends IdentifiableTask {

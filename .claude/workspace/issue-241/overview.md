@@ -37,15 +37,15 @@
 - [x] 周1: そのテストが修正前のコードで赤くなることを、実際に戻して確認する
 - [x] 周1: `detectAndNotifyCompletions` の判定部を純粋関数として切り出し、`poller.ts` は結果を使うだけにする
 - [x] 周1: `computeYourTurnSince` も重複 `sessionId` で壊れないことを単体テストで固定する
-- [ ] 周2-a: `taskIdentity.ts` を `src/shared/` へ移し、`TaskList.tsx` の React key を一意にする（中身は1行も変えない）
-- [ ] 周2-b: `claude.ts` の `parseAgentsJson` を export し、`test/unit/` に新設する（このファイルは単体テストが1本も無い）
-- [ ] 周2-c: `waitingFor` を `AgentTask` に足し、`claude.ts` でパースする（画面には何も出さない）
-- [ ] 周2-d: 新規 E2E S106 で `setAgentEntries` に `waiting` を注入し、関門を先に作る（既定フィクスチャは触らない）
-- [ ] 周2-e: 提案 A（`toTaskState` に `waiting` -> `your-turn`）。S106 が赤から緑になることで担保する
-- [ ] 周2-f: 通知タイトルを `waitingFor` で出し分ける（OS 通知と Slack / Discord の両方が直る）
-- [ ] 周2-g: `waitingFor` を行の `aria-label` に足す（視覚配置は次周。5人の対案が割れたため）
-- [ ] 型チェック通過（`make check`）
-- [ ] Lintチェック通過（`make check`）
+- [x] 周2-a: `taskIdentity.ts` を `src/shared/` へ移し、`TaskList.tsx` の React key を一意にする（中身は1行も変えない）
+- [x] 周2-b: `claude.ts` の `parseAgentsJson` を export し、`test/unit/` に新設する（このファイルは単体テストが1本も無い）
+- [x] 周2-c: `waitingFor` を `AgentTask` に足し、`claude.ts` でパースする（画面には何も出さない）
+- [x] 周2-d: 新規 E2E S106 で `setAgentEntries` に `waiting` を注入し、関門を先に作る（既定フィクスチャは触らない）
+- [x] 周2-e: 提案 A（`toTaskState` に `waiting` -> `your-turn`）。S106 が赤から緑になることで担保する
+- [x] 周2-f: 通知タイトルを `waitingFor` で出し分ける（OS 通知と Slack / Discord の両方が直る）
+- [x] 周2-g: `waitingFor` を行の `aria-label` に足す（視覚配置は次周。5人の対案が割れたため）
+- [x] 型チェック通過（`make check`）
+- [x] Lintチェック通過（`make check`）
 
 ---
 
@@ -53,9 +53,9 @@
 
 | 項目 | 状態 |
 |---|---|
-| 設計 | 周1 完了 / 周2 は design-review で再計画（7本に分割） |
-| 実装 | 周1 完了 |
-| 検証 | 周1 完了（make check 803 green・実機で修正前後を同時比較） |
+| 設計 | 完了 |
+| 実装 | 完了（周1 + 周2） |
+| 検証 | 完了（make check 825 green / make e2e 0 failed / S106 を5通りの壊し方で赤にして確認 / 実機） |
 
 ---
 
@@ -63,7 +63,5 @@
 
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | 周2-a / 周2-b（依存ゼロ。単独でマージできる） | 移動とテスト追加のみ。値も挙動も1つも変えない |
-| P1 | 周2-d -> 周2-e | **関門を先に作ってから意味を変える**（先に赤くなることを確認する） |
-| P2 | 周2-c -> 周2-f -> 周2-g | 通知の文言は3人が独立に指摘した「案の前に切り出すべきもの」 |
-| P3 | push 前のフル `make e2e` / `make e2e-lint` | **撮影レーンは不要**（既定フィクスチャに `waiting` が無いので画素は動かない。レビューが実測） |
+| **P0** | `waitingFor` の視覚配置の再検討 | 実機で**待ち行だけメタ行が2行になり、行高が 55px -> 73px**（実測）。1週間使ってから判断する |
+| P1 | `known-issues.md` の6番（レビューが見つけた Issue 外の課題9件） | 起票しない。周を増やすかは人が決める |

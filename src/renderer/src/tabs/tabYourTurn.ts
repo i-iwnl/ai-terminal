@@ -1,7 +1,9 @@
 // 「あなたの番」の次/前の**ペイン**へジャンプする（Cmd+J、Shift で逆順。Issue #20 J / #132）。
 //
-// 状態の意味の唯一の正は src/shared/agent-status.ts の toTaskState
-// （busy = 作業中、busy 以外 = あなたの番）。ここではこの対応を反転させない。
+// 状態の意味の唯一の正は src/shared/agent-status.ts の toTaskState。ここで反転させない。
+// ⚠ **「busy 以外 = あなたの番」ではない。** 対象は `toTaskState(...) === 'your-turn'`
+// （busy / idle / waiting の3つだけが既知で、それ以外は 'unknown' に落ちて対象外）。
+// 未知の値まで拾うと、CLI が新しい語を返し始めた瞬間に人間を誤って急かす。
 //
 // タブとタスクの突き合わせは leaf 単位で行う。**ジャンプの着地点もペイン**
 // （Issue #132。タブだけ前に出しても、分割しているタブでは裏のペインに
@@ -33,8 +35,8 @@ interface JumpableTask {
 /**
  * 「あなたの番」のタスクを、**タブ側の `agentSessionId` と突き合わせられる形**にした集合。
  *
- * 状態の意味の唯一の正は `src/shared/agent-status.ts` の `toTaskState`
- * （busy = 作業中、busy 以外 = あなたの番）。**ここで反転させない。**
+ * 状態の意味の唯一の正は `src/shared/agent-status.ts` の `toTaskState`。**ここで反転させない。**
+ * ⚠ 対象は `'your-turn'` に翻訳された status だけ（`unknown` は含まない）。
  *
  * ⛔ **`task.sessionId` を素で入れないこと。** 突き合わせ先は `leaf.agentSessionId`
  * （＝アプリが `--session-id` で採番した UUID）だが、`claude` は CLI 内の `/resume` や

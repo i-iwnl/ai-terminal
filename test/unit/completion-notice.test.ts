@@ -18,6 +18,8 @@ describe('selectCompletedTasks - 重複 sessionId（Issue #241）', () => {
     { sessionId: '82dae66a', pid: 47307, status: 'waiting' },
     { sessionId: '82dae66a', pid: 80821, status: 'busy' },
   ];
+  // `waiting` が 'unknown' でも 'your-turn' でも、`becameYourTurn` から見れば
+  // どちらも「working ではない」なので、この判定は #241 周2 の翻訳に影響されない。
 
   it('一覧が前回とまったく同じなら、何も通知しない', () => {
     // ⭐ ここが Issue #241 の本体。sessionId で畳むと Map が後勝ちで busy の行に潰れ、
@@ -78,9 +80,11 @@ describe('selectCompletedTasks - 基本の遷移', () => {
   it('busy -> 未知の status でも通知する', () => {
     // 「通知が来ないことには気づけない」ので、CLI が新しい語を返し始めても止めない
     // （src/shared/agent-status.ts の becameYourTurn の設計判断）。
+    // ⛔ ここに `waiting` を使わないこと。**`waiting` は既知の値になった**ので
+    // （#241 周2 で `toTaskState` が翻訳する）、未知の代表としては嘘になる。
     const completed = selectCompletedTasks(
       [{ sessionId: 'a', pid: 1, status: 'busy' }],
-      [{ sessionId: 'a', pid: 1, status: 'waiting' }],
+      [{ sessionId: 'a', pid: 1, status: 'waiting_for_input' }],
     );
 
     expect(completed).toHaveLength(1);

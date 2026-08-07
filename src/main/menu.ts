@@ -349,8 +349,8 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
         actionItem(win, '直前のタブへ戻る', 'Cmd+E', { type: 'last-active-tab' }),
         { type: 'separator' },
         // 次の「あなたの番」のタブへジャンプ（Issue #20 J）。想定 100〜200回/日、
-        // 1日 200〜600手の削減。状態の意味（あなたの番 = busy 以外）は
-        // src/shared/agent-status.ts の toTaskState が唯一の正。
+        // 1日 200〜600手の削減。状態の意味は src/shared/agent-status.ts の
+        // toTaskState が唯一の正（idle と waiting が「あなたの番」。未知の値は含まない）。
         actionItem(win, '次の「あなたの番」のタブへ', 'Cmd+J', {
           type: 'jump-your-turn-tab',
           direction: 'forward',

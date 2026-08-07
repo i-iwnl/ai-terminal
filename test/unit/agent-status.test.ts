@@ -10,6 +10,7 @@ import {
   becameYourTurn,
   groupTasksForDisplay,
   formatGroupHeading,
+  describeWaitingFor,
   TASK_STATE_LABEL,
 } from '../../src/shared/agent-status';
 
@@ -141,5 +142,70 @@ describe('formatGroupHeading', () => {
     expect(formatGroupHeading('your-turn', 2)).toBe('あなたの番 2件');
     expect(formatGroupHeading('working', 3)).toBe('作業中 3件');
     expect(formatGroupHeading('unknown', 1)).toBe('不明 1件');
+  });
+});
+
+describe('waiting の翻訳（Issue #241 周2）', () => {
+  it("status 'waiting' は「あなたの番」に翻訳される", () => {
+    // claude 2.1.224 が返し始めた値。waitingFor に入りうるのは
+    // permission prompt / input needed / dialog open の3つで、いずれも
+    // 人間が操作するまで1歩も進まない（バイナリを読んで確定）。
+    expect(toTaskState('waiting')).toBe('your-turn');
+  });
+
+  it('waiting は「あなたの番」の件数に数えられる（Dock バッジと同じ数）', () => {
+    // ここが 1 のままだと、許可プロンプトで止まったセッションは
+    // アプリを見ていない時間帯に検知手段がゼロになる。
+    expect(countYourTurn([{ status: 'idle' }, { status: 'waiting' }, { status: 'busy' }])).toBe(2);
+  });
+
+  it('waiting は「不明」グループに落ちない', () => {
+    const groups = groupTasksForDisplay([{ status: 'waiting' }, { status: 'busy' }]);
+    expect(groups.map((g) => g.state)).toEqual(['your-turn', 'working']);
+  });
+
+  it('⛔ 確認していない値まで翻訳しない（waiting に似た語も unknown のまま）', () => {
+    // 翻訳してよいのは値の集合を実測で確定できた語だけ、という規則を固定する。
+    // ここが 'your-turn' になり始めたら、規則が破られている。
+    for (const status of ['waiting_for_input', 'waiting-for-user', 'Waiting', 'blocked']) {
+      expect(toTaskState(status)).toBe('unknown');
+    }
+  });
+
+  it('busy -> waiting は「作業が終わった」として通知される（挙動は翻訳の前後で変わらない）', () => {
+    expect(becameYourTurn('busy', 'waiting')).toBe(true);
+  });
+
+  it('waiting -> busy は通知しない（許可を押して作業に戻っただけ）', () => {
+    expect(becameYourTurn('waiting', 'busy')).toBe(false);
+  });
+
+  it('idle -> waiting は通知しない（前回が working でない）', () => {
+    // 通知が出ないので、この遷移は Dock バッジと一覧でしか気づけない。
+    expect(becameYourTurn('idle', 'waiting')).toBe(false);
+  });
+});
+
+describe('describeWaitingFor', () => {
+  it('実測した3値を、4〜5文字に揃えた日本語にする', () => {
+    expect(describeWaitingFor('permission prompt')).toBe('実行許可待ち');
+    expect(describeWaitingFor('input needed')).toBe('入力待ち');
+    expect(describeWaitingFor('dialog open')).toBe('ダイアログ待ち');
+  });
+
+  it('⛔ 「許可待ち」単独にしない（macOS の権限と誤読される）', () => {
+    // このアプリは通知・アクセシビリティの許可を求める側でもあるので実際に紛らわしい。
+    expect(describeWaitingFor('permission prompt')).not.toBe('許可待ち');
+  });
+
+  it('辞書に無い値は生のまま返す（鉄則5: CLI が言ったことを隠さない）', () => {
+    // 実測した3値は 2.1.224 時点のもので CLI の約束ではない。4つ目が来たときに
+    // 「不明」で塗り潰すと、CLI 側の変更に気づく手がかりが画面から消える。
+    expect(describeWaitingFor('brand new reason')).toBe('brand new reason');
+  });
+
+  it('値が無ければ undefined（呼び出し側は何も出さない）', () => {
+    expect(describeWaitingFor(undefined)).toBeUndefined();
+    expect(describeWaitingFor('')).toBeUndefined();
   });
 });

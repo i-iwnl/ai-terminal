@@ -4,7 +4,7 @@
 // このロジックはここでしか検証できない。
 
 import { describe, expect, it } from 'vitest';
-import { taskIdentity } from '../../src/main/agents/taskIdentity';
+import { taskIdentity } from '../../src/shared/taskIdentity';
 import { computeYourTurnSince } from '../../src/main/agents/yourTurnSince';
 
 const NOW = Date.UTC(2026, 6, 30, 12, 0, 0);
