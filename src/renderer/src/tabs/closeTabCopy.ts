@@ -60,6 +60,28 @@ export interface ClosingPaneSummary {
   persistentOrphaned: number;
 }
 
+/**
+ * **その「閉じる」で AI をどうするつもりか**（Issue #244）。
+ *
+ * ⭐ **これが分類（`ClosingPaneSummary`）と別に要る理由。**
+ * `Cmd+W` と メニュー「AI を残してタブを閉じる」は、**まったく同じペインの構成に対して
+ * 違う結果を出す**。つまり結果は木の中身だけでは決まらない。
+ * 意図を渡さないと、`closedTabChannel()` のような「唯一の正」であるはずの関数が
+ * **意味の違う2つの操作に同じ面を返す**ことになる。
+ *
+ * ⛔ **呼び出し側に `if` を書いて回避しないこと。** 判定が2箇所になると、
+ * 片方だけ直したときに「両方に流す」「どちらにも流さない」が静かに生まれる。
+ *
+ * ⚠ **`summarizeClosingPanes()` には渡さない。** あちらは「そのペインが**何であるか**」を
+ * 数える関数で、意図とは独立。混ぜると `'terminate'` のときにプロバイダの内訳が
+ * 失われ、「Claude 1 件を終了しました」と言えなくなる。
+ */
+export type CloseIntent =
+  /** 通常の「閉じる」。tmux セッションごと終了する（`Cmd+W` / `Cmd+Option+W` / タブバーの x）。 */
+  | 'terminate'
+  /** メニュー「AI を残してタブを閉じる」。従来どおり生き残る。 */
+  | 'keep';
+
 /** ダイアログに出す3つの文字列。 */
 export interface CloseTabCopy {
   title: string;
@@ -121,7 +143,45 @@ function buildResumeNote(summary: ClosingPaneSummary): string {
   if (parts.length === 0) {
     return `${summary.persistentResumable} 件はサイドバーの「履歴」から再開できます。`;
   }
-  return `${parts.join('と')}はサイドバーの「履歴」から再開できます。履歴はプロバイダごとに分かれているので、パネル上部で切り替えてください。`;
+  return `${parts.join('と')}はサイドバーの「履歴」から再開できます。${HISTORY_HOPS}`;
+}
+
+/**
+ * 履歴パネルに辿り着くまでの**追加の一手**。
+ *
+ * ⭐ **「履歴から再開できます」だけでは一手足りない**（design-rules 節6）。
+ * 履歴パネルには既定が2つあり、**どちらも外れうる**:
+ *
+ * | 軸 | 既定 | 外れる人 |
+ * |---|---|---|
+ * | プロバイダのトグル | **Claude** | Gemini を閉じた人 |
+ * | フォルダの絞り込み | **このフォルダ** | 別のフォルダで動かしていた人 |
+ *
+ * 2つ目は design-review の IA が指摘した（2026-08-09）。1つ目だけ言っていたので、
+ * **プロバイダを合わせても空の一覧を見る人が残っていた**。
+ *
+ * ⚠ 「すべてのフォルダを見る」は `HistoryList.tsx` の実装上 **Claude のときだけ出る**。
+ * それでも文言では言い分けない（分けると文が倍になり、読み上げが長くなりすぎる）。
+ */
+const HISTORY_HOPS =
+  '履歴はプロバイダごとに分かれているので、パネル上部で切り替えてください。別のフォルダで動かしていたものは「すべてのフォルダを見る」を押してください。';
+
+/**
+ * 終了したときの「会話は残っている」の1文（Issue #244）。
+ *
+ * ⭐ **「不可逆」は言い過ぎ**（design-review の a11y / macOS が独立に指摘）。
+ * tmux セッションを終了しても `~/.claude/projects/*.jsonl` は残るので、
+ * `claude --resume` で**会話は戻る**。失われるのは**実行中の作業**だけ。
+ * この区別を告知に書くのが、Undo を作るよりも正しい（戻らないものを
+ * 「戻せます」と約束しない）。
+ */
+function buildTerminatedResumeNote(summary: ClosingPaneSummary): string {
+  if (summary.persistentResumable === 0) return '';
+  const parts = PROVIDER_ORDER.filter((kind) => (summary.resumableByProvider[kind] ?? 0) > 0).map(
+    (kind) => `${providerLabel(kind)} ${summary.resumableByProvider[kind] ?? 0} 件`,
+  );
+  const who = parts.length === 0 ? `${summary.persistentResumable} 件` : parts.join('と');
+  return `${who}の会話はサイドバーの「履歴」に残っているので、続きから再開できます。${HISTORY_HOPS}`;
 }
 
 /**
@@ -132,11 +192,31 @@ function buildResumeNote(summary: ClosingPaneSummary): string {
  * - **「tmux」を主語にしない。** ユーザーが有効にしたのは設定の項目名であって tmux ではない
  * - **何も終了しないのに「終了する」と言わない。** ボタンのラベルも結果に合わせる
  */
-export function closeTabCopy(summary: ClosingPaneSummary): CloseTabCopy {
+export function closeTabCopy(summary: ClosingPaneSummary, intent: CloseIntent): CloseTabCopy {
   const persistent = summary.persistentResumable + summary.persistentOrphaned;
+
+  // ⭐ **通常の「閉じる」は、tmux でラップされていようがいまいが全部終了する**（Issue #244）。
+  // 直す前はここが `persistent === 0` の分岐に落ちず、「AI の作業は続きます」と
+  // **事実と逆のことを言っていた**。
+  if (intent === 'terminate') {
+    const total = summary.exiting + persistent;
+    return {
+      title: `走行中のプロセス ${total} 件を終了します`,
+      body: [
+        `このタブを閉じると、中で動いている ${total} 件のプロセスがすべて終了します。`,
+        buildTerminatedResumeNote(summary),
+      ]
+        .filter(Boolean)
+        .join(''),
+      confirmLabel: '終了する',
+    };
+  }
+
+  // 以下は `intent === 'keep'`（メニュー「AI を残してタブを閉じる」）。
 
   // 従来どおりの経路（tmux でラップされたペインが1つも無い）。
   // **ここは characterization**（いまそうなっている文言をそのまま固定する）。
+  // 残すつもりでも、残せるものが1つも無ければ結果は終了と同じ。
   if (persistent === 0) {
     return {
       title: `走行中のプロセス ${summary.exiting} 件を終了します`,
@@ -203,8 +283,32 @@ export function closeTabCopy(summary: ClosingPaneSummary): CloseTabCopy {
  * ⛔ **通知バナーと live region の両方に同じ文を流さない**（VoiceOver が2回読む）。
  * どちらへ流すかは `closedTabChannel()` が決める。呼び出し側で分岐を書かないこと。
  */
-export function closedTabAnnouncement(summary: ClosingPaneSummary): string {
+export function closedTabAnnouncement(
+  summary: ClosingPaneSummary,
+  intent: CloseIntent,
+): string {
   const persistent = summary.persistentResumable + summary.persistentOrphaned;
+
+  // ⭐ **通常の「閉じる」は AI も終了する**（Issue #244）。
+  //
+  // ⛔ **ここを「何も告知しない」にしない**（design-review で5人全員が反対した唯一の項目）。
+  // 初版の案は「意図どおりの結果に事後報告は要らない」として `announce` ごと消そうとしたが、
+  // それは**支援技術利用者から、現在ある唯一のフィードバックを奪う**。
+  // 晴眼利用者は「タブが消えた」を目で確認できるが、その『眺める』が無い人がいる。
+  // しかもターミナルの中身は既定構成では支援技術に原理的に届いていない
+  // （`TaskList.tsx` 冒頭）ので、**この1文が操作が成立した唯一の証拠**になる。
+  //
+  // 節8 の表の答えは「`announce` **だけでよい**」であって「出さなくてよい」ではない。
+  if (intent === 'terminate') {
+    if (persistent === 0) return 'タブを閉じました';
+    return [
+      `タブを閉じました。AI の作業 ${persistent} 件を終了しました。`,
+      buildTerminatedResumeNote(summary),
+    ]
+      .filter(Boolean)
+      .join('');
+  }
+
   if (persistent === 0) return 'タブを閉じました';
   const notes = [
     `タブを閉じました。AI の作業 ${persistent} 件は終了せず残っています。`,
@@ -246,8 +350,21 @@ export type ClosedTabChannel =
  *
  * ⛔ **呼び出し側で `persistent > 0` を書き直さないこと。** 判定が2箇所になると、
  * 片方だけ直したときに「両方に流す」「どちらにも流さない」が静かに生まれる。
+ *
+ * ⭐ **`intent` が要る理由**（Issue #244）。同じペイン構成でも、通常の「閉じる」と
+ * 「AI を残して閉じる」では**残るものが違う**。`summary` だけを見ていると、
+ * 意味の違う2つの操作に同じ面を返してしまう。
+ *
+ * | 操作 | 目で見て分かるか | 面 |
+ * |---|---|---|
+ * | 通常の「閉じる」 | **タブが消えたのは分かる**（結果も意図どおり） | `announce` |
+ * | 「AI を残して閉じる」 | **残ったことは見えない** | `notice` |
  */
-export function closedTabChannel(summary: ClosingPaneSummary): ClosedTabChannel {
+export function closedTabChannel(
+  summary: ClosingPaneSummary,
+  intent: CloseIntent,
+): ClosedTabChannel {
+  if (intent === 'terminate') return 'announce';
   return summary.persistentResumable + summary.persistentOrphaned > 0 ? 'notice' : 'announce';
 }
 
@@ -259,13 +376,18 @@ export function closedTabChannel(summary: ClosingPaneSummary): ClosedTabChannel 
  *
  * 判定は2つ:
  *
- * 1. **2本以上を一度に閉じる**（`Cmd+Shift+W` を新設していないので、
- *    タブバーの x ボタンがマウス経由の抜け穴にならないようにする）
- * 2. **1本でも、閉じると回収できなくなるものがある**（`persistentOrphaned > 0`）。
- *    tmux でラップされた gemini は閉じた時点で tmux セッション名を二度と
- *    再現できず、**アプリからは永久に拾い直せない**（`src/main/pty/tmux.ts`）。
- *    claude は履歴から resume すれば同じセッションに戻れるので**止めない**
- *    （閉じるのは1日に何十回もある操作。確認は不可逆なものだけに絞る）。
+ * 1. **2本以上を一度に閉じる**（タブバーの x ボタンがマウス経由の抜け穴に
+ *    ならないようにする）
+ * 2. **`intent === 'keep'` で、1本でも回収できなくなるものがある**（`persistentOrphaned > 0`）。
+ *    tmux でラップされたのに `agentSessionId` を持たないペインは、残すと
+ *    tmux セッション名を二度と再現できず、**アプリからは永久に拾い直せない**
+ *    （`src/main/pty/tmux.ts`）。
+ *
+ * ⭐ **2 が `'keep'` 限定になったのが Issue #244 の変更点。**
+ * 通常の「閉じる」ではセッションごと終了させるので、**「拾えないプロセスが残る」
+ * という事故が原理的に起きない**（名前は `buildTmuxSessionName(agentSessionId ?? ptyId)` で
+ * 確定しており、Main がそれを保持しているので orphan でも確実に終了できる）。
+ * ⛔ **条件を消したのではなく、まだ成り立つ側へ移した。** 残す操作では理由がそのまま生きている。
  *
  * **この関数がその判定の唯一の正。** それまで判定は `App.tsx` の
  * `requestCloseTab` の中に直接書かれており、`Cmd+W`（`close-pane`）は
@@ -276,7 +398,11 @@ export function closedTabChannel(summary: ClosingPaneSummary): ClosedTabChannel 
  * `leaf.wrappedInTmux` が持っている。設定を後から切った人に、既に tmux で
  * 走っているペインについて嘘をつかないため。
  */
-export function needsCloseConfirmation(closingLeaves: readonly PaneLeaf[]): boolean {
+export function needsCloseConfirmation(
+  closingLeaves: readonly PaneLeaf[],
+  intent: CloseIntent,
+): boolean {
   if (closingLeaves.length >= 2) return true;
+  if (intent === 'terminate') return false;
   return summarizeClosingPanes(closingLeaves).persistentOrphaned > 0;
 }

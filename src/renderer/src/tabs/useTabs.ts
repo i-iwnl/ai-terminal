@@ -66,7 +66,12 @@ export interface UseTabsResult {
   setActiveTabId: (id: string) => void;
   newShellTab: () => Promise<void>;
   newAgentTab: (kind: 'claude' | 'gemini', opts?: SpawnOpts) => Promise<void>;
-  closeTab: (id: string) => Promise<void>;
+  /**
+   * タブを閉じる。`terminateSession` は「中の AI も終了させるか」（Issue #244）。
+   * 既定は `true`（通常の「閉じる」）。`false` はメニュー
+   * 「AI を残してタブを閉じる」からだけ渡る。
+   */
+  closeTab: (id: string, terminateSession?: boolean) => Promise<void>;
   markExited: (ptyId: string, exit: { exitCode: number; signal?: number }) => void;
   /** タブ自身の名前（Issue #131）。空文字を渡すと未設定に戻り、木の先頭 leaf からの導出に落ちる。 */
   renameTab: (tabId: string, title: string) => void;
@@ -85,7 +90,8 @@ export interface UseTabsResult {
    * （design-review.md「確定している仕様」）。戻り値は role="status" の
    * 告知文を出し分けるための区別（提案 E'）。
    */
-  closeActivePane: () => Promise<CloseActivePaneOutcome>;
+  /** `terminateSession` の意味は `closeTab` と同じ（Issue #244）。 */
+  closeActivePane: (terminateSession?: boolean) => Promise<CloseActivePaneOutcome>;
   /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
   setActivePaneInTab: (tabId: string, paneId: string) => void;
   /**
@@ -103,7 +109,12 @@ export interface UseTabsResult {
    * 50%に戻す）の両方がこの1本を通る。クランプは `paneTree.ts` の
    * `updateSplitRatio` にそのまま委ねる（ここでは書き直さない）。
    */
-  updateSplitRatio: (tabId: string, path: PanePath, ratio: number, metrics: PaneCellMetrics) => void;
+  updateSplitRatio: (
+    tabId: string,
+    path: PanePath,
+    ratio: number,
+    metrics: PaneCellMetrics,
+  ) => void;
 }
 
 // 初期の桁数/行数。マウント後すぐに fitAddon.fit() で実サイズに補正される。
@@ -145,7 +156,9 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           const leaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === ptyId);
           if (!leaf || leaf.cwd === result.cwd) return prev;
           return prev.map((t) =>
-            t.id === tabId ? { ...t, layout: updateLeaf(t.layout, leaf.paneId, { cwd: result.cwd }) } : t,
+            t.id === tabId
+              ? { ...t, layout: updateLeaf(t.layout, leaf.paneId, { cwd: result.cwd }) }
+              : t,
           );
         });
         // このタブがまだアクティブなら、サイドバーへもそのまま反映する。
@@ -224,7 +237,8 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
           // spawn 結果（Main の buildShellPlan が解決した実際のシェル）を採る。
           // 呼び出し側が明示的なタイトルを渡したとき（履歴からの再開など）は
           // そちらを優先する。
-          title: kind === 'shell' && title === '' ? (result.shellName ?? SHELL_FALLBACK_LABEL) : title,
+          title:
+            kind === 'shell' && title === '' ? (result.shellName ?? SHELL_FALLBACK_LABEL) : title,
           agentSessionId: result.agentSessionId,
           cwd,
           // ペインヘッダ（paneHeader.ts）が「claude (再開)」を出し分けるための
@@ -296,7 +310,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   );
 
   const closeTab = useCallback(
-    async (id: string): Promise<void> => {
+    async (id: string, terminateSession = true): Promise<void> => {
       const tab = tabsRef.current.find((t) => t.id === id);
       if (!tab) return;
       // タブを閉じるときは、木に何枚ペインがあっても**全部**の PTY を kill する。
@@ -314,7 +328,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
             // ⛔ アプリ終了（`before-quit`）はこの経路を通らないので、
             // 「アプリを閉じても生き残る」は影響を受けない（`src/shared/ipc.ts` の
             // `KillPtyRequest` が唯一の正）。
-            await window.api.pty.kill({ ptyId: leaf.ptyId, terminateSession: true });
+            await window.api.pty.kill({ ptyId: leaf.ptyId, terminateSession });
           } catch (err) {
             // 既に終了している場合などは失敗しうる。タブは閉じてよいので無視する。
             console.warn('[tabs] PTY の終了に失敗しました', err);
@@ -387,7 +401,9 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       // 「表示中の1枚」という前提が崩れるため、分割のたびに通常表示へ戻す。
       setTabs((prev) =>
         prev.map((t) =>
-          t.id === tab.id ? { ...t, layout: nextTree, activePaneId: newLeaf.paneId, maximized: false } : t,
+          t.id === tab.id
+            ? { ...t, layout: nextTree, activePaneId: newLeaf.paneId, maximized: false }
+            : t,
         ),
       );
       return { ok: true };
@@ -405,41 +421,44 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
    * 出し分けるために使う（design-review.md 提案 E'。Cmd+W を押した結果を
    * 視覚以外の手段で区別する唯一の手がかり）。
    */
-  const closeActivePane = useCallback(async (): Promise<CloseActivePaneOutcome> => {
-    const tabId = activeTabIdRef.current;
-    if (!tabId) return { kind: 'pane-closed' };
-    const tab = tabsRef.current.find((t) => t.id === tabId);
-    if (!tab) return { kind: 'pane-closed' };
+  const closeActivePane = useCallback(
+    async (terminateSession = true): Promise<CloseActivePaneOutcome> => {
+      const tabId = activeTabIdRef.current;
+      if (!tabId) return { kind: 'pane-closed' };
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab) return { kind: 'pane-closed' };
 
-    const result = closePane(tab.layout, tab.activePaneId);
-    if (result === null) {
-      await closeTab(tabId);
-      return { kind: 'tab-closed' };
-    }
-
-    const closedLeaf = getLeaf(tab.layout, tab.activePaneId);
-    if (closedLeaf) {
-      try {
-        // Issue #244: ペイン1枚を閉じる経路。**`closeTab` とは別の呼び出し箇所**なので、
-        // 片方だけ直すと分割中のタブでだけ累積が続く（S107 が両方を踏む）。
-        await window.api.pty.kill({ ptyId: closedLeaf.ptyId, terminateSession: true });
-      } catch (err) {
-        console.warn('[tabs] PTY の終了に失敗しました', err);
+      const result = closePane(tab.layout, tab.activePaneId);
+      if (result === null) {
+        await closeTab(tabId, terminateSession);
+        return { kind: 'tab-closed' };
       }
-      forgetPty(closedLeaf.ptyId);
-    }
 
-    // maximized は false に戻す（PR 8）: splitActivePane と同じ理由
-    // （木の構造が変わった以上、最大化中の前提が崩れる）。
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === tabId
-          ? { ...t, layout: result.tree, activePaneId: result.activePaneId, maximized: false }
-          : t,
-      ),
-    );
-    return { kind: 'pane-closed' };
-  }, [closeTab]);
+      const closedLeaf = getLeaf(tab.layout, tab.activePaneId);
+      if (closedLeaf) {
+        try {
+          // Issue #244: ペイン1枚を閉じる経路。**`closeTab` とは別の呼び出し箇所**なので、
+          // 片方だけ直すと分割中のタブでだけ累積が続く（S107 が両方を踏む）。
+          await window.api.pty.kill({ ptyId: closedLeaf.ptyId, terminateSession });
+        } catch (err) {
+          console.warn('[tabs] PTY の終了に失敗しました', err);
+        }
+        forgetPty(closedLeaf.ptyId);
+      }
+
+      // maximized は false に戻す（PR 8）: splitActivePane と同じ理由
+      // （木の構造が変わった以上、最大化中の前提が崩れる）。
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId
+            ? { ...t, layout: result.tree, activePaneId: result.activePaneId, maximized: false }
+            : t,
+        ),
+      );
+      return { kind: 'pane-closed' };
+    },
+    [closeTab],
+  );
 
   /**
    * アクティブなタブの、アクティブなペインの最大化表示をトグルする
@@ -459,7 +478,9 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
   const setActivePaneInTab = useCallback((tabId: string, paneId: string) => {
     setTabs((prev) =>
-      prev.map((t) => (t.id === tabId && t.activePaneId !== paneId ? { ...t, activePaneId: paneId } : t)),
+      prev.map((t) =>
+        t.id === tabId && t.activePaneId !== paneId ? { ...t, activePaneId: paneId } : t,
+      ),
     );
   }, []);
 
@@ -477,7 +498,11 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   const updateSplitRatio = useCallback(
     (tabId: string, path: PanePath, ratio: number, metrics: PaneCellMetrics): void => {
       setTabs((prev) =>
-        prev.map((t) => (t.id === tabId ? { ...t, layout: updateSplitRatioInTree(t.layout, path, ratio, metrics) } : t)),
+        prev.map((t) =>
+          t.id === tabId
+            ? { ...t, layout: updateSplitRatioInTree(t.layout, path, ratio, metrics) }
+            : t,
+        ),
       );
     },
     [],
@@ -493,7 +518,9 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       // ペインで exit しうる）。
       const leaf = flattenPaneTree(tab.layout).find((l) => l.ptyId === ptyId);
       if (!leaf) return prev;
-      return prev.map((t) => (t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, leaf.paneId, { exit }) } : t));
+      return prev.map((t) =>
+        t.id === tab.id ? { ...t, layout: updateLeaf(t.layout, leaf.paneId, { exit }) } : t,
+      );
     });
   }, []);
 

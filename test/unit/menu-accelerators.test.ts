@@ -52,6 +52,27 @@ const ALLOWED_RAW_ACCELERATOR_LABELS: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
+ * **`registerAccelerator: false` を免除してよい項目**（Issue #244）。
+ *
+ * ⛔ **ここに足すのは、Electron のネイティブ role で、かつ Renderer が同じキーを
+ * 1つも拾わないと単体テストで証明できている場合だけ。**
+ * ネイティブ role は OS 側がキーを処理するので、`registerAccelerator: false` にすると
+ * **メニューをクリックする以外に到達手段が無くなる**（キーが表示だけの飾りになる）。
+ *
+ * 二重発火の心配が無いことの根拠は `test/unit/renderer-lib.test.ts` に置く
+ * （`matchShortcut` がそのキーで `null` を返すことを assert している）。
+ * **免除の根拠を「たぶん被らない」で書かないこと。**
+ */
+const ALLOWED_NATIVE_ROLE_ACCELERATOR_LABELS: ReadonlyMap<string, string> = new Map([
+  [
+    'ウィンドウを閉じる',
+    'role: close はネイティブ。既定の accelerator が Cmd+W（= ペインを閉じる）と衝突するので ' +
+      'Cmd+Shift+W へ明示的に振り替えている。Renderer が Cmd+Shift+W を拾わないことは ' +
+      'renderer-lib.test.ts が固定している',
+  ],
+]);
+
+/**
  * コメントと文字列の中身を同じ長さの `_` で潰す。
  *
  * **長さを保つ**ので、返り値のインデックスは元のソースのインデックスと一致する。
@@ -198,7 +219,10 @@ describe('メニューの accelerator と registerAccelerator', () => {
   it('actionItem() を通さない accelerator 付き項目が、許可リストと一致する', () => {
     // 同じ形の変換部が2つある（role 用と action 用）ので重複を畳んでから比べる。
     const labels = Array.from(new Set(raw.map(labelOf))).sort();
-    const allowed = Array.from(ALLOWED_RAW_ACCELERATOR_LABELS.keys()).sort();
+    const allowed = [
+      ...ALLOWED_RAW_ACCELERATOR_LABELS.keys(),
+      ...ALLOWED_NATIVE_ROLE_ACCELERATOR_LABELS.keys(),
+    ].sort();
     expect(
       labels,
       'accelerator を直接書いたメニュー項目が増減している。' +
@@ -208,7 +232,9 @@ describe('メニューの accelerator と registerAccelerator', () => {
   });
 
   it('accelerator を直接書いた項目は、すべて registerAccelerator: false を書いている', () => {
-    const missing = raw.filter((literal) => !/registerAccelerator\s*:\s*false/.test(literal));
+    const missing = raw
+      .filter((literal) => !ALLOWED_NATIVE_ROLE_ACCELERATOR_LABELS.has(labelOf(literal)))
+      .filter((literal) => !/registerAccelerator\s*:\s*false/.test(literal));
     expect(
       missing.map(labelOf),
       'accelerator を持つのに registerAccelerator: false が無い。' +

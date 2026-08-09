@@ -1340,7 +1340,7 @@ scenarios:
       本シナリオがその実例で、**#160 の周6 で4箇所の注記も是正した**。
 
   - id: S90
-    title: Cmd+W で回収できる gemini ペインは確認なしで閉じ、2枚同時なら確認が出る
+    title: 閉じれば AI は終了し、メニューから明示したときだけ残る
     spec: S90-close-pane-orphan-confirm.spec.ts
     readme: false
     note: >-
@@ -1617,7 +1617,7 @@ scenarios:
       判定そのものの桁ごとの固定は `test/unit/gemini-version.test.ts`
       （⛔ 版が読み取れなければ非対応に倒す、という**外れ方の向き**もそこで固定している）。
   - id: S104
-    title: タブを閉じても tmux セッションが生きていればタスク一覧から戻せる
+    title: AI を残して閉じたタブは、タスク一覧から戻せる
     spec: S104-recover-live-session.spec.ts
     readme: false
     note: >-

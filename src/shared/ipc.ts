@@ -619,6 +619,19 @@ export type YourTurnJumpDirection = 'forward' | 'backward';
 export type AppAction =
   | { type: 'new-shell-tab' }
   | { type: 'close-tab' }
+  /**
+   * タブを閉じるが、**中の AI は終了させずに残す**（Issue #244）。
+   *
+   * 通常の `close-tab` / `close-pane` は tmux セッションごと終了する。
+   * こちらは従来の挙動（tmux クライアントだけを殺す）を明示的に選ぶ操作で、
+   * **メニューからしか到達できない**。
+   *
+   * ⛔ **ショートカットを割り当てていない。** `Cmd+Shift+W` は
+   * 「ウィンドウを閉じる」に使う（`src/main/menu.ts`）。めったに使わない操作なので
+   * メニューで足り、`Cmd+Option+W` の隣に置けば発見可能性も確保できる
+   * （design-review 2026-08-09 / ユーザー判断）。
+   */
+  | { type: 'close-tab-keep-agents' }
   | { type: 'switch-tab'; index: number }
   | { type: 'new-claude-tab' }
   | { type: 'new-gemini-tab' }
@@ -776,6 +789,14 @@ export const IpcSend = {
    */
   menuPaneCount: 'menu:pane-count',
   /**
+   * アクティブなタブに「残せる AI」が何件あるか（Issue #244）。
+   *
+   * メニュー「AI を残してタブを閉じる」の有効・無効にだけ使う。0 件なら無効化する
+   * （**非表示にはしない**。理由は `src/main/menu.ts` の `updateKeepAgentsEnabled`）。
+   * ペインの木は Renderer だけが持つので、`menuPaneCount` と同じく数だけを渡す。
+   */
+  menuKeepableAgentCount: 'menu:keepable-agent-count',
+  /**
    * ターミナル面の右クリックメニューを出す（Issue #135）。
    *
    * **Renderer は「状況」だけを送り、項目表は `src/shared/context-menu.ts` が決める。**
@@ -901,6 +922,11 @@ export interface RendererApi {
      * 「タブを閉じる（N ペイン）」のラベル更新にだけ使う（IpcSend.menuPaneCount 参照）。
      */
     reportPaneCount(count: number): void;
+    /**
+     * アクティブなタブに「残せる AI」が何件あるかを Main へ知らせる（Issue #244）。
+     * メニュー「AI を残してタブを閉じる」の有効・無効にだけ使う。
+     */
+    reportKeepableAgentCount(count: number): void;
     /**
      * ターミナル面の右クリックメニューを出す（Issue #135。IpcSend.contextMenuShow 参照）。
      * 項目が選ばれた結果は既存の `onAction` 経由で戻ってくる（新しい経路を作らない）。

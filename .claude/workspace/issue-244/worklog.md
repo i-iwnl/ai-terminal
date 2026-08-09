@@ -175,4 +175,71 @@ Received string:    ""
 
 ---
 
+## 2026-08-09 - 周3: 「閉じる」の2つの意味を、文言とメニューまで通す
+
+### 実施内容
+
+- `CloseIntent = 'terminate' | 'keep'` を新設し、`closeTabCopy` / `closedTabAnnouncement` /
+  `closedTabChannel` / `needsCloseConfirmation` に渡した
+- `AppAction` に `close-tab-keep-agents` を追加。メニュー「**AI を残してタブを閉じる**」（キー無し）
+- メニューに「**ウィンドウを閉じる `Cmd+Shift+W`**」を追加（`role: 'close'`）
+- `IpcSend.menuKeepableAgentCount` を新設し、残せる AI が0件ならメニュー項目を無効化
+- S90 を書き直し（両方向を見る）/ S104 の前提を差し替え / S36 に新項目の関門を追加
+- README を3箇所 + ショートカット表を実態に合わせた
+
+### 設計判断
+
+- ⭐ **`intent` は `summarizeClosingPanes()` には渡さない。** あれは「そのペインが**何であるか**」を
+  数える関数で、意図とは独立。混ぜると `'terminate'` のときにプロバイダの内訳が失われ、
+  「Claude 1 件の会話は履歴に残っている」と言えなくなる
+  （保守レビューの対案3 は「全部 exiting に落とす」だったが、そこだけ変えた）
+- ⛔ **確認条件は「消した」のではなく「まだ成り立つ側へ移した」。**
+  `persistentOrphaned > 0` は `intent === 'keep'` のときだけ効く。残す操作では
+  「拾えないまま残る」という事故がそのまま起きるため
+- **`role: 'close'` の accelerator は明示が必須。** 既定は **`Cmd+W`** で、
+  このアプリではそれが「ペインを閉じる」に割り当たっている。**1つのキーが2つの意味を持つ**
+- **`registerAccelerator: false` は付けない。** ネイティブ role は OS がキーを処理するので、
+  付けると**メニューをクリックする以外に到達手段が無くなる**
+
+### 教訓（該当する場合）
+
+- ⭐ **`menu-accelerators.test.ts` の関門を1件だけ免除した。** 免除は
+  `ALLOWED_NATIVE_ROLE_ACCELERATOR_LABELS` に理由付きで載せ、**代わりに
+  `renderer-lib.test.ts` で `matchShortcut` が `Cmd+Shift+W` を拾わないことを固定**した
+  （関門を緩めるときは、緩めた分を別の関門で埋める）
+- ⭐ **偽 tmux のセッション名を待たずに読む競合が、S107 の次に S90 でも出た。**
+  spec ごとに書き直すのをやめ、`waitForNewTmuxSessionName()` として
+  `e2e/fixtures/tmuxLivePanes.ts` へ切り出した（S104 / S107〜S110 / S90 が使う）
+- **`app.evaluate()` の戻り値は構造化クローンを通る。** 未設定の accelerator は
+  `undefined` ではなく **`null`** で返る（S36 で踏んだ）
+- **`docs/images/S56-split-pane.png` はバイトだけ変わって画素差 0 だった**ので、
+  コミットに含めなかった（loop.md の規約）
+
+### 関門が赤くなることの証明
+
+| 壊し方 | 出た赤 |
+|---|---|
+| `intent` を無視して常に「残る」文言を返す | S90: `not.toContainText` 失敗（live region に旧文言） |
+| `closedTabChannel` が `intent` を無視する | S90: `toContainText` 失敗（面が入れ替わる） |
+| メニュー項目を常に有効にする | S90: シェルタブで `enabled` が false でない |
+
+### 検証
+
+- `make check` 緑（839件）/ `make e2e-lint` FAIL=0（PASS=879）/ `lint-skills.sh` FAIL=0
+- `make e2e` フル: **115 passed / 1 failed（撮影 S56）/ 5 flaky**。
+  S56 を単独で回すと **947ms で緑**（落ちたときは 20秒タイムアウト × 2）。
+  load average 6.99 だったので**負荷起因で確定**
+- `make e2e-screenshots-check`: **13枚すべて画素差 0**（`PASS=39 / FAIL=0`）
+
+### 次に再開するとき最初に読むべきこと
+
+- **周1〜3 は完了。次は周4**（確認条件に `busy` を追加）。ユーザー判断済み:
+  条件は「(1) 2枚以上」+「(3) 閉じる対象に `busy` の AI ペインがある」
+- 実装は `needsCloseConfirmation()` に `AgentTask[]` を渡す配線が1本増える
+  （`App.tsx` の `agentTasksRef.current` と `taskSessionKey()` で `status` が引ける）
+- そのあと 周5（`border-left`）/ 周6（終了導線）/ 周7（押せない理由 + 8枚撮り直し）
+- ⚠ **`make e2e` は負荷に弱い。** flaky が出たら**単独で回して切り分ける**（負荷なら数百 ms で緑）
+
+---
+
 <!-- 以降、作業のたびにセクションを追記 -->

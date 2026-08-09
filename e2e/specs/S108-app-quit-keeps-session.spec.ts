@@ -2,7 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
-import { livePanesFile } from '../fixtures/tmuxLivePanes';
+import {
+  livePanesFile,
+  readKilledTmuxSessions,
+  waitForNewTmuxSessionName,
+} from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
@@ -32,11 +36,8 @@ test('S108 アプリを終了しても tmux セッションは終了しない', 
   launched = await launchApp({ config: { useTmux: true }, fakeTmux: true });
   const { window, fixturesDir } = launched;
 
-  const killedSessionsPath = join(fixturesDir, 'tmux-killed-sessions.txt');
   const livePanesPath = join(fixturesDir, 'tmux-live-panes.txt');
-  const sessionNamePath = join(fixturesDir, 'tmux-session-name.txt');
-  const readKilled = (): string =>
-    existsSync(killedSessionsPath) ? readFileSync(killedSessionsPath, 'utf8') : '';
+  const readKilled = (): string => readKilledTmuxSessions(fixturesDir);
   const readLivePanes = (): string =>
     existsSync(livePanesPath) ? readFileSync(livePanesPath, 'utf8') : '';
 
@@ -50,13 +51,7 @@ test('S108 アプリを終了しても tmux セッションは終了しない', 
   await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(1, { timeout: 15_000 });
 
   // 偽 tmux が名前を書き終えるまで待つ（S107 と同じ理由）。
-  await expect
-    .poll(() => (existsSync(sessionNamePath) ? readFileSync(sessionNamePath, 'utf8').trim() : ''), {
-      timeout: 15_000,
-      message: '偽 tmux がセッション名を書いていない',
-    })
-    .toMatch(/^aiterm-[0-9a-f-]{36}$/i);
-  const sessionName = readFileSync(sessionNamePath, 'utf8').trim();
+  const sessionName = await waitForNewTmuxSessionName(fixturesDir, '');
 
   // tmux 側に「そのセッションが生きている」状態を作る。
   writeFileSync(

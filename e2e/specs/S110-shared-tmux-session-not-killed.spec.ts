@@ -1,8 +1,13 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
-import { livePanesFile } from '../fixtures/tmuxLivePanes';
+import {
+  livePanesFile,
+  readKilledTmuxSessions,
+  readTmuxSessionName,
+  waitForNewTmuxSessionName,
+} from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
@@ -30,11 +35,8 @@ test('S110 同じ tmux セッションを別のタブも使っていれば、片
   launched = await launchApp({ config: { useTmux: true }, fakeTmux: true });
   const { window, fixturesDir } = launched;
 
-  const killedSessionsPath = join(fixturesDir, 'tmux-killed-sessions.txt');
   const livePanesPath = join(fixturesDir, 'tmux-live-panes.txt');
-  const sessionNamePath = join(fixturesDir, 'tmux-session-name.txt');
-  const readKilled = (): string =>
-    existsSync(killedSessionsPath) ? readFileSync(killedSessionsPath, 'utf8') : '';
+  const readKilled = (): string => readKilledTmuxSessions(fixturesDir);
 
   await expect(window.locator('.terminal-pane__container .xterm-screen').first()).toContainText(
     /[$%#>]/,
@@ -50,13 +52,7 @@ test('S110 同じ tmux セッションを別のタブも使っていれば、片
   await items.nth(0).locator('.history-item__row').click();
   await expect(claudeTabs).toHaveCount(1, { timeout: 20_000 });
 
-  await expect
-    .poll(() => (existsSync(sessionNamePath) ? readFileSync(sessionNamePath, 'utf8').trim() : ''), {
-      timeout: 15_000,
-      message: '偽 tmux がセッション名を書いていない',
-    })
-    .toMatch(/^aiterm-/);
-  const sessionName = readFileSync(sessionNamePath, 'utf8').trim();
+  const sessionName = await waitForNewTmuxSessionName(fixturesDir, '');
 
   await items.nth(0).locator('.history-item__row').click();
   await expect(claudeTabs).toHaveCount(2, { timeout: 20_000 });
@@ -64,7 +60,7 @@ test('S110 同じ tmux セッションを別のタブも使っていれば、片
   // ⭐ **2枚目が同じ tmux セッション名になっていること**を確かめる。ここが崩れると
   // 以降の assert は「共有していないから終了しなかった」でも通ってしまう。
   expect(
-    readFileSync(sessionNamePath, 'utf8').trim(),
+    readTmuxSessionName(fixturesDir),
     '2枚目が別の tmux セッション名になっている（共有の前提が崩れている）',
   ).toBe(sessionName);
 

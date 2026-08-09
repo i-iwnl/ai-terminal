@@ -121,7 +121,9 @@ test('S106 許可待ちのセッションが「あなたの番」として扱わ
 
   // 待っていない側（idle）には理由が付かない。
   await expect(
-    window.locator('.task-item', { hasText: 'other-project-idle' }).locator('.task-item__waiting-for'),
+    window
+      .locator('.task-item', { hasText: 'other-project-idle' })
+      .locator('.task-item__waiting-for'),
   ).toHaveCount(0);
 
   // 4. Dock バッジに数えられること。

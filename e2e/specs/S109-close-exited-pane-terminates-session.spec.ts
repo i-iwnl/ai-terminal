@@ -1,8 +1,12 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
-import { livePanesFile } from '../fixtures/tmuxLivePanes';
+import {
+  livePanesFile,
+  readKilledTmuxSessions,
+  waitForNewTmuxSessionName,
+} from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
@@ -37,11 +41,8 @@ test('S109 PTY が先に終了していても、閉じれば tmux セッショ�
   launched = await launchApp({ config: { useTmux: true }, fakeTmux: true });
   const { window, fixturesDir } = launched;
 
-  const killedSessionsPath = join(fixturesDir, 'tmux-killed-sessions.txt');
   const livePanesPath = join(fixturesDir, 'tmux-live-panes.txt');
-  const sessionNamePath = join(fixturesDir, 'tmux-session-name.txt');
-  const readKilled = (): string =>
-    existsSync(killedSessionsPath) ? readFileSync(killedSessionsPath, 'utf8') : '';
+  const readKilled = (): string => readKilledTmuxSessions(fixturesDir);
 
   await expect(window.locator('.terminal-pane__container .xterm-screen').first()).toContainText(
     /[$%#>]/,
@@ -51,17 +52,12 @@ test('S109 PTY が先に終了していても、閉じれば tmux セッショ�
   // --- 1. tmux でラップされた claude タブを開く --------------------------------
   await window.keyboard.press('Meta+Shift+C');
   await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(1, { timeout: 15_000 });
-  await expect(
-    window.locator('.terminal-pane__container .xterm-screen').last(),
-  ).toContainText('FAKE CLAUDE READY', { timeout: 20_000 });
+  await expect(window.locator('.terminal-pane__container .xterm-screen').last()).toContainText(
+    'FAKE CLAUDE READY',
+    { timeout: 20_000 },
+  );
 
-  await expect
-    .poll(() => (existsSync(sessionNamePath) ? readFileSync(sessionNamePath, 'utf8').trim() : ''), {
-      timeout: 15_000,
-      message: '偽 tmux がセッション名を書いていない',
-    })
-    .toMatch(/^aiterm-[0-9a-f-]{36}$/i);
-  const sessionName = readFileSync(sessionNamePath, 'utf8').trim();
+  const sessionName = await waitForNewTmuxSessionName(fixturesDir, '');
 
   // tmux 側は「セッションが生きている」ままにしておく（`Ctrl-b d` 後の状態）。
   writeFileSync(

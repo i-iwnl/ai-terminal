@@ -70,6 +70,7 @@ import {
   closeTabCopy,
   closedTabAnnouncement,
   closedTabChannel,
+  type CloseIntent,
   needsCloseConfirmation,
   summarizeClosingPanes,
   type CloseTabCopy,
@@ -79,7 +80,13 @@ import { useTabs } from './tabs/useTabs';
 import { isEditableTarget, matchShortcut } from './lib/shortcuts';
 import { resolveSharedCwd } from './lib/cwd';
 import { sessionDisplayTitle } from './lib/format';
-import { dismissNotice, pushNotice, severityForExit, type Notice, type NoticeSeverity } from './lib/notices';
+import {
+  dismissNotice,
+  pushNotice,
+  severityForExit,
+  type Notice,
+  type NoticeSeverity,
+} from './lib/notices';
 import { subscribeAgentTasks } from './lib/agentTasksStore';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
@@ -196,12 +203,9 @@ export default function App(): ReactElement {
   // （タブ選択・メモの編集途中・履歴の絞り込みはすべて Sidebar の木の中の state で、
   // ここへ持ち上げると畳むたびに失われる）。ここは「切り替えたい」を伝える口だけ持つ。
   const switchSidebarPanelRef = useRef<((panel: SidebarPanel) => void) | null>(null);
-  const registerPanelSwitcher = useCallback(
-    (switchTo: ((panel: SidebarPanel) => void) | null) => {
-      switchSidebarPanelRef.current = switchTo;
-    },
-    [],
-  );
+  const registerPanelSwitcher = useCallback((switchTo: ((panel: SidebarPanel) => void) | null) => {
+    switchSidebarPanelRef.current = switchTo;
+  }, []);
   // ペイン名の変更（Issue #130）。**編集中の下書き文字列は TabBar が持つ**
   // （ここへ持ち上げると、タブの再描画のたびに入力途中の文字が失われる）。
   // 上の registerPanelSwitcher と同じく、ここは「始めたい」を伝える口だけ持つ。
@@ -216,15 +220,22 @@ export default function App(): ReactElement {
   //
   // **Issue #121 A-3: 文言は「開く時点の内訳」から作って持ち回る。** 表示中に
   // ペインの状態が変わっても、確認した内容と実行する内容がずれないようにするため。
+  // ⭐ **`intent` も一緒に持ち回る**（Issue #244）。同じ木でも「終了する」のか
+  // 「AI を残す」のかで結果が違うので、確認した内容と実行する内容を一致させるには
+  // 文言だけでなく意図も固定する必要がある。
   const [closeConfirmation, setCloseConfirmationState] = useState<{
     tabId: string;
+    intent: CloseIntent;
     copy: CloseTabCopy;
   } | null>(null);
   const closeConfirmationRef = useRef(closeConfirmation);
-  const setCloseConfirmation = useCallback((value: { tabId: string; copy: CloseTabCopy } | null) => {
-    closeConfirmationRef.current = value;
-    setCloseConfirmationState(value);
-  }, []);
+  const setCloseConfirmation = useCallback(
+    (value: { tabId: string; intent: CloseIntent; copy: CloseTabCopy } | null) => {
+      closeConfirmationRef.current = value;
+      setCloseConfirmationState(value);
+    },
+    [],
+  );
 
   const showNotice = useCallback(
     (message: string, severity: NoticeSeverity) => {
@@ -313,8 +324,8 @@ export default function App(): ReactElement {
    * 判定は `closeTabCopy.ts` の1箇所に集めてある。
    */
   const announceClosed = useCallback(
-    (summary: ClosingPaneSummary, message: string): void => {
-      if (closedTabChannel(summary) === 'notice') {
+    (summary: ClosingPaneSummary, message: string, intent: CloseIntent): void => {
+      if (closedTabChannel(summary, intent) === 'notice') {
         showNotice(message, 'info');
         return;
       }
@@ -327,11 +338,11 @@ export default function App(): ReactElement {
   // 閉じたあと結果を告知する（design-review.md 提案 E'）。
   // ⭐ **内訳は閉じる前に数える**（閉じたあとでは leaf がもう無い）。
   const performCloseTab = useCallback(
-    async (tabId: string): Promise<void> => {
+    async (tabId: string, intent: CloseIntent): Promise<void> => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
       const summary = summarizeClosingPanes(tab ? flattenPaneTree(tab.layout) : []);
-      await tabsApiRef.current.closeTab(tabId);
-      announceClosed(summary, closedTabAnnouncement(summary));
+      await tabsApiRef.current.closeTab(tabId, intent === 'terminate');
+      announceClosed(summary, closedTabAnnouncement(summary, intent), intent);
     },
     [announceClosed],
   );
@@ -351,17 +362,21 @@ export default function App(): ReactElement {
    * `closeActivePane` を直接呼び、この判定を1度も通らなかった）。
    */
   const requestCloseTab = useCallback(
-    (tabId: string): void => {
+    (tabId: string, intent: CloseIntent = 'terminate'): void => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
       const leaves = tab ? flattenPaneTree(tab.layout) : [];
       // 判定の正は `closeTabCopy.ts` の `needsCloseConfirmation`（Issue #158 で
       // ここから切り出した）。**`Cmd+W` の経路と同じ関数を共有させるため**で、
       // 条件をこの場に書き戻さないこと。
-      if (needsCloseConfirmation(leaves)) {
-        setCloseConfirmation({ tabId, copy: closeTabCopy(summarizeClosingPanes(leaves)) });
+      if (needsCloseConfirmation(leaves, intent)) {
+        setCloseConfirmation({
+          tabId,
+          intent,
+          copy: closeTabCopy(summarizeClosingPanes(leaves), intent),
+        });
         return;
       }
-      void performCloseTab(tabId);
+      void performCloseTab(tabId, intent);
     },
     [performCloseTab, setCloseConfirmation],
   );
@@ -523,6 +538,11 @@ export default function App(): ReactElement {
         case 'new-shell-tab':
           void api.newShellTab();
           break;
+        case 'close-tab-keep-agents':
+          // Issue #244。メニュー「AI を残してタブを閉じる」だけが通る経路。
+          // ⛔ ショートカットは割り当てていない（理由は `src/shared/ipc.ts` の AppAction）。
+          if (api.activeTabId) requestCloseTab(api.activeTabId, 'keep');
+          break;
         case 'close-tab':
           if (api.activeTabId) requestCloseTab(api.activeTabId);
           break;
@@ -602,7 +622,11 @@ export default function App(): ReactElement {
           const paneSummary = summarizeClosingPanes(closingPane ? [closingPane] : []);
           void api.closeActivePane().then((outcome) => {
             if (outcome.kind === 'tab-closed') {
-              announceClosed(paneSummary, closedTabAnnouncement(paneSummary));
+              announceClosed(
+                paneSummary,
+                closedTabAnnouncement(paneSummary, 'terminate'),
+                'terminate',
+              );
               return;
             }
             // ペイン1枚を閉じたときは語を「ペイン」に替えるだけ。**面の選び方は
@@ -610,9 +634,13 @@ export default function App(): ReactElement {
             // `persistent > 0` を書き直さない。
             announceClosed(
               paneSummary,
-              closedTabChannel(paneSummary) === 'notice'
-                ? closedTabAnnouncement(paneSummary).replace('タブを閉じました', 'ペインを閉じました')
+              closedTabChannel(paneSummary, 'terminate') === 'notice'
+                ? closedTabAnnouncement(paneSummary, 'terminate').replace(
+                    'タブを閉じました',
+                    'ペインを閉じました',
+                  )
                 : 'ペインを閉じました',
+              'terminate',
             );
           });
           break;
@@ -651,7 +679,10 @@ export default function App(): ReactElement {
         case 'move-pane-focus': {
           const tab = api.tabs.find((t) => t.id === api.activeTabId);
           if (tab) {
-            api.setActivePaneInTab(tab.id, movePaneInDirection(tab.layout, tab.activePaneId, action.direction));
+            api.setActivePaneInTab(
+              tab.id,
+              movePaneInDirection(tab.layout, tab.activePaneId, action.direction),
+            );
           }
           break;
         }
@@ -882,7 +913,8 @@ export default function App(): ReactElement {
         focusPaneLocation(location);
         return;
       }
-      const message = 'このセッションを開いているタブはありません（サイドバーの「タスク」で確認できます）';
+      const message =
+        'このセッションを開いているタブはありません（サイドバーの「タスク」で確認できます）';
       showNotice(message, 'info');
       announce(message);
     });
@@ -1010,8 +1042,15 @@ export default function App(): ReactElement {
   // タブ切り替え・分割・ペインを閉じるのいずれでも最新化される。
   useEffect(() => {
     const activeTab = tabsApi.tabs.find((t) => t.id === tabsApi.activeTabId);
-    const paneCount = activeTab ? flattenPaneTree(activeTab.layout).length : 1;
-    window.api.menu.reportPaneCount(paneCount);
+    const leaves = activeTab ? flattenPaneTree(activeTab.layout) : [];
+    window.api.menu.reportPaneCount(activeTab ? leaves.length : 1);
+    // Issue #244。「AI を残してタブを閉じる」を有効にしてよいかは、
+    // **残せるものが1つでもあるか**で決まる。判定の正は `summarizeClosingPanes`
+    // （ここで `wrappedInTmux` を読み直さない）。
+    const summary = summarizeClosingPanes(leaves);
+    window.api.menu.reportKeepableAgentCount(
+      summary.persistentResumable + summary.persistentOrphaned,
+    );
   }, [tabsApi.tabs, tabsApi.activeTabId]);
 
   return (
@@ -1144,11 +1183,7 @@ export default function App(): ReactElement {
                   {n.severity === 'error' ? 'エラー' : '情報'}
                 </span>
                 <span className="notice-banner__message">{n.message}</span>
-                <button
-                  onClick={() => dismissNoticeById(n.id)}
-                  aria-label="閉じる"
-                  title="閉じる"
-                >
+                <button onClick={() => dismissNoticeById(n.id)} aria-label="閉じる" title="閉じる">
                   x
                 </button>
               </div>
@@ -1189,9 +1224,9 @@ export default function App(): ReactElement {
           copy={closeConfirmation.copy}
           onCancel={() => setCloseConfirmation(null)}
           onConfirm={() => {
-            const { tabId } = closeConfirmation;
+            const { tabId, intent } = closeConfirmation;
             setCloseConfirmation(null);
-            void performCloseTab(tabId);
+            void performCloseTab(tabId, intent);
           }}
         />
       )}

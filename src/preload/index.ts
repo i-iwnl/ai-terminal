@@ -125,6 +125,9 @@ const api: RendererApi = {
     reportPaneCount: (count: number): void => {
       ipcRenderer.send(IpcSend.menuPaneCount, count);
     },
+    reportKeepableAgentCount: (count: number): void => {
+      ipcRenderer.send(IpcSend.menuKeepableAgentCount, count);
+    },
     showContextMenu: (state: TerminalContextMenuState): void => {
       ipcRenderer.send(IpcSend.contextMenuShow, state);
     },

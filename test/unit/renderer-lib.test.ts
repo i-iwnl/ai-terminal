@@ -168,10 +168,14 @@ describe('matchShortcut', () => {
   // ガードは通すようになった（上の passesModifierGate 参照）が、割り当てが無い
   // Cmd+Option+英字 は今までどおり null のまま素通しする。
   it('割り当ての無い Cmd+Alt+英字 は null のまま素通しする', () => {
-    expect(matchShortcut(keyEvent({ key: 't', code: 'KeyT', metaKey: true, altKey: true }))).toBeNull();
+    expect(
+      matchShortcut(keyEvent({ key: 't', code: 'KeyT', metaKey: true, altKey: true })),
+    ).toBeNull();
     // **KeyW は Issue #120 周1 で `close-tab` に割り当てた**ので、
     // 「割り当ての無い」例としては使えなくなった（下の専用テストが固定する）。
-    expect(matchShortcut(keyEvent({ key: 'q', code: 'KeyQ', metaKey: true, altKey: true }))).toBeNull();
+    expect(
+      matchShortcut(keyEvent({ key: 'q', code: 'KeyQ', metaKey: true, altKey: true })),
+    ).toBeNull();
   });
 
   // Issue #20 K-1: サイドバーの表示/非表示（Cmd+Option+S）。
@@ -180,9 +184,9 @@ describe('matchShortcut', () => {
   // `.key` に入りうる（Option+s -> `ß`）。実機でその形になっても拾えることを、
   // `key` に `ß` を入れたケースで固定する（`.key` 判定に書き換えると赤くなる）。
   it('Cmd+Option+S はサイドバーの表示切り替えに割り当たる', () => {
-    expect(matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true, altKey: true }))).toEqual(
-      { type: 'toggle-sidebar' },
-    );
+    expect(
+      matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true, altKey: true })),
+    ).toEqual({ type: 'toggle-sidebar' });
     expect(
       matchShortcut(keyEvent({ key: 'ß', code: 'KeyS', metaKey: true, altKey: true })),
     ).toEqual({ type: 'toggle-sidebar' });
@@ -193,7 +197,9 @@ describe('matchShortcut', () => {
   it('Cmd+S / Cmd+Shift+Option+S は未定義のまま null を返す', () => {
     expect(matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true }))).toBeNull();
     expect(
-      matchShortcut(keyEvent({ key: 's', code: 'KeyS', metaKey: true, altKey: true, shiftKey: true })),
+      matchShortcut(
+        keyEvent({ key: 's', code: 'KeyS', metaKey: true, altKey: true, shiftKey: true }),
+      ),
     ).toBeNull();
   });
 
@@ -530,15 +536,25 @@ describe('matchShortcut: Issue #120 周1 で決めたキー', () => {
     // **`e.code` で判定する。** macOS では Option を押しながらの英字キーは
     // 合成後の文字が `e.key` に入りうる（Option+w は `∑`）。
     // Cmd+Option+S と同じ理由。
-    expect(matchShortcut(keyEvent({ key: '∑', code: 'KeyW', metaKey: true, altKey: true }))).toEqual(
-      { type: 'close-tab' },
-    );
+    expect(
+      matchShortcut(keyEvent({ key: '∑', code: 'KeyW', metaKey: true, altKey: true })),
+    ).toEqual({ type: 'close-tab' });
     // Option 無しは従来どおりペインを閉じる（残るペインが1枚ならタブごと閉じる）。
     expect(matchShortcut(keyEvent({ key: 'w', metaKey: true }))).toEqual({ type: 'close-pane' });
     // Shift も付いていたら未定義のまま素通しする（Cmd+Shift+W は macOS 全域で
     // 「ウィンドウを閉じる」なので奪わない）。
     expect(
-      matchShortcut(keyEvent({ key: 'w', code: 'KeyW', metaKey: true, altKey: true, shiftKey: true })),
+      matchShortcut(
+        keyEvent({ key: 'w', code: 'KeyW', metaKey: true, altKey: true, shiftKey: true }),
+      ),
+    ).toBeNull();
+    // ⭐ **Cmd+Shift+W（Option 無し）を Renderer が拾わないこと**（Issue #244）。
+    // この打鍵はメニューの `role: 'close'`（ネイティブ）が OS 側で処理する。
+    // **ここが null でなくなると、1回の打鍵でウィンドウが閉じるのと同時に
+    // Renderer 側の操作も走る**（`menu-accelerators.test.ts` が
+    // `registerAccelerator: false` の免除を認めている唯一の根拠がこれ）。
+    expect(
+      matchShortcut(keyEvent({ key: 'w', code: 'KeyW', metaKey: true, shiftKey: true })),
     ).toBeNull();
   });
 });

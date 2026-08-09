@@ -2,7 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, setAgentEntries, type LaunchedApp } from '../fixtures/harness';
-import { livePanesFile } from '../fixtures/tmuxLivePanes';
+import {
+  livePanesFile,
+  readKilledTmuxSessions,
+  waitForNewTmuxSessionName,
+} from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
@@ -52,34 +56,10 @@ test('S107 タブでもペインでも、閉じると tmux セッションごと
   launched = await launchApp({ config: { useTmux: true }, fakeTmux: true });
   const { window, fixturesDir } = launched;
 
-  const killedSessionsPath = join(fixturesDir, 'tmux-killed-sessions.txt');
   const livePanesPath = join(fixturesDir, 'tmux-live-panes.txt');
-  const sessionNamePath = join(fixturesDir, 'tmux-session-name.txt');
-  const readKilled = (): string =>
-    existsSync(killedSessionsPath) ? readFileSync(killedSessionsPath, 'utf8') : '';
+  const readKilled = (): string => readKilledTmuxSessions(fixturesDir);
   const readLivePanes = (): string =>
     existsSync(livePanesPath) ? readFileSync(livePanesPath, 'utf8') : '';
-  const readSessionName = (): string =>
-    existsSync(sessionNamePath) ? readFileSync(sessionNamePath, 'utf8').trim() : '';
-
-  /**
-   * 偽 tmux が新しいセッション名を書き終えるまで待って読む。
-   *
-   * ⛔ **タブが現れたことを待つだけでは足りない**（code-review 2026-08-09 で指摘）。
-   * タブの DOM は Renderer が spawn の結果を受けた時点で立つが、
-   * `tmux-session-name.txt` を書くのは**その先で exec された偽 tmux**。
-   * 待たずに読むと、**2本目のつもりで1本目の名前を読む**ことがある。
-   * `previous` を渡して「変わったこと」を待つ形にすれば、1本目・2本目の両方で使える。
-   */
-  const waitForNewSessionName = async (previous: string): Promise<string> => {
-    await expect
-      .poll(readSessionName, { timeout: 15_000, message: '偽 tmux が新しいセッション名を書いていない' })
-      .toMatch(/^aiterm-[0-9a-f-]{36}$/i);
-    await expect
-      .poll(readSessionName, { timeout: 15_000, message: 'セッション名が前回のまま変わっていない' })
-      .not.toBe(previous);
-    return readSessionName();
-  };
 
   // 最初のシェルのプロンプトが出るまで待ってから操作する（S104 と同じ理由）。
   await expect(window.locator('.terminal-pane__container .xterm-screen').first()).toContainText(
@@ -92,7 +72,7 @@ test('S107 タブでもペインでも、閉じると tmux セッションごと
   await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(1, { timeout: 15_000 });
 
   // 画面ではなくファイルから読む（偽 CLI は生の UUID を画面に出さない）。
-  const sessionName = await waitForNewSessionName('');
+  const sessionName = await waitForNewTmuxSessionName(fixturesDir, '');
   const sessionId = sessionName.slice('aiterm-'.length);
 
   // tmux 側に「そのセッションが生きている」状態を作る。
@@ -121,9 +101,7 @@ test('S107 タブでもペインでも、閉じると tmux セッションごと
   await expect(row).toHaveCount(1, { timeout: 20_000 });
 
   // --- 2. 否定側: 閉じる前は「まだ何も終了させていない」「その行は押せる」 --------
-  expect(readKilled(), 'タブを開いただけで kill-session が呼ばれている').not.toContain(
-    sessionName,
-  );
+  expect(readKilled(), 'タブを開いただけで kill-session が呼ばれている').not.toContain(sessionName);
   expect(readLivePanes(), 'tmux 側の一覧に載っていない（前提が崩れている）').toContain(sessionName);
   await expect(row.locator('button.task-item__row')).toHaveCount(1, { timeout: 20_000 });
 
@@ -155,7 +133,7 @@ test('S107 タブでもペインでも、閉じると tmux セッションごと
   await window.keyboard.press('Meta+Shift+C');
   await expect(window.locator('.tab-bar__tab--claude')).toHaveCount(1, { timeout: 15_000 });
 
-  const secondName = await waitForNewSessionName(sessionName);
+  const secondName = await waitForNewTmuxSessionName(fixturesDir, sessionName);
   writeFileSync(
     livePanesPath,
     livePanesFile([
@@ -186,11 +164,9 @@ test('S107 タブでもペインでも、閉じると tmux セッションごと
   await window.keyboard.press('Meta+w');
 
   // タブは残り、ペインが1枚に戻る（= タブごと閉じたのではない）。
-  await expect(activeTab.locator('.tab-bar__close')).toHaveAttribute(
-    'aria-label',
-    'タブを閉じる',
-    { timeout: 15_000 },
-  );
+  await expect(activeTab.locator('.tab-bar__close')).toHaveAttribute('aria-label', 'タブを閉じる', {
+    timeout: 15_000,
+  });
 
   // それでも tmux セッションは終了している。
   await expect

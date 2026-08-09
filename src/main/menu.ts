@@ -18,10 +18,7 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron';
 import { IpcEvent, IpcSend, type AppAction } from '@shared/ipc';
-import {
-  terminalContextMenuItems,
-  type TerminalContextMenuState,
-} from '@shared/context-menu';
+import { terminalContextMenuItems, type TerminalContextMenuState } from '@shared/context-menu';
 import { routeMenuAction } from './menu-action-routing';
 import { openSettingsWindow } from './settings-window';
 
@@ -34,8 +31,17 @@ const REPOSITORY_URL = 'https://github.com/i-iwnl/ai-terminal';
  */
 const CLOSE_TAB_MENU_ITEM_ID = 'file-close-tab';
 
+/**
+ * 「AI を残してタブを閉じる」メニュー項目の id（Issue #244）。
+ * tmux でラップされた AI ペインが1つも無いタブでは無効化する。
+ */
+const KEEP_AGENTS_MENU_ITEM_ID = 'file-close-tab-keep-agents';
+
 /** 直近に構築したメニューの「タブを閉じる」項目。ウィンドウ再生成のたびに張り直す。 */
 let closeTabMenuItem: Electron.MenuItem | null = null;
+
+/** 直近に構築したメニューの「AI を残してタブを閉じる」項目。 */
+let keepAgentsMenuItem: Electron.MenuItem | null = null;
 
 function closeTabLabel(paneCount: number): string {
   return paneCount > 1 ? `タブを閉じる（${paneCount} ペイン）` : 'タブを閉じる';
@@ -50,6 +56,22 @@ function closeTabLabel(paneCount: number): string {
 export function updateCloseTabLabel(paneCount: number): void {
   if (!closeTabMenuItem) return;
   closeTabMenuItem.label = closeTabLabel(paneCount);
+}
+
+/**
+ * アクティブなタブに「残せる AI」が居るかに応じて、
+ * 「AI を残してタブを閉じる」の有効・無効を切り替える（Issue #244）。
+ *
+ * ⛔ **非表示にしない。** 項目が状況で消えるとメニューの項目数と並びが変わり、
+ * **位置で覚えている利用者の筋肉記憶が壊れる**。macOS の作法は「消さずに淡色」で、
+ * design-review では5人中4人がこれで一致した。
+ *
+ * ⭐ **この項目にはショートカットが無いので、クリックが唯一の経路**。
+ * つまり `enabled: false` が飾りではなく本当の関門になる（他の項目と違う点）。
+ */
+export function updateKeepAgentsEnabled(keepableCount: number): void {
+  if (!keepAgentsMenuItem) return;
+  keepAgentsMenuItem.enabled = keepableCount > 0;
 }
 
 /**
@@ -244,9 +266,18 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
     // キーは割り当てない（ドラッグの代替であることが目的で、頻度の高い専用
     // ショートカットを新設する理由が無いため。design-review.md はこの3項目に
     // accelerator を要求していない）。
-    actionItem(win, '分割比を広げる', undefined, { type: 'adjust-split-ratio', adjustment: 'widen' }),
-    actionItem(win, '分割比を狭める', undefined, { type: 'adjust-split-ratio', adjustment: 'narrow' }),
-    actionItem(win, '分割比を50%に戻す', undefined, { type: 'adjust-split-ratio', adjustment: 'reset' }),
+    actionItem(win, '分割比を広げる', undefined, {
+      type: 'adjust-split-ratio',
+      adjustment: 'widen',
+    }),
+    actionItem(win, '分割比を狭める', undefined, {
+      type: 'adjust-split-ratio',
+      adjustment: 'narrow',
+    }),
+    actionItem(win, '分割比を50%に戻す', undefined, {
+      type: 'adjust-split-ratio',
+      adjustment: 'reset',
+    }),
     { type: 'separator' },
     { role: 'togglefullscreen', label: 'フルスクリーン' },
   ];
@@ -307,12 +338,54 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
         // それまではキーが無く、分割中のタブを閉じるにはペインの枚数ぶん
         // `Cmd+W` を押すかメニューをマウスで辿るしかなかった（他ターミナルの
         // 筋肉記憶では `Cmd+W` 一発でタブが消えるので「閉じたつもりが半分残る」）。
-        // `Cmd+Shift+W` は macOS 全域で「ウィンドウを閉じる」と学習されているので使わない。
+        // ⭐ **`Cmd+Shift+W` は「ウィンドウを閉じる」に使う**（Issue #244 で方針を変えた）。
+        // 以前ここには「macOS 全域で『ウィンドウを閉じる』と学習されているので使わない」と
+        // 書いてあったが、**その理由はそのまま『本来の用途に使う』理由になる**。
+        // このアプリにはメニューバーから「ウィンドウを閉じる」に到達する手段が
+        // 1つも無く（唯一の経路が赤信号ボタンだった）、
+        // menu.ts 冒頭の「ここに載っていないキーは存在しないのと同じ」に反していた
+        // （design-review 2026-08-09 / macOS ペルソナが指摘）。
+        //
         // ラベルの N はアクティブなタブのペイン数に応じて updateCloseTabLabel が書き換える。
         {
           ...actionItem(win, closeTabLabel(1), 'Cmd+Option+W', { type: 'close-tab' }),
           id: CLOSE_TAB_MENU_ITEM_ID,
         },
+        // Issue #244。**「タブを閉じる」= AI も終了する**に意味を変えたので、
+        // 従来の挙動（閉じても AI が生き残る）を明示的に選ぶ導線がここに要る。
+        //
+        // ⛔ **ショートカットを割り当てない。** めったに使わない操作なのでメニューで足り、
+        // `Cmd+Option+W` の隣に置けば発見可能性も確保できる（ユーザー判断 2026-08-09）。
+        // ⭐ **文言の差分を先頭に出す。** 直前の項目が「タブを閉じる（N ペイン）」なので、
+        // 「タブを閉じて AI を残す」だと**先頭6文字が同じ**になり、左から走査するメニューでは
+        // 差分が語尾に隠れる（design-review の IA が指摘）。
+        //
+        // ⚠ tmux でラップされた AI ペインが1つも無いタブでは意味が無いので無効化する
+        // （**非表示にしない**。項目の位置が動くと学習が壊れる。macOS の作法。4人が一致）。
+        {
+          ...actionItem(win, 'AI を残してタブを閉じる', undefined, {
+            type: 'close-tab-keep-agents',
+          }),
+          id: KEEP_AGENTS_MENU_ITEM_ID,
+          enabled: false,
+        },
+        { type: 'separator' },
+        // ⭐ **第3の層**（Issue #244 / design-review の macOS ペルソナ）。
+        // `app.on('window-all-closed')` は darwin では `app.quit()` を呼ばないので、
+        // **ウィンドウを閉じても `before-quit` は発火せず AI は生き残る**。
+        // 意味はアプリ終了と同じ（残す）側で、`Cmd+W`（ペイン = 終了）との対比になる。
+        //
+        // ⛔ **`accelerator` の明示は必須。** `role: 'close'` の既定は **`Cmd+W`** で、
+        // このアプリではそれが「ペインを閉じる」に割り当たっている。書かないと
+        // **1つのキーが2つの意味を持つ**（2026-08-09 に実際に踏んで気づいた）。
+        //
+        // ⛔ **`registerAccelerator: false` を付けないこと。** ネイティブ role は
+        // OS 側がキーを処理するので、false にすると**メニューをクリックする以外に
+        // 到達手段が無くなる**（キーが表示だけの飾りになる）。
+        // `menu-accelerators.test.ts` の免除リストに、この項目だけを理由付きで載せてある。
+        // 二重発火しないことの根拠は `renderer-lib.test.ts`（`matchShortcut` が
+        // `Cmd+Shift+W` で null を返すことを固定している）。
+        { role: 'close', label: 'ウィンドウを閉じる', accelerator: 'Cmd+Shift+W' },
       ],
     },
     {
@@ -385,6 +458,7 @@ export function registerApplicationMenu(win: BrowserWindow): void {
   const menu = Menu.buildFromTemplate(buildTemplate(win));
   Menu.setApplicationMenu(menu);
   closeTabMenuItem = menu.getMenuItemById(CLOSE_TAB_MENU_ITEM_ID);
+  keepAgentsMenuItem = menu.getMenuItemById(KEEP_AGENTS_MENU_ITEM_ID);
 }
 
 /**
@@ -396,6 +470,12 @@ export function registerMenuHandlers(): void {
   ipcMain.on(IpcSend.menuPaneCount, (_event, paneCount: unknown) => {
     if (typeof paneCount !== 'number') return;
     updateCloseTabLabel(paneCount);
+  });
+
+  // Issue #244。アクティブなタブに「残せる AI」が何件あるか。
+  ipcMain.on(IpcSend.menuKeepableAgentCount, (_event, count: unknown) => {
+    if (typeof count !== 'number') return;
+    updateKeepAgentsEnabled(count);
   });
 
   // ターミナル面の右クリック（Issue #135）。
@@ -412,29 +492,31 @@ export function registerMenuHandlers(): void {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return;
 
-    const template: MenuItemConstructorOptions[] = terminalContextMenuItems(rawState).map((item) => {
-      if (item.kind === 'separator') return { type: 'separator' };
-      if (item.kind === 'role') {
+    const template: MenuItemConstructorOptions[] = terminalContextMenuItems(rawState).map(
+      (item) => {
+        if (item.kind === 'separator') return { type: 'separator' };
+        if (item.kind === 'role') {
+          return {
+            label: item.label,
+            role: item.role,
+            accelerator: item.accelerator,
+            // **`actionItem()` と同じ理由で必ず false。** 実際にキーを拾うのは
+            // Renderer の `matchShortcut` 1箇所（`menu.ts` 冒頭の原則）。
+            registerAccelerator: false,
+            enabled: item.enabled,
+          };
+        }
         return {
           label: item.label,
-          role: item.role,
           accelerator: item.accelerator,
-          // **`actionItem()` と同じ理由で必ず false。** 実際にキーを拾うのは
-          // Renderer の `matchShortcut` 1箇所（`menu.ts` 冒頭の原則）。
           registerAccelerator: false,
-          enabled: item.enabled,
+          click: () => {
+            if (win.isDestroyed()) return;
+            win.webContents.send(IpcEvent.menuAction, item.action);
+          },
         };
-      }
-      return {
-        label: item.label,
-        accelerator: item.accelerator,
-        registerAccelerator: false,
-        click: () => {
-          if (win.isDestroyed()) return;
-          win.webContents.send(IpcEvent.menuAction, item.action);
-        },
-      };
-    });
+      },
+    );
 
     // **座標を渡さない。** 省略すると Electron が現在のカーソル位置に出す。
     // 渡すと DIP と `titleBarStyle: 'hiddenInset'` のコンテンツ座標のずれを
