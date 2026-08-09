@@ -242,4 +242,62 @@ Received string:    ""
 
 ---
 
+## 2026-08-09 - 周4: 走っている AI を止めるときだけ確認する
+
+### 実施内容
+
+- `countWorkingAgentPanes(leaves, workingAgentSessionIds)` を新設（純粋関数）
+- `needsCloseConfirmation()` の第3条件に「作業中の AI がある」を追加
+- `closeTabCopy()` に「そのうち N 件はいま作業中です。途中まで進んだ作業はやり直しになります。」を追加
+- `App.tsx` が `agentTasksRef` から `busy` のセッション ID 集合を作って渡す
+- S111 新設 / README を2箇所
+
+### 設計判断
+
+- **条件は「枚数」ではなく「走っているか」**（Terminal.app の作法）。閉じるのは
+  「終わったから」が大半なので、**確認が出る頻度が損失の重さに比例する**（見積もり 1〜3回/日）
+- ⛔ **`status` の文字列を `closeTabCopy.ts` で解釈しない。** `busy` の判定は
+  `toTaskState()` が唯一の正で、`App.tsx` がそれを通してから ID の集合を作る
+- **キーは `taskSessionKey()`。** `claude` は CLI 内の `/resume` で `sessionId` を
+  切り替えるので、`sessionId` 1本で突き合わせると外れる（#239 と同じ罠）
+- **「残す」ときは `workingCount` に 0 を渡す。** 残す操作では走っているものが止まらないので、
+  確認の理由にならない
+
+### 教訓（該当する場合）
+
+- ⭐ **「取り消せます」とは言えないので、何が戻らないかを言う。** tmux セッションを
+  終了しても会話は `--resume` で戻るが、**実行中の作業は戻らない**。
+  Undo ボタンを置くと**戻らないものを戻ると約束する**ことになる（a11y / macOS が独立に指摘）
+- **`closedTabAnnouncement` には `workingCount` を渡していない。** 閉じたあとの告知で
+  「作業中だった」と言っても行動が変わらない（もう終わっている）
+
+### 関門が赤くなることの証明
+
+| 壊し方 | 出た赤 |
+|---|---|
+| `busy` 条件を消す（安全弁ゼロに戻す） | `expect(dialog).toBeVisible()` 失敗 |
+| **常に確認する**（ホットパスを潰す） | `expect(claudeTabs).toHaveCount(0)` 失敗 = **否定側が効いている証明** |
+| 突き合わせを `idle` にすり替える | `expect(dialog).toBeVisible()` 失敗 |
+
+復元後は緑（2.9s）。S111 単独 `--repeat-each=3` も全緑（2.1〜2.6s）。
+
+### 検証
+
+- `make check` 緑（847件）/ `make e2e-lint` FAIL=0（PASS=887）
+- `make e2e` フル: **117 passed / 0 failed / 5 flaky**。flaky の顔ぶれは実行のたびに
+  変わる（S44 / S56 / S65 / S93 / S97）ので**負荷起因**
+- `make e2e-screenshots-check`: 13枚すべて画素差 0（PASS=39 / FAIL=0）
+
+### 次に再開するとき最初に読むべきこと
+
+- **周1〜4 は完了。次は周5**（`border-left: 2px solid var(--border-control)` で
+  「押せる行」の手がかりを静止状態に出す。**幅コスト 0px**・`padding-left` を
+  12px -> 10px に振り替えるので描画位置は動かない）
+- ⚠ 周5 は**値の変更を伴う**ので `make css-substitution-check` が落ちてよい周だと明示する
+- そのあと 周6（終了導線: 右クリック + メニューバー + `agentSessionKill`）/
+  周7（押せない理由 + `errorKind: 'tmux-unavailable'` + 8枚撮り直し）
+- 詳細は `design-review/proposal-v2-after-review.md` の §2-E' / §2-F'
+
+---
+
 <!-- 以降、作業のたびにセクションを追記 -->

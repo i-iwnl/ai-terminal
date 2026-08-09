@@ -9,6 +9,7 @@ import {
   closedTabChannel,
   closeTabCopy,
   closedTabAnnouncement,
+  countWorkingAgentPanes,
   needsCloseConfirmation,
   summarizeClosingPanes,
   type ClosingPaneSummary,
@@ -140,7 +141,7 @@ describe('closeTabCopy', () => {
   });
 
   it('tmux ラップが無いときは従来どおりの文言（characterization）', () => {
-    expect(closeTabCopy(summary({ exiting: 2 }), 'keep')).toEqual({
+    expect(closeTabCopy(summary({ exiting: 2 }), 'keep', 0)).toEqual({
       title: '走行中のプロセス 2 件を終了します',
       body: 'このタブを閉じると、中で動いている 2 件のプロセスがすべて終了します。',
       confirmLabel: '終了する',
@@ -150,7 +151,7 @@ describe('closeTabCopy', () => {
   // **この Issue の本体。** 実測（tmux 3.7b）でプロセスは生き残ることが
   // 確定しているので、「すべて終了します」と言ってはいけない。
   it('全部が生き残るときに「終了」と言わない', () => {
-    const copy = closeTabCopy(summary({ persistentResumable: 2 }), 'keep');
+    const copy = closeTabCopy(summary({ persistentResumable: 2 }), 'keep', 0);
     expect(copy.title).not.toContain('終了');
     expect(copy.body).not.toContain('終了');
     expect(copy.confirmLabel).not.toContain('終了');
@@ -159,7 +160,7 @@ describe('closeTabCopy', () => {
 
   it('生き残るときは、有効になっている設定の項目名をそのまま出す', () => {
     // 別の言い回しを発明すると、ユーザーが自分でオンにしたトグルと結びつけられない。
-    expect(closeTabCopy(summary({ persistentResumable: 1 }), 'keep').body).toContain(
+    expect(closeTabCopy(summary({ persistentResumable: 1 }), 'keep', 0).body).toContain(
       'アプリを閉じても AI の作業を続ける',
     );
   });
@@ -171,6 +172,7 @@ describe('closeTabCopy', () => {
     const copy = closeTabCopy(
       summary({ persistentResumable: 1, resumableByProvider: { gemini: 1 } }),
       'keep',
+      0,
     );
     expect(copy.body).toContain('Gemini 1 件');
     expect(copy.body).toContain('履歴');
@@ -183,6 +185,7 @@ describe('closeTabCopy', () => {
     const copy = closeTabCopy(
       summary({ persistentResumable: 2, resumableByProvider: { claude: 1, gemini: 1 } }),
       'keep',
+      0,
     );
     expect(copy.body).toContain('Claude 1 件');
     expect(copy.body).toContain('Gemini 1 件');
@@ -197,12 +200,12 @@ describe('closeTabCopy', () => {
       summary({ persistentOrphaned: 1 }),
       summary({ exiting: 1, persistentResumable: 1, resumableByProvider: { claude: 1 } }),
     ]) {
-      expect(closeTabCopy(s, 'keep').body).not.toMatch(/[（）()]/);
+      expect(closeTabCopy(s, 'keep', 0).body).not.toMatch(/[（）()]/);
     }
   });
 
   it('再開先を特定できないものは、開き直せないことを明示する', () => {
-    const copy = closeTabCopy(summary({ persistentOrphaned: 1 }), 'keep');
+    const copy = closeTabCopy(summary({ persistentOrphaned: 1 }), 'keep', 0);
     expect(copy.body).toContain('開き直せません');
     // 再開できるものが1件も無いのに「履歴から再開できます」と言わない。
     expect(copy.body).not.toContain('再開できます');
@@ -212,7 +215,7 @@ describe('closeTabCopy', () => {
   });
 
   it('混在では、終了する数と生き残る数を両方出す', () => {
-    const copy = closeTabCopy(summary({ exiting: 1, persistentResumable: 2 }), 'keep');
+    const copy = closeTabCopy(summary({ exiting: 1, persistentResumable: 2 }), 'keep', 0);
     expect(copy.title).toContain('1 件を終了します');
     expect(copy.title).toContain('2 件');
     expect(copy.body).toContain('1 件のプロセスは終了しますが');
@@ -220,7 +223,11 @@ describe('closeTabCopy', () => {
   });
 
   it('件数は「閉じても生き残る合計」で数える（claude と gemini の和）', () => {
-    const copy = closeTabCopy(summary({ persistentResumable: 1, persistentOrphaned: 2 }), 'keep');
+    const copy = closeTabCopy(
+      summary({ persistentResumable: 1, persistentOrphaned: 2 }),
+      'keep',
+      0,
+    );
     expect(copy.body).toContain('3 件の AI の作業');
   });
 });
@@ -312,34 +319,34 @@ describe('needsCloseConfirmation', () => {
 
   it('⚠ 1 leaf・tmux + agentSessionId 無し: **確認する**（閉じると二度と回収できない）', () => {
     const leaves = [leaf({ ptyKind: 'gemini', wrappedInTmux: true })];
-    expect(needsCloseConfirmation(leaves, 'keep')).toBe(true);
+    expect(needsCloseConfirmation(leaves, 'keep', 0)).toBe(true);
   });
 
   it('1 leaf・tmux + claude: 確認しない（履歴から resume できる）', () => {
     // **戻れるもので止めてはいけない。** 閉じるのは1日に何十回もある操作で、
     // 確認は不可逆なものだけに絞る、というのが #121 周5 で決めた原則。
-    expect(needsCloseConfirmation([resumableLeaf('claude')], 'keep')).toBe(false);
+    expect(needsCloseConfirmation([resumableLeaf('claude')], 'keep', 0)).toBe(false);
   });
 
   it('⭐ 1 leaf・tmux + gemini: 確認しない（Issue #155 で戻れるようになった）', () => {
-    expect(needsCloseConfirmation([resumableLeaf('gemini')], 'keep')).toBe(false);
+    expect(needsCloseConfirmation([resumableLeaf('gemini')], 'keep', 0)).toBe(false);
   });
 
   it('1 leaf・tmux 無し: 確認しない（従来どおり即座に閉じる）', () => {
-    expect(needsCloseConfirmation([leaf({ ptyKind: 'shell' })], 'keep')).toBe(false);
-    expect(needsCloseConfirmation([leaf({ ptyKind: 'claude' })], 'keep')).toBe(false);
-    expect(needsCloseConfirmation([leaf({ ptyKind: 'gemini' })], 'keep')).toBe(false);
+    expect(needsCloseConfirmation([leaf({ ptyKind: 'shell' })], 'keep', 0)).toBe(false);
+    expect(needsCloseConfirmation([leaf({ ptyKind: 'claude' })], 'keep', 0)).toBe(false);
+    expect(needsCloseConfirmation([leaf({ ptyKind: 'gemini' })], 'keep', 0)).toBe(false);
   });
 
   // --- 既存の条件（2本以上）を壊していないこと --------------------------------
 
   it('2本以上を一度に閉じるなら、中身に関わらず確認する', () => {
     const leaves = [leaf({ paneId: 'a' }), leaf({ paneId: 'b' })];
-    expect(needsCloseConfirmation(leaves, 'keep')).toBe(true);
+    expect(needsCloseConfirmation(leaves, 'keep', 0)).toBe(true);
   });
 
   it('0本なら確認しない', () => {
-    expect(needsCloseConfirmation([], 'keep')).toBe(false);
+    expect(needsCloseConfirmation([], 'keep', 0)).toBe(false);
   });
 
   // --- 既に終了しているペインの扱い（summarizeClosingPanes と揃っていること）---
@@ -349,7 +356,7 @@ describe('needsCloseConfirmation', () => {
     // orphaned は 0 になる。**ここが揃っていないと「終了したタブを閉じるだけで
     // 毎回ダイアログ」になる**（`Cmd+W` の手数が実質倍になる）。
     const leaves = [leaf({ ptyKind: 'gemini', wrappedInTmux: true, exit: { exitCode: 0 } })];
-    expect(needsCloseConfirmation(leaves, 'keep')).toBe(false);
+    expect(needsCloseConfirmation(leaves, 'keep', 0)).toBe(false);
   });
 
   // --- 「その操作で実際に閉じるペイン」を渡す、という契約 ----------------------
@@ -357,9 +364,9 @@ describe('needsCloseConfirmation', () => {
   it('引数は「実際に閉じるペイン」。ペイン1枚を閉じるならその1枚だけを渡す', () => {
     // 3枚のうち gemini 1枚だけを閉じる場合 -> 確認する
     const gemini = leaf({ paneId: 'g', ptyKind: 'gemini', wrappedInTmux: true });
-    expect(needsCloseConfirmation([gemini], 'keep')).toBe(true);
+    expect(needsCloseConfirmation([gemini], 'keep', 0)).toBe(true);
     // 同じ木でも、閉じるのがシェル1枚なら確認しない
-    expect(needsCloseConfirmation([leaf({ paneId: 's' })], 'keep')).toBe(false);
+    expect(needsCloseConfirmation([leaf({ paneId: 's' })], 'keep', 0)).toBe(false);
   });
 });
 
@@ -431,6 +438,7 @@ describe('closeTabCopy（terminate = 通常の閉じる）', () => {
     const copy = closeTabCopy(
       terminateSummary({ persistentResumable: 2, resumableByProvider: { claude: 2 } }),
       'terminate',
+      0,
     );
     expect(copy.title).toContain('2 件を終了します');
     expect(copy.body).toContain('すべて終了します');
@@ -443,6 +451,7 @@ describe('closeTabCopy（terminate = 通常の閉じる）', () => {
     const copy = closeTabCopy(
       terminateSummary({ exiting: 1, persistentResumable: 1, persistentOrphaned: 1 }),
       'terminate',
+      0,
     );
     expect(copy.title).toContain('3 件');
   });
@@ -454,6 +463,7 @@ describe('closeTabCopy（terminate = 通常の閉じる）', () => {
     const copy = closeTabCopy(
       terminateSummary({ persistentResumable: 1, resumableByProvider: { claude: 1 } }),
       'terminate',
+      0,
     );
     expect(copy.body).toContain('会話');
     expect(copy.body).toContain('履歴');
@@ -467,6 +477,7 @@ describe('closeTabCopy（terminate = 通常の閉じる）', () => {
       const copy = closeTabCopy(
         terminateSummary({ persistentResumable: 1, resumableByProvider: { gemini: 1 } }),
         intent,
+        0,
       );
       expect(copy.body).toContain('切り替え');
       expect(copy.body).toContain('すべてのフォルダを見る');
@@ -477,6 +488,7 @@ describe('closeTabCopy（terminate = 通常の閉じる）', () => {
     const copy = closeTabCopy(
       terminateSummary({ exiting: 1, persistentResumable: 1, resumableByProvider: { claude: 1 } }),
       'terminate',
+      0,
     );
     expect(copy.body).not.toMatch(/[（）()]/);
     expect(copy.title).not.toMatch(/[（）()]/);
@@ -523,19 +535,96 @@ describe('needsCloseConfirmation（terminate）', () => {
     // 名前は buildTmuxSessionName(agentSessionId ?? ptyId) で確定していて、
     // Main が保持しているので orphan でも確実に終了できる。
     const gemini = leaf({ paneId: 'g', ptyKind: 'gemini', wrappedInTmux: true });
-    expect(needsCloseConfirmation([gemini], 'terminate')).toBe(false);
-    expect(needsCloseConfirmation([resumableLeaf('claude')], 'terminate')).toBe(false);
+    expect(needsCloseConfirmation([gemini], 'terminate', 0)).toBe(false);
+    expect(needsCloseConfirmation([resumableLeaf('claude')], 'terminate', 0)).toBe(false);
   });
 
   it('⛔ 条件を消したのではなく、まだ成り立つ側へ移した', () => {
     // 同じ1枚でも「残す」なら、拾えないまま残るという事故がそのまま起きる。
     const gemini = leaf({ paneId: 'g', ptyKind: 'gemini', wrappedInTmux: true });
-    expect(needsCloseConfirmation([gemini], 'keep')).toBe(true);
+    expect(needsCloseConfirmation([gemini], 'keep', 0)).toBe(true);
   });
 
   it('2枚以上はどちらの意図でも確認する', () => {
     const leaves = [leaf({ paneId: 'a' }), leaf({ paneId: 'b' })];
-    expect(needsCloseConfirmation(leaves, 'terminate')).toBe(true);
-    expect(needsCloseConfirmation(leaves, 'keep')).toBe(true);
+    expect(needsCloseConfirmation(leaves, 'terminate', 0)).toBe(true);
+    expect(needsCloseConfirmation(leaves, 'keep', 0)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #244 周4: 走っている AI を止めるときだけ確認する
+// ---------------------------------------------------------------------------
+
+describe('countWorkingAgentPanes', () => {
+  const working = new Set(['sess-a', 'sess-b']);
+
+  it('作業中の AI ペインだけを数える', () => {
+    const leaves = [
+      resumableLeaf('claude', { paneId: 'p1', agentSessionId: 'sess-a' }),
+      resumableLeaf('gemini', { paneId: 'p2', agentSessionId: 'sess-z' }),
+      leaf({ paneId: 'p3', ptyKind: 'shell' }),
+    ];
+    expect(countWorkingAgentPanes(leaves, working)).toBe(1);
+  });
+
+  it('⭐ 既に終了しているペインは数えない（閉じても失われるものが無い）', () => {
+    const exited = resumableLeaf('claude', {
+      paneId: 'p1',
+      agentSessionId: 'sess-a',
+      exit: { exitCode: 0 },
+    });
+    expect(countWorkingAgentPanes([exited], working)).toBe(0);
+  });
+
+  it('agentSessionId を持たないペインは数えない（突き合わせる鍵が無い）', () => {
+    const orphan = leaf({ paneId: 'p1', ptyKind: 'gemini', wrappedInTmux: true });
+    expect(countWorkingAgentPanes([orphan], working)).toBe(0);
+  });
+
+  it('集合が空なら常に0（取得に失敗しても確認を増やさない）', () => {
+    const leaves = [resumableLeaf('claude', { paneId: 'p1', agentSessionId: 'sess-a' })];
+    expect(countWorkingAgentPanes(leaves, new Set())).toBe(0);
+  });
+});
+
+describe('needsCloseConfirmation（作業中の AI）', () => {
+  it('⭐ 1枚でも、作業中の AI なら確認する', () => {
+    // #244 で「閉じたら終わる」に変えた分の安全弁。
+    // iTerm2 / Terminal.app / Ghostty / tmux の4つとも、確認か Undo の
+    // 少なくとも片方を持っている（design-review のヘビーユーザーが指摘）。
+    const leaves = [resumableLeaf('claude', { paneId: 'p1', agentSessionId: 'sess-a' })];
+    expect(needsCloseConfirmation(leaves, 'terminate', 1)).toBe(true);
+  });
+
+  it('⛔ 作業中でなければ確認しない（ホットパスを潰さない）', () => {
+    // 閉じるのは「終わったから」が大半。ここが常に true になると
+    // 1日に何十回もダイアログが出る（Issue が明確に否定している方向）。
+    const leaves = [resumableLeaf('claude', { paneId: 'p1', agentSessionId: 'sess-a' })];
+    expect(needsCloseConfirmation(leaves, 'terminate', 0)).toBe(false);
+  });
+});
+
+describe('closeTabCopy（作業中の AI を止めるとき）', () => {
+  it('⭐ 何が戻らないかを言う（「取り消せます」とは言えない）', () => {
+    const copy = closeTabCopy(
+      terminateSummary({ persistentResumable: 2, resumableByProvider: { claude: 2 } }),
+      'terminate',
+      1,
+    );
+    expect(copy.body).toContain('1 件はいま作業中です');
+    expect(copy.body).toContain('やり直しになります');
+    // 会話が残ることも同時に言う（失われるのは実行中の作業だけ）。
+    expect(copy.body).toContain('会話');
+  });
+
+  it('作業中が0件ならその文を出さない', () => {
+    const copy = closeTabCopy(
+      terminateSummary({ persistentResumable: 1, resumableByProvider: { claude: 1 } }),
+      'terminate',
+      0,
+    );
+    expect(copy.body).not.toContain('作業中');
+    expect(copy.body).not.toContain('やり直し');
   });
 });

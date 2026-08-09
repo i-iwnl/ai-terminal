@@ -70,6 +70,7 @@ import {
   closeTabCopy,
   closedTabAnnouncement,
   closedTabChannel,
+  countWorkingAgentPanes,
   type CloseIntent,
   needsCloseConfirmation,
   summarizeClosingPanes,
@@ -88,6 +89,10 @@ import {
   type NoticeSeverity,
 } from './lib/notices';
 import { subscribeAgentTasks } from './lib/agentTasksStore';
+// 確認ダイアログの条件に「いま作業中か」を足すため（Issue #244 周4）。
+// ⛔ `status` の文字列をここで解釈しない。翻訳の正は `toTaskState()`。
+import { toTaskState } from '@shared/agent-status';
+import { taskSessionKey } from './sidebar/taskRow';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
 // styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
@@ -361,6 +366,21 @@ export default function App(): ReactElement {
    * 最後の1枚を閉じる場合もここへ来る**（Issue #158。それまで `close-pane` は
    * `closeActivePane` を直接呼び、この判定を1度も通らなかった）。
    */
+  /**
+   * いま**作業中（`busy`）**の AI のセッション ID 集合（Issue #244 周4）。
+   *
+   * ⛔ **`status` の文字列をここで解釈しない。** 翻訳の正は `toTaskState()`。
+   * ⭐ **キーは `taskSessionKey()`。** `claude` は CLI 内の `/resume` で自分の
+   * `sessionId` を切り替えるので、`sessionId` 1本で突き合わせると外れる。
+   */
+  const workingAgentSessionIds = useCallback((): ReadonlySet<string> => {
+    const ids = new Set<string>();
+    for (const task of agentTasksRef.current) {
+      if (toTaskState(task.status) === 'working') ids.add(taskSessionKey(task));
+    }
+    return ids;
+  }, []);
+
   const requestCloseTab = useCallback(
     (tabId: string, intent: CloseIntent = 'terminate'): void => {
       const tab = tabsApiRef.current.tabs.find((t) => t.id === tabId);
@@ -368,17 +388,20 @@ export default function App(): ReactElement {
       // 判定の正は `closeTabCopy.ts` の `needsCloseConfirmation`（Issue #158 で
       // ここから切り出した）。**`Cmd+W` の経路と同じ関数を共有させるため**で、
       // 条件をこの場に書き戻さないこと。
-      if (needsCloseConfirmation(leaves, intent)) {
+      // 「残す」ときは走っているものも止まらないので、確認の理由にしない。
+      const workingCount =
+        intent === 'terminate' ? countWorkingAgentPanes(leaves, workingAgentSessionIds()) : 0;
+      if (needsCloseConfirmation(leaves, intent, workingCount)) {
         setCloseConfirmation({
           tabId,
           intent,
-          copy: closeTabCopy(summarizeClosingPanes(leaves), intent),
+          copy: closeTabCopy(summarizeClosingPanes(leaves), intent, workingCount),
         });
         return;
       }
       void performCloseTab(tabId, intent);
     },
-    [performCloseTab, setCloseConfirmation],
+    [performCloseTab, setCloseConfirmation, workingAgentSessionIds],
   );
 
   /**

@@ -122,6 +122,38 @@ export function summarizeClosingPanes(leaves: readonly PaneLeaf[]): ClosingPaneS
   return summary;
 }
 
+/**
+ * 閉じようとしているペインのうち、**いま作業中（`busy`）の AI** が何件あるか（Issue #244 周4）。
+ *
+ * ⭐ **なぜ枚数ではなく「走っているか」で確認するのか。**
+ * iTerm2 / Terminal.app / Ghostty / tmux の4つとも、閉じる操作に「確認」か「Undo」の
+ * **少なくとも片方**を持っている。#244 で「閉じたら終わる」に変えた以上、
+ * 安全弁がゼロの設計はこの4つのどれとも違う（design-review でヘビーユーザーが指摘）。
+ *
+ * そのうえで **Terminal.app の作法に合わせた**: 確認の条件を「枚数」ではなく
+ * 「**走っているか**」に置く。閉じるのは「終わったから」が大半なので、
+ * **確認が出る頻度が損失の重さに比例する**（実測見積もりで 1〜3回/日）。
+ *
+ * ⛔ **`status` の文字列をここで解釈しない。** `busy` かどうかの判定は
+ * `toTaskState()`（`@shared/agent-status`）が唯一の正で、呼び出し側が
+ * それを通してから ID の集合を作る。ここで書き直すと、CLI が第3の値を返し始めたときに
+ * 片方だけ古くなる。
+ *
+ * **既に終了しているペインは数えない**（閉じても失われるものが無い）。
+ */
+export function countWorkingAgentPanes(
+  closingLeaves: readonly PaneLeaf[],
+  workingAgentSessionIds: ReadonlySet<string>,
+): number {
+  let count = 0;
+  for (const leaf of closingLeaves) {
+    if (leaf.exit) continue;
+    if (leaf.agentSessionId === undefined) continue;
+    if (workingAgentSessionIds.has(leaf.agentSessionId)) count += 1;
+  }
+  return count;
+}
+
 /** 設定パネル（SettingsPanel.tsx）に出ている語と揃える。別の言い回しを発明しない。 */
 const PERSIST_SETTING_LABEL = 'アプリを閉じても AI の作業を続ける';
 
@@ -192,8 +224,18 @@ function buildTerminatedResumeNote(summary: ClosingPaneSummary): string {
  * - **「tmux」を主語にしない。** ユーザーが有効にしたのは設定の項目名であって tmux ではない
  * - **何も終了しないのに「終了する」と言わない。** ボタンのラベルも結果に合わせる
  */
-export function closeTabCopy(summary: ClosingPaneSummary, intent: CloseIntent): CloseTabCopy {
+export function closeTabCopy(
+  summary: ClosingPaneSummary,
+  intent: CloseIntent,
+  workingCount: number,
+): CloseTabCopy {
   const persistent = summary.persistentResumable + summary.persistentOrphaned;
+  // 作業中のものを止めることは、会話が残ることとは別の損失（#244 周4）。
+  // ⭐ **「取り消せます」と言えないので、何が戻らないかを言う。**
+  const workingNote =
+    workingCount > 0
+      ? `そのうち ${workingCount} 件はいま作業中です。途中まで進んだ作業はやり直しになります。`
+      : '';
 
   // ⭐ **通常の「閉じる」は、tmux でラップされていようがいまいが全部終了する**（Issue #244）。
   // 直す前はここが `persistent === 0` の分岐に落ちず、「AI の作業は続きます」と
@@ -204,6 +246,7 @@ export function closeTabCopy(summary: ClosingPaneSummary, intent: CloseIntent): 
       title: `走行中のプロセス ${total} 件を終了します`,
       body: [
         `このタブを閉じると、中で動いている ${total} 件のプロセスがすべて終了します。`,
+        workingNote,
         buildTerminatedResumeNote(summary),
       ]
         .filter(Boolean)
@@ -283,10 +326,7 @@ export function closeTabCopy(summary: ClosingPaneSummary, intent: CloseIntent): 
  * ⛔ **通知バナーと live region の両方に同じ文を流さない**（VoiceOver が2回読む）。
  * どちらへ流すかは `closedTabChannel()` が決める。呼び出し側で分岐を書かないこと。
  */
-export function closedTabAnnouncement(
-  summary: ClosingPaneSummary,
-  intent: CloseIntent,
-): string {
+export function closedTabAnnouncement(summary: ClosingPaneSummary, intent: CloseIntent): string {
   const persistent = summary.persistentResumable + summary.persistentOrphaned;
 
   // ⭐ **通常の「閉じる」は AI も終了する**（Issue #244）。
@@ -374,7 +414,7 @@ export function closedTabChannel(
  * 引数は「その操作で**実際に閉じる**ペイン」。タブごと閉じるなら木の全 leaf、
  * ペイン1枚を閉じるならその1枚。
  *
- * 判定は2つ:
+ * 判定は3つ:
  *
  * 1. **2本以上を一度に閉じる**（タブバーの x ボタンがマウス経由の抜け穴に
  *    ならないようにする）
@@ -389,6 +429,10 @@ export function closedTabChannel(
  * 確定しており、Main がそれを保持しているので orphan でも確実に終了できる）。
  * ⛔ **条件を消したのではなく、まだ成り立つ側へ移した。** 残す操作では理由がそのまま生きている。
  *
+ * 3. **閉じる対象に、いま作業中（`busy`）の AI がある**（#244 周4）。
+ *    ⭐ **これが「閉じたら終わる」に変えた分の安全弁。** 理由の全文は
+ *    `countWorkingAgentPanes()` のコメントが唯一の正（ここに書き写さない）。
+ *
  * **この関数がその判定の唯一の正。** それまで判定は `App.tsx` の
  * `requestCloseTab` の中に直接書かれており、`Cmd+W`（`close-pane`）は
  * `closeActivePane` を直接呼ぶ別経路で**その判定を1度も通らなかった**（Issue #158）。
@@ -401,8 +445,12 @@ export function closedTabChannel(
 export function needsCloseConfirmation(
   closingLeaves: readonly PaneLeaf[],
   intent: CloseIntent,
+  workingCount: number,
 ): boolean {
   if (closingLeaves.length >= 2) return true;
+  // ⭐ 走っているものを止めるときだけ確認する（意図が「残す」でも「終了」でも同じ。
+  // 残す場合はそもそも止まらないので、呼び出し側が 0 を渡す）。
+  if (workingCount > 0) return true;
   if (intent === 'terminate') return false;
   return summarizeClosingPanes(closingLeaves).persistentOrphaned > 0;
 }
