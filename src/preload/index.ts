@@ -6,6 +6,7 @@ import {
   IpcEvent,
   type SpawnPtyRequest,
   type SpawnPtyResult,
+  type KillPtyRequest,
   type PtyInputRequest,
   type PtyResizeRequest,
   type PtyCwdResult,
@@ -46,8 +47,8 @@ const api: RendererApi = {
   pty: {
     spawn: (req: SpawnPtyRequest): Promise<SpawnPtyResult> =>
       ipcRenderer.invoke(IpcInvoke.ptySpawn, req) as Promise<SpawnPtyResult>,
-    kill: (ptyId: string): Promise<void> =>
-      ipcRenderer.invoke(IpcInvoke.ptyKill, ptyId) as Promise<void>,
+    kill: (req: KillPtyRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcInvoke.ptyKill, req) as Promise<void>,
     cwd: (ptyId: string): Promise<PtyCwdResult> =>
       ipcRenderer.invoke(IpcInvoke.ptyCwd, ptyId) as Promise<PtyCwdResult>,
     input: (req: PtyInputRequest): void => {

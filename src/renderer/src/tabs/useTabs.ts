@@ -308,7 +308,13 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
       await Promise.all(
         leaves.map(async (leaf) => {
           try {
-            await window.api.pty.kill(leaf.ptyId);
+            // Issue #244: **「タブを閉じる」= 中の AI も終了する。**
+            // 直す前は tmux クライアントだけが死に、中の claude / gemini は生き残って
+            // 閉じるたびに1本ずつ累積していた（実機で7本）。
+            // ⛔ アプリ終了（`before-quit`）はこの経路を通らないので、
+            // 「アプリを閉じても生き残る」は影響を受けない（`src/shared/ipc.ts` の
+            // `KillPtyRequest` が唯一の正）。
+            await window.api.pty.kill({ ptyId: leaf.ptyId, terminateSession: true });
           } catch (err) {
             // 既に終了している場合などは失敗しうる。タブは閉じてよいので無視する。
             console.warn('[tabs] PTY の終了に失敗しました', err);
@@ -363,7 +369,12 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
         // canSplitPane を事前に見ているのでここには通常来ないが、万一に備えて
         // 起動してしまった PTY を後始末する（漏れを防ぐ）。
         try {
-          await window.api.pty.kill(newLeaf.ptyId);
+          // ⚠ ここは実質 no-op（分割で作るのはシェルペインで、`maybeWrapWithTmux` が
+          // `kind === 'shell'` を必ず素通しするため tmux セッションが存在しない）。
+          // それでも `true` を渡すのは、**この分岐の意図が「作ってしまったものを
+          // 完全に無かったことにする」**だからで、将来 AI ペインで分割できるように
+          // なったときに黙って漏れないようにするため。
+          await window.api.pty.kill({ ptyId: newLeaf.ptyId, terminateSession: true });
         } catch (err) {
           console.warn('[tabs] PTY の終了に失敗しました', err);
         }
@@ -409,7 +420,9 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     const closedLeaf = getLeaf(tab.layout, tab.activePaneId);
     if (closedLeaf) {
       try {
-        await window.api.pty.kill(closedLeaf.ptyId);
+        // Issue #244: ペイン1枚を閉じる経路。**`closeTab` とは別の呼び出し箇所**なので、
+        // 片方だけ直すと分割中のタブでだけ累積が続く（S107 が両方を踏む）。
+        await window.api.pty.kill({ ptyId: closedLeaf.ptyId, terminateSession: true });
       } catch (err) {
         console.warn('[tabs] PTY の終了に失敗しました', err);
       }

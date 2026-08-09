@@ -125,6 +125,36 @@ export interface PtyExitEvent {
   signal?: number;
 }
 
+/**
+ * PTY を終了させる要求（Issue #244）。
+ *
+ * ⭐ **`terminateSession` は「その AI を終わらせるつもりか」という利用者の意図**であって、
+ * tmux が使われているかどうかではない。ラップされていなければ Main 側で黙って無視される。
+ *
+ * ⭐ **なぜ Renderer が意図を渡すのか。** Main はどの経路から呼ばれたかを知らないため。
+ * このアプリには「閉じたら終わる」ものと「閉じても残る」ものが混在する:
+ *
+ * | 経路 | `terminateSession` |
+ * |---|---|
+ * | タブ / ペインを閉じる（`Cmd+W` / `Cmd+Option+W` / タブバーの x） | `true` |
+ * | **アプリ終了（`before-quit`）** | **そもそもこの経路を通らない**（下記） |
+ *
+ * ⚠ **`false` を渡す呼び出し元は、いまはまだ1つも無い。** メニュー
+ * 「AI を残してタブを閉じる」を足す周（Issue #244 の周3）で入る。
+ * 省略時が `false` なのは、**渡し忘れたときに倒れる先を「従来どおり生き残る」側に
+ * するため**（逆に倒すと、意図しない終了が黙って起きる）。
+ *
+ * ⛔ **`before-quit` は `disposePtyAll()` が `entry.pty.kill()` を直接呼ぶので、
+ * このチャンネルを1度も通らない。** したがって「アプリを閉じても AI が生き残る」は
+ * ここを変更しても自動的に維持される。**`disposeEntry()` の中で tmux を終了させないこと**
+ * （そこへ書くと `before-quit` にも波及して、このアプリの差別化がそのまま消える）。
+ */
+export interface KillPtyRequest {
+  ptyId: string;
+  /** 省略時は `false`（従来どおり tmux セッションを残す）。 */
+  terminateSession?: boolean;
+}
+
 /** Renderer からの入力 */
 export interface PtyInputRequest {
   ptyId: string;
@@ -785,7 +815,7 @@ export const IpcEvent = {
 export interface RendererApi {
   pty: {
     spawn(req: SpawnPtyRequest): Promise<SpawnPtyResult>;
-    kill(ptyId: string): Promise<void>;
+    kill(req: KillPtyRequest): Promise<void>;
     /**
      * その PTY プロセスがいま居るディレクトリ。
      * シェルタブの `cd` に追従するために、アクティブなタブへ定期的に問い合わせる。

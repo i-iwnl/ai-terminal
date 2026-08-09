@@ -20,6 +20,7 @@ import {
   type SpawnPtyResult,
   type PtyDataEvent,
   type PtyExitEvent,
+  type KillPtyRequest,
   type PtyInputRequest,
   type PtyResizeRequest,
   type PtyCwdResult,
@@ -37,6 +38,7 @@ import {
   buildTmuxAttachCommand,
   buildTmuxSessionName,
   ensureTmuxUpdateEnvironment,
+  killTmuxSession,
   wrapCommandWithTmux,
   type CommandSpec,
 } from './tmux';
@@ -245,6 +247,14 @@ function isSpawnPtyRequest(value: unknown): value is SpawnPtyRequest {
   return true;
 }
 
+function isKillPtyRequest(value: unknown): value is KillPtyRequest {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.ptyId !== 'string') return false;
+  // 省略可。付いていれば boolean であること（文字列 'false' などを真と読まないため）。
+  return v.terminateSession === undefined || typeof v.terminateSession === 'boolean';
+}
+
 function isPtyInputRequest(value: unknown): value is PtyInputRequest {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -270,6 +280,54 @@ interface PtyEntry {
 const entries = new Map<string, PtyEntry>();
 
 /**
+ * ptyId -> その PTY がぶら下がっている tmux セッション名（Issue #244）。
+ *
+ * ⭐ **Main がこれを持つのが唯一の正。** 持たせる前は `agentSessionId` / `wrappedInTmux` を
+ * Renderer の `PaneLeaf` だけが持っており、**Main 単独では ptyId から tmux セッション名を
+ * 引けなかった**。
+ *
+ * ⭐⭐ **`entries` とは別の Map にしてある。理由は寿命が違うから。**
+ * `entries` は PTY が終了した時点で `disposeEntry()` が消すが、**tmux セッションは
+ * そのあとも生き残りうる**（利用者がペインの中で `Ctrl-b d` を押して tmux クライアントだけを
+ * デタッチした場合など）。同じ Map に入れておくと、その状態でタブを閉じたときに
+ * `entries.get()` が `undefined` を返して**セッションが永久に残る** =
+ * この Issue が直そうとしている累積そのものが再発する（code-review 2026-08-09 で指摘）。
+ *
+ * 消えるのは「利用者がそのペインを閉じたとき」（`ptyKill`）と、アプリ終了時
+ * （`disposePtyAll`。⛔ **そこでは tmux を終了させず、対応表を捨てるだけ**）。
+ *
+ * ⛔ **Renderer に `aiterm-` を組み立てさせて渡す形にしないこと。** 接頭辞を扱う正は
+ * `buildTmuxSessionName`（付ける）と `tmuxSessions.ts` の `SESSION_NAME_PREFIX`（剥がす）の
+ * 2箇所だけで、3箇所目を作ると `tmux.ts` 冒頭が「唯一の正」と宣言している説明が
+ * また片方だけ腐る（同ファイルに「実際に一度そうなった」とある）。
+ *
+ * ⛔ **`entry.pty.pid` から引き直す案は採らない。** あれは **tmux クライアントの pid** で、
+ * ペイン内の claude / gemini の pid ではないので `listLiveAgentSessions()` の
+ * `pane_pid` とは一致しない。
+ */
+const tmuxSessionNames = new Map<string, string>();
+
+/**
+ * 同じ tmux セッションに、**ほかの PTY もぶら下がっているか**（Issue #244）。
+ *
+ * ⭐ **1つの tmux セッションに複数のクライアントが繋がりうる。**
+ * `wrapCommandWithTmux` が使う `new-session -A` は「同名があればアタッチ」なので、
+ * 走っている claude セッションを履歴から resume すると、**同じ `aiterm-<id>` に
+ * 2枚目のタブが繋がる**（`tmux.ts` 冒頭がその設計を「唯一の正」として書いている）。
+ *
+ * その状態で片方のタブを閉じたときにセッションごと終了させると、
+ * **利用者が閉じていないほうのタブの AI まで巻き添えで死ぬ**（code-review 2026-08-09 で指摘）。
+ * 残っているクライアントがあるなら、閉じる側は**デタッチするだけ**にする。
+ */
+function isTmuxSessionSharedWithOtherPty(ptyId: string, sessionName: string): boolean {
+  for (const otherPtyId of entries.keys()) {
+    if (otherPtyId === ptyId) continue;
+    if (tmuxSessionNames.get(otherPtyId) === sessionName) return true;
+  }
+  return false;
+}
+
+/**
  * kind === 'shell' 以外、かつ設定で有効、かつ tmux が使える場合のみラップする。
  *
  * `env` は node-pty へ渡すものと**同じ値**を渡すこと。tmux は子プロセスへ env を
@@ -285,10 +343,20 @@ export function maybeWrapWithTmux(
   // tmux の有無だけが外部依存。既定で実測し、単体テストからは注入する
   // （テストが「そのマシンに tmux が入っているか」で結果を変えないようにする）。
   tmuxAvailable: boolean = isTmuxAvailable(),
-): { plan: SpawnPlan; wrappedInTmux: boolean } {
+): { plan: SpawnPlan; wrappedInTmux: boolean; tmuxSessionName?: string } {
   // ⛔ アタッチ計画は**既に tmux のコマンド**なので、重ねてラップしない
   // （`tmux new-session -A -s … -- tmux attach-session …` になってしまう）。
-  if (req.attachAgentSessionId) return { plan, wrappedInTmux: true };
+  //
+  // ⭐ ただし**セッション名は返す**（Issue #244）。アタッチしたタブを閉じたときも
+  // 中の AI を終了できなければ、「一覧から戻して、閉じたらまた残る」で累積が続く。
+  // 名前の作り方は `buildAttachPlan` と同じ（`buildTmuxSessionName(agentSessionId)`）。
+  if (req.attachAgentSessionId) {
+    return {
+      plan,
+      wrappedInTmux: true,
+      tmuxSessionName: buildTmuxSessionName(req.attachAgentSessionId),
+    };
+  }
   if (req.kind === 'shell') return { plan, wrappedInTmux: false };
   if (!config.useTmux) return { plan, wrappedInTmux: false };
   if (!tmuxAvailable) return { plan, wrappedInTmux: false };
@@ -297,9 +365,16 @@ export function maybeWrapWithTmux(
   // 伝えるだけにする（値を argv に載せると ps から読める。tmux.ts のコメント参照）。
   ensureTmuxUpdateEnvironment(env);
 
+  // ⚠ `agentSessionId` が無いときは `ptyId` に落ちる。**この場合も名前は確定している**
+  // ので終了できる（Issue #244。`closeTabCopy.ts` の `persistentOrphaned` = 閉じたら
+  // 二度と拾えないペインが、これで「閉じたら確実に終わる」に変わる）。
   const sessionName = buildTmuxSessionName(plan.agentSessionId ?? ptyId);
   const wrapped = wrapCommandWithTmux(sessionName, plan);
-  return { plan: { ...wrapped, agentSessionId: plan.agentSessionId }, wrappedInTmux: true };
+  return {
+    plan: { ...wrapped, agentSessionId: plan.agentSessionId },
+    wrappedInTmux: true,
+    tmuxSessionName: sessionName,
+  };
 }
 
 function disposeEntry(ptyId: string): void {
@@ -341,7 +416,13 @@ export function registerPtyHandlers(): void {
         mergeUserEnv(process.env, loginShellEnv()),
         app.getVersion(),
       );
-      const { plan, wrappedInTmux } = maybeWrapWithTmux(req, basePlan, config, ptyId, env);
+      const { plan, wrappedInTmux, tmuxSessionName } = maybeWrapWithTmux(
+        req,
+        basePlan,
+        config,
+        ptyId,
+        env,
+      );
 
       const cwd = req.cwd || homedir();
 
@@ -362,6 +443,8 @@ export function registerPtyHandlers(): void {
       }
 
       entries.set(ptyId, { pty: proc, sender: event.sender });
+      // ⭐ `entries` とは別に持つ。寿命が違う（上の `tmuxSessionNames` のコメントが唯一の正）。
+      if (tmuxSessionName !== undefined) tmuxSessionNames.set(ptyId, tmuxSessionName);
 
       // このアプリが起動した Claude セッションを一覧側に知らせる（AgentTask.ownedByApp に反映される）。
       // 新規起動（--session-id で採番）と resume（--resume に渡した既存 ID）の両方が対象。
@@ -431,18 +514,53 @@ export function registerPtyHandlers(): void {
     },
   );
 
-  ipcMain.handle(IpcInvoke.ptyKill, (_event: IpcMainInvokeEvent, rawPtyId: unknown): void => {
-    if (typeof rawPtyId !== 'string') {
+  /**
+   * ⛔⛔ **このハンドラを `async` にしないこと。`await` を1つも挟まないこと**（Issue #244）。
+   *
+   * 現在 `entry.pty.kill()` -> `disposeEntry()` が**同一 tick** で走る。そのおかげで
+   * `proc.onExit` が発火する頃には `entries.get(ptyId)` が `undefined` になっており、
+   * 下の onExit ハンドラが「アプリ側が殺した終了」として **`ptyExit` の送信と
+   * Dock バウンスを意図的に抑止している**（その分岐のコメントが唯一の正）。
+   *
+   * ここに `await` を1つ挟むと、`disposeEntry()` が次の tick へずれて
+   * **タブを閉じるたびに「プロセスは終了しました」バナーが出て Dock が跳ねる**。
+   * だから `killTmuxSession()` は投げっぱなし（非同期・待たない）で呼ぶ。
+   */
+  ipcMain.handle(IpcInvoke.ptyKill, (_event: IpcMainInvokeEvent, rawReq: unknown): void => {
+    if (!isKillPtyRequest(rawReq)) {
       throw new Error('不正な pty:kill リクエストです');
     }
-    const entry = entries.get(rawPtyId);
-    if (!entry) return; // 既に終了している場合は何もしない
+    const { ptyId, terminateSession } = rawReq;
+    const entry = entries.get(ptyId);
+    const sessionName = tmuxSessionNames.get(ptyId);
+
+    // ⭐ tmux セッションの終了は **`disposeEntry()` の中に書かない**。
+    // 「後始末」と「利用者の意図による終了」を同じ関数に混ぜると、あとから片方だけ
+    // 変えたときに気づけない（`disposePtyAll` も `disposeEntry` を使いたくなる）。
+    // 意図はここでだけ解釈する。
+    //
+    // ⭐⭐ **`entry` の有無より先に判定する。** PTY が既に終了していても
+    // tmux セッションは生き残りうる（利用者が `Ctrl-b d` でデタッチした場合など）。
+    // `if (!entry) return` を先に置くと、**その状態のタブを閉じたときにセッションが
+    // 永久に残る** = この Issue が直そうとしている累積そのものが再発する。
+    if (terminateSession === true && sessionName !== undefined) {
+      if (isTmuxSessionSharedWithOtherPty(ptyId, sessionName)) {
+        // 同じセッションを別のタブも開いている。閉じる側はデタッチするだけにする
+        // （終了させると、利用者が閉じていないほうの AI まで巻き添えで死ぬ）。
+        console.info(`[pty] ${sessionName} は他のペインも使用中のため終了させません`);
+      } else {
+        killTmuxSession(sessionName, mergeUserEnv(process.env, loginShellEnv()));
+      }
+    }
+    tmuxSessionNames.delete(ptyId);
+
+    if (!entry) return; // PTY 自体は既に終了している
     try {
       entry.pty.kill();
     } catch (err) {
-      console.error(`[pty] ${rawPtyId} の kill に失敗しました:`, err);
+      console.error(`[pty] ${ptyId} の kill に失敗しました:`, err);
     }
-    disposeEntry(rawPtyId);
+    disposeEntry(ptyId);
   });
 
   // 高頻度なので invoke ではなく send。受け取ったら同期的に write するだけ。
@@ -480,4 +598,9 @@ export function disposePtyAll(): void {
     }
   }
   entries.clear();
+  // ⛔⛔ **ここで `killTmuxSession()` を呼ばないこと**（Issue #244）。
+  // 「アプリを閉じても AI の作業が続く」はこのアプリの中核機能で、
+  // `docs/PLAN.md` が挙げた tmux 永続化の動機そのもの。**対応表を捨てるだけ**にする。
+  // この不変条件は E2E の S108 が守っている。
+  tmuxSessionNames.clear();
 }
