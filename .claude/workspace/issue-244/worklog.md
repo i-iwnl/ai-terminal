@@ -300,4 +300,82 @@ Received string:    ""
 
 ---
 
+## 2026-08-09 - 周5: 「押せる」を静止状態にも出す（左端 2px の線）
+
+### 実施内容
+
+- `button.task-item__row` に `border-left: 2px solid var(--border-control)` +
+  `padding-left: calc(var(--sp-3) - 2px)`（**振り替えなので幅コスト 0px**）
+- **S112 新設**（`e2e/specs/S112-clickable-row-affordance.spec.ts` + `scenarios.yml`）
+- `design-rules` の §3 に「**『押せる』を塗りで表す道は、この配色では閉じている**」を追加
+  （Issue 固有ではなく、案が変わっても残る閾値なので skill 側へ）
+- README「5. 実行中タスクを一覧で見る」に1段落
+
+### 設計判断
+
+- **`padding-left` は `calc(var(--sp-3) - 2px)` で書く。** `10px` と直書きすると
+  「12 から 2 を借りている」という**振り替えの関係が読めなくなる**。トークンを動かしたときも追従する
+- ⛔ **`design-rules` 節5 の「左端 3px の色バー」の再提案ではない**ことを、
+  **CSS のコメント・spec の doc・scenarios.yml の note・design-rules 本体の4箇所**に書いた。
+  却下理由は「位置が同じで**色だけ**違う」で、こちらが分けているのは**有無**。
+  書かないと次のレビューで却下済みとして差し戻される
+- **`button.` を付けた要素セレクタで限定する。** 押せるかどうかを modifier クラスではなく
+  要素の種類で表す、という `TaskList.tsx` の既存の決定に合わせる（クラスを足すと正が2つになる）
+
+### 関門が赤くなることの証明（4通り。毎回 `npm run build` を前置）
+
+| 壊し方 | 出た赤 |
+|---|---|
+| 実装前（規則そのものが無い） | `押せる行に左端の線が出ていない` Expected "2px" / Received "0px" |
+| **補償の `padding-left` を忘れる** | `線を足したぶん中身が右へずれている` Expected 12 / Received 14 |
+| **`button.` を外して全行に付ける** | `押せない行にまで左端の線が出ている` Expected "0px" / Received "2px" |
+| 線と相殺量を両方 3px にする（相殺は成立） | `押せる行に左端の線が出ていない` Expected "2px" / Received "3px" |
+
+⭐ **2番目が本命。** 「線が出ている」だけを見る spec だと、**押せる行と押せない行が
+混ざる一覧がガタつく実装でも緑**になる。4番目は「太さの検査が死んでいないこと」を見ている。
+
+### 教訓（該当する場合）
+
+- ⭐ **`make e2e-screenshots-check` は `docs/images/` を見ていない。**
+  比べているのは `e2e/.screenshots-out`（`make e2e` の第2レーンが吐く撮り立て）と
+  作業ツリーの `docs/images/`。**`make e2e-screenshots` は `docs/images/` を直接上書きする**ので、
+  その直後にチェックだけ回すと**「上書き後 対 古い撮り立て」**を比べることになる。
+  今回はそれが結果的に「周4 のコードで撮った13枚 対 周5 のコードで撮った13枚」になり、
+  **欲しかった比較そのものだった**が、**偶然そうなっただけ**。⛔ 「HEAD と比べてくれる」と誤解しない
+- **コミット可否の判定は `git show HEAD:<path>` との画素比較で自分でやる。**
+  13枚すべてが `M` になったが、実際の差は S16 / S18 が **3画素・1階調**、S31 が **1画素・1階調**
+  （107 -> 106。`verify-screenshots.mjs` 冒頭が実測値として記録しているノイズと逐語一致）。
+  **13枚とも `git checkout` で戻した = 周5 の画素は 0枚**
+- **実機は E2E より強い状態を勝手に用意してくれる。** 本物の tmux に14本生きていたので、
+  **押せる行14 + 押せない行2** が同じ一覧に並んだ状態で測れた（`dotX` は全17行で 12、
+  行幅は全行 259 = 描画位置も幅も1pxも動いていない）。E2E では1本ずつ作る必要がある
+- **README に書いた手がかりが、隣の画像には1本も写っていない**（`known-issues.md` 7番）。
+  撮影レーンの既定は `useTmux: false` なので全行が `<div>`。周7 の撮り直しと同じ周で判定する
+
+### 検証
+
+- `make check` 緑（847件）/ `make e2e-lint` **FAIL=0**（PASS=895）/ `lint-skills.sh` FAIL=0
+- 近傍 spec（S12 / S34 / S35 / S38 / S104 / S105 / S111 / S112）**8 passed**
+- **実機確認済み**（agent-browser + CDP）。押せる行 `BUTTON` = `2px` / `rgb(122,122,122)` /
+  `padding-left: 10px`、押せない行 `DIV` = `0px` / `12px`
+- ⚠ **`make css-substitution-check` は予告どおり FAIL**（`border-left: 2px solid #7a7a7a` と
+  `padding-left: calc(12px - 2px)` の2件が「0 -> 1箇所」）。**値の変更を伴う周なので落ちてよい**
+- `docs/images` は **0枚**（上記のとおり戻した）
+
+### 次に再開するとき最初に読むべきこと
+
+- **周1〜5 は完了（周5 は未コミット）。次は周6**（`design-review/proposal-v2-after-review.md` §2-E' の後半）:
+  一覧の行の右クリック + メニューバー `ファイル > 選択中の AI を終了` + **`IpcInvoke.agentSessionKill` の新設**
+- ⭐ **チャンネルは2本要る**（§2-A' の表）。`resolveTaskRowAction` が `'recover'` を返す行は
+  `hasOpenTab === false` = **Main に entry が無く ptyId が存在しない**ので、`ptyKill` では届かない。
+  tmux 名の解決者は Main（`buildTmuxSessionName`）。⛔ Renderer に `aiterm-` を組み立てさせない
+- ⚠ **行が消えたときのフォーカス**（§4-4）。終了に成功すると DOM から消えるのは
+  **フォーカス中の要素そのもの**。次のフォーカス先（同グループの次の行、無ければ
+  `.task-group__heading`）へ明示的に移さないと `<body>` に落ちる
+- ⛔ **「戻す」ボタンを行に足さない**（§2-E'）。行そのものが既にその操作
+- そのあと 周7（`errorKind: 'tmux-unavailable'` + パネル単位の理由 + メタ行の語「アプリ外」+ **8枚撮り直し**）
+- 周6 は Main / preload / shared / Renderer / E2E を跨ぐので、**`/orchestrator` の起動条件に該当する**
+
+---
+
 <!-- 以降、作業のたびにセクションを追記 -->
