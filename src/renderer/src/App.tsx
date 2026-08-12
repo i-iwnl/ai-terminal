@@ -434,13 +434,39 @@ export default function App(): ReactElement {
   }, []);
 
   /**
-   * 実際に `agent-session:kill` を叩く（Issue #244 周6-a）。
+   * 「この AI を終了」の唯一の実行箇所（Issue #244 周6-a、実機不具合の差し戻し）。
    *
-   * `useTabs.ts` の `closeTab` が PTY の kill を try/catch で無視するのと同じ扱い。
-   * 対象の tmux セッションは既に終了している場合もある（二重クリック、他の経路で
-   * 既に終わっていた等）ため、失敗をエラーバナーで騒がない。
+   * ⭐ **対象のタブが開いているかで経路を分ける。** `findPaneByAgentSessionId` は
+   * `onFocusTab` の解決（`focusTaskTab`）と同じ引き当てで、一覧の行が `'focus'`
+   * （タブが開いている）状態かどうかをここでも同じ判定で確かめる。
+   *
+   * - タブが開いている（`location` が見つかる）: **`agent-session:kill` を呼ばない。**
+   *   `closePaneForAgentSession` が呼ぶ `pty.kill({ terminateSession: true })` が
+   *   既に tmux セッションを終了させるため、両方呼ぶと同じセッションに対して
+   *   `kill-session` が二重に飛ぶ。直す前は逆にここが `agentSessionKill` だけを
+   *   呼んでいて、**タブ（ペイン）を閉じる呼び出しが1つも無かった**
+   *   （＝終了は効くのにタブが「プロセスは終了しました」のまま残る不具合の本体）。
+   * - タブが開いていない（`'recover'`。tmux にしか繋がっていない）: 従来どおり
+   *   `window.api.agents.killSession()` を直接呼ぶ。
+   *
+   * `useTabs.ts` の `closeTab` が PTY の kill を try/catch で無視するのと同じ扱いで、
+   * 対象が既に終了している場合（二重クリック等）の失敗をエラーバナーで騒がない。
+   *
+   * ⭐ **busy 確認ダイアログはこの関数の外（`requestKillSession` / 確認ダイアログの
+   * `onConfirm`）で既に済んでいる。** ここでの経路分岐は「確認するかどうか」を
+   * 一切変えない — `requestKillSession` が唯一のゲートのままで、この関数はその後の
+   * 「どちらの終了処理を叩くか」だけを決める。
    */
   const performKillSession = useCallback(async (agentSessionId: string): Promise<void> => {
+    const location = findPaneByAgentSessionId(tabsApiRef.current.tabs, agentSessionId);
+    if (location) {
+      try {
+        await tabsApiRef.current.closePaneForAgentSession(agentSessionId);
+      } catch (err) {
+        console.warn('[tabs] ペインの終了に失敗しました', err);
+      }
+      return;
+    }
     try {
       await window.api.agents.killSession(agentSessionId);
     } catch (err) {

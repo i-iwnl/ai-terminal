@@ -21,7 +21,7 @@ import {
   type PanePath,
   type SplitDirection,
 } from './paneTree';
-import { findTabByPtyId, tabLeaf, type TabState } from './tabPane';
+import { findPaneByAgentSessionId, findTabByPtyId, tabLeaf, type TabState } from './tabPane';
 import { SHELL_FALLBACK_LABEL } from './paneHeader';
 // 起動失敗の文言は spawnErrorCopy.ts が唯一の正（E2E から踏めないので unit で固定している）。
 import { describeSpawnError } from './spawnErrorCopy';
@@ -92,6 +92,22 @@ export interface UseTabsResult {
    */
   /** `terminateSession` の意味は `closeTab` と同じ（Issue #244）。 */
   closeActivePane: (terminateSession?: boolean) => Promise<CloseActivePaneOutcome>;
+  /**
+   * `agentSessionId` からタブ・ペインを引き当てて、そのペインだけを閉じる
+   * （実機不具合の差し戻し。App.tsx の `performKillSession` 参照）。
+   *
+   * タスク一覧の行が `'focus'`（そのセッションのタブが開いている）状態で
+   * 「この AI を終了」相当を選んだときの経路。**`agent-session:kill` は呼ばない** —
+   * ここが `pty.kill({ terminateSession: true })` を呼ぶことで、tmux セッションの
+   * 終了は既に済む。二重に呼ぶと同じセッションに対して2回 `kill-session` が飛ぶ。
+   *
+   * `closeActivePane`（Cmd+W）と同じ `closePane` の要領だが、対象は「アクティブな
+   * タブのアクティブなペイン」に限らない。**そのペインが最後の1枚なら、
+   * `closeActivePane` と同じくタブごと閉じる**（`closeTab` に合流する）。
+   *
+   * 対象が見つからない（既にタブが閉じられた・一覧の情報が古い等）場合は何もしない。
+   */
+  closePaneForAgentSession: (agentSessionId: string) => Promise<void>;
   /** クリック等でペインにフォーカスが移ったとき、そのタブの activePaneId を更新する。 */
   setActivePaneInTab: (tabId: string, paneId: string) => void;
   /**
@@ -461,6 +477,59 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
   );
 
   /**
+   * `agentSessionId` から引き当てたペインだけを閉じる（実機不具合の差し戻し）。
+   * `UseTabsResult.closePaneForAgentSession` の doc 参照。
+   *
+   * **`closeActivePane` と重複しているように見えるが、対象の決め方が違う。**
+   * あちらは常に「いまアクティブなタブの、いまアクティブなペイン」が対象で
+   * `activeTabIdRef` / `tab.activePaneId` を暗黙に読む。こちらは呼び出し側
+   * （タスク一覧の行）が指す対象が、いま前面に出ているタブ・ペインとは限らない
+   * （むしろ大抵は違う）ため、`agentSessionId` から明示的に `tabId` / `paneId` を
+   * 引き当ててから同じ `closePane` の要領で閉じる。
+   */
+  const closePaneForAgentSession = useCallback(
+    async (agentSessionId: string): Promise<void> => {
+      const location = findPaneByAgentSessionId(tabsRef.current, agentSessionId);
+      if (!location) return;
+      const tab = tabsRef.current.find((t) => t.id === location.tabId);
+      if (!tab) return;
+
+      const result = closePane(tab.layout, location.paneId);
+      if (result === null) {
+        // 最後の1枚だった。closeActivePane と同じくタブごと閉じる経路に合流する
+        // （tmux セッションの終了は closeTab 内の pty.kill が担う）。
+        await closeTab(tab.id, true);
+        return;
+      }
+
+      const closedLeaf = getLeaf(tab.layout, location.paneId);
+      if (closedLeaf) {
+        try {
+          await window.api.pty.kill({ ptyId: closedLeaf.ptyId, terminateSession: true });
+        } catch (err) {
+          console.warn('[tabs] PTY の終了に失敗しました', err);
+        }
+        forgetPty(closedLeaf.ptyId);
+      }
+
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.id !== tab.id) return t;
+          // 閉じたペインが、そのタブの activePaneId そのものだったときだけ
+          // closePane が返す新しい activePaneId へ差し替える。**対象のタブが
+          // 前面に出ていない（＝閉じたのが activePaneId と無関係な過去の値）
+          // ことのほうが多いので、無条件の上書きはしない**（他のペインへ
+          // フォーカスが飛んで見える副作用を避ける）。
+          const activePaneId =
+            t.activePaneId === location.paneId ? result.activePaneId : t.activePaneId;
+          return { ...t, layout: result.tree, activePaneId, maximized: false };
+        }),
+      );
+    },
+    [closeTab],
+  );
+
+  /**
    * アクティブなタブの、アクティブなペインの最大化表示をトグルする
    * （Cmd+Shift+Enter。Issue #56 PR 8・design-review.md 提案 I）。
    *
@@ -573,6 +642,7 @@ export function useTabs(onError: (message: string) => void): UseTabsResult {
     renamePane,
     splitActivePane,
     closeActivePane,
+    closePaneForAgentSession,
     setActivePaneInTab,
     updateSplitRatio,
     toggleMaximizePane,

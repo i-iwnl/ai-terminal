@@ -29,7 +29,7 @@ import {
   type AppAction,
   type RendererApi,
 } from '@shared/ipc';
-import type { TerminalContextMenuState } from '@shared/context-menu';
+import type { TaskContextMenuState, TerminalContextMenuState } from '@shared/context-menu';
 
 /**
  * Main -> Renderer の push イベントを購読する共通ヘルパ。
@@ -136,8 +136,8 @@ const api: RendererApi = {
     showContextMenu: (state: TerminalContextMenuState): void => {
       ipcRenderer.send(IpcSend.contextMenuShow, state);
     },
-    showTaskContextMenu: (): void => {
-      ipcRenderer.send(IpcSend.taskContextMenuShow);
+    showTaskContextMenu: (state: TaskContextMenuState): void => {
+      ipcRenderer.send(IpcSend.taskContextMenuShow, state);
     },
   },
   session: {

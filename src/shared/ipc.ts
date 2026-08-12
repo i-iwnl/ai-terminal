@@ -5,7 +5,7 @@
  * Main / preload / Renderer のいずれもここから import し、文字列リテラルを各所に散らさない。
  */
 
-import type { TerminalContextMenuState } from './context-menu';
+import type { TaskContextMenuState, TerminalContextMenuState } from './context-menu';
 
 // ---------------------------------------------------------------------------
 // ターミナル / PTY
@@ -889,6 +889,11 @@ export const IpcSend = {
    * 変換して `Menu.popup()` するだけ。**ただしクリックの配線は違う**（`menu.ts` の
    * 実装コメント参照。設定ウィンドウにフォーカスがあるときに本体へ送らない
    * 保護＝`routeMenuAction()` を通す）。
+   *
+   * ⭐ **payload は `TaskContextMenuState`。** 当初は「項目は行によらず固定」で
+   * 状態を運んでいなかったが、実機不具合（タブが開いている行で終了してもタブが
+   * 閉じない）の差し戻しでラベルを行の状態（`hasOpenTab`）で出し分ける必要が出た。
+   * `contextMenuShow` と同じく、木を持つ Renderer 側が状態を確定させて送る。
    */
   taskContextMenuShow: 'task-context-menu:show',
   /** ウィンドウタイトルの設定（Issue #119 周5 / #20 の K-10） */
@@ -1037,11 +1042,12 @@ export interface RendererApi {
      * サイドバーのタスク一覧の行の右クリックメニューを出す
      * （Issue #244 周6-a。`IpcSend.taskContextMenuShow` 参照）。
      *
-     * 項目は行によらず固定（`taskContextMenuItems()` が唯一の正）なので、
-     * `showContextMenu()` と違い状態を運ばない。選ばれた結果は
-     * 既存の `onAction` 経由で戻ってくる（新しい経路を作らない）。
+     * 項目表そのものは `taskContextMenuItems()` が唯一の正だが、**ラベルは
+     * `state.hasOpenTab` で出し分ける**（実機不具合の差し戻し。IpcSend の
+     * doc 参照）。選ばれた結果は既存の `onAction` 経由で戻ってくる
+     * （新しい経路を作らない）。
      */
-    showTaskContextMenu(): void;
+    showTaskContextMenu(state: TaskContextMenuState): void;
   };
   session: {
     /**
