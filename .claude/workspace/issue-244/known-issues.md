@@ -170,7 +170,7 @@ P2
 
 ### ステータス
 
-未対処（`#244` の周の範囲外。code-review 2026-08-09 で発見）
+**起票済み** -> [#246](https://github.com/i-iwnl/ai-terminal/issues/246)（bug / P2 / known-issue）
 
 ---
 
@@ -202,7 +202,8 @@ P1
 
 ### ステータス
 
-対応予定（周3。design-review の macOS ペルソナが発見）
+**対処済み**（2026-08-09。周3 で `ファイル > ウィンドウを閉じる Cmd+Shift+W`（`role: 'close'`）を
+追加し、`shortcuts.ts` と `menu.ts` のコメント2箇所も理由付きで書き換えた。S36 が固定している）
 
 ---
 
@@ -229,7 +230,7 @@ P3
 
 ### ステータス
 
-未対処（`#244` の周の範囲外。design-review の保守ペルソナが発見）
+**起票済み** -> [#247](https://github.com/i-iwnl/ai-terminal/issues/247)（chore / P3 / known-issue）
 
 ---
 
@@ -261,7 +262,7 @@ P2
 
 ### ステータス
 
-未対処（2026-08-09・周5 で発生させたもの）
+**起票済み** -> [#248](https://github.com/i-iwnl/ai-terminal/issues/248)（documentation / P2 / known-issue）
 
 ---
 
@@ -298,7 +299,7 @@ P2
 
 ### ステータス
 
-未対処（2026-08-09・周6-a のレビューでメインが発見）
+**起票済み** -> [#249](https://github.com/i-iwnl/ai-terminal/issues/249)（enhancement / P2 / known-issue）
 
 ---
 
@@ -331,6 +332,7 @@ P3
 
 ### ステータス
 
-未対処（2026-08-09・周6-a の実機確認で判明）
+**#195 の A-7 へ集約済み**（⛔ 起票しない。**エージェントには原理的に不可能**な確認なので、
+CLAUDE.md の「人力でしか進められないものは #195 に集約する」に従った）
 
 ---

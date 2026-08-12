@@ -613,15 +613,35 @@ loop.md の作法どおり**コード（`TaskList.tsx` の分岐）・純粋関�
 - `lint-skills.sh` FAIL=0
 - ⚠ `make css-substitution-check` は**周5 で意図的に落ちる**（値の変更を伴う周）
 
+### 出荷（ユーザーの明示指示により実行）
+
+- コミット `bebdec1`（周6-a / 6-b / 7 を**1つに**まとめた。3周が `src/shared/ipc.ts` /
+  `TaskList.tsx` / `scenarios.yml` の同じファイルを触っており、**hunk 単位で切ると
+  中間状態がビルドできない**ため。周の境界はこの worklog が記録している）
+- push -> **PR [#245](https://github.com/i-iwnl/ai-terminal/pull/245)**（`Closes #244`）
+- Issue #244 へ書き戻し済み。⛔ **完了条件の字面を外した理由を3点入れた**
+- `promote-known-issues` を実行（着手前の open は **9件**で上限20件未満）:
+
+| known-issues | 行き先 |
+|---|---|
+| 4番（tmux の env 不整合） | [#246](https://github.com/i-iwnl/ai-terminal/issues/246) bug / P2 |
+| 6番（デッドコード + 7件のテスト） | [#247](https://github.com/i-iwnl/ai-terminal/issues/247) chore / P3 |
+| 7番（README 画像に押せる行が無い） | [#248](https://github.com/i-iwnl/ai-terminal/issues/248) documentation / P2 |
+| 8番（ガードの沈黙） | [#249](https://github.com/i-iwnl/ai-terminal/issues/249) enhancement / P2 |
+| 9番（ネイティブメニューの実描画） | ⛔ **起票せず #195 の A-7 へ集約** |
+| 1・2・3・3-a・5番 | 対処済み。起票しない |
+
+⭐ **9番を起票しなかった理由**: CLAUDE.md の「エージェントが原理的に完了できない項目は
+#195 に集約し、open な Issue を『エージェントが進められるもの』だけに保つ」に従った。
+CDP は Renderer の中しか見えず、`screencapture` も権限が無く、
+agent-browser のマウス操作は DOM イベントを届けない（A-6 と同じ壁）。
+
 ### 次に再開するとき最初に読むべきこと
 
-- ⭐ **Issue #244 の完了条件はすべて達成した。実装・検証・文書は完了。**
-  **周1〜5 はコミット済み、周6-a / 6-b / 7 が未コミット**
-- **残るのはユーザーの判断だけ**（`overview.md` の §4）:
-  1. commit / push / PR（⛔ エージェントは明示指示なしにやらない）
-  2. Issue への書き戻し。⛔ **完了条件の字面を外した理由を1行入れる**
-  3. `known-issues.md` の未対処5件を起票するか
-- ⛔ **push 前にマシンが空いている状態でフル `make e2e` を回し直すこと**（今回の5 flaky）
+- ⭐ **Issue #244 は完了。PR #245 がレビュー待ち。** マージは人が行う
+- ⛔ **`make e2e` は毎回5〜7件の flaky を出す**（顔ぶれは実行のたびに変わる = 負荷起因）。
+  **赤が出たらまず単独で回して切り分ける**（負荷なら 1.7 秒で緑）
+- このワークスペースの派生作業は #246〜#249。**#244 の周としては続けない**
 
 ---
 
