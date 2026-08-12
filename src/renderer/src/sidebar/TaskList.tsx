@@ -411,7 +411,10 @@ export default function TaskList({
               // 「アクティブなペイン」を先に onActivate?.() で揃えるのと同じ作法）。
               focusedRowRef.current = { key: sessionKey, sectionKey: state };
               onTargetSession(sessionKey);
-              window.api.menu.showTaskContextMenu();
+              // ラベルの出し分け（実機不具合の差し戻し）。`action === 'focus'` は
+              // 「そのセッションのタブがいま開いている」＝ resolveTaskRowAction() が
+              // 唯一の正なので、ここで別の判定を作らずそのまま使う。
+              window.api.menu.showTaskContextMenu({ hasOpenTab: action === 'focus' });
             }}
             ref={(el) => {
               if (el) rowElementRefs.current.set(sessionKey, el);
@@ -537,7 +540,9 @@ export default function TaskList({
                         sectionKey: 'recoverable',
                       };
                       onTargetSession(session.agentSessionId);
-                      window.api.menu.showTaskContextMenu();
+                      // この節に出る行は定義上タブを開いていない
+                      // （selectRecoverableSessions がタブが開いているものを除外する）。
+                      window.api.menu.showTaskContextMenu({ hasOpenTab: false });
                     }}
                     ref={(el) => {
                       if (el) rowElementRefs.current.set(session.agentSessionId, el);

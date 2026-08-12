@@ -21,6 +21,7 @@ import { IpcEvent, IpcSend, type AppAction } from '@shared/ipc';
 import {
   terminalContextMenuItems,
   taskContextMenuItems,
+  type TaskContextMenuState,
   type TerminalContextMenuState,
 } from '@shared/context-menu';
 import { routeMenuAction } from './menu-action-routing';
@@ -590,11 +591,12 @@ export function registerMenuHandlers(): void {
   // こちらはそれをせず `actionItem()` を再利用する。設定ウィンドウにフォーカスが
   // あるときに本体へ操作を送らない保護（`routeMenuAction` 冒頭のコメント参照）を
   // ここでも落とさないため（依頼元の指示）。
-  ipcMain.on(IpcSend.taskContextMenuShow, (event) => {
+  ipcMain.on(IpcSend.taskContextMenuShow, (event, rawState: unknown) => {
+    if (!isTaskContextMenuState(rawState)) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return;
 
-    const template: MenuItemConstructorOptions[] = taskContextMenuItems().map((item) =>
+    const template: MenuItemConstructorOptions[] = taskContextMenuItems(rawState).map((item) =>
       actionItem(win, item.label, undefined, item.action),
     );
 
@@ -607,4 +609,11 @@ function isContextMenuState(value: unknown): value is TerminalContextMenuState {
   if (typeof value !== 'object' || value === null) return false;
   const state = value as Record<string, unknown>;
   return typeof state.paneCount === 'number' && typeof state.hasSelection === 'boolean';
+}
+
+/** 上と同じ理由。タスク一覧の右クリックメニュー用（実機不具合の差し戻し）。 */
+function isTaskContextMenuState(value: unknown): value is TaskContextMenuState {
+  if (typeof value !== 'object' || value === null) return false;
+  const state = value as Record<string, unknown>;
+  return typeof state.hasOpenTab === 'boolean';
 }

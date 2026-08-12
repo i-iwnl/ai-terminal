@@ -143,6 +143,24 @@ export function terminalContextMenuItems(
 export type TaskContextMenuItem = { kind: 'action'; label: string; action: AppAction };
 
 /**
+ * タスク一覧の行の右クリックメニューを組み立てるのに要る、その行の状況
+ * （Issue #244 実機不具合の差し戻し）。
+ */
+export interface TaskContextMenuState {
+  /**
+   * そのセッションのタブが**いま開いているか**（`resolveTaskRowAction()` が
+   * `'focus'` を返す行かどうか）。
+   *
+   * ⭐ **ここが真なら「終了」はペインを閉じる経路になる。** タブが開いている行で
+   * tmux セッションだけを終了させると、タブの中の PTY は死ぬがタブ（ペイン）自体は
+   * 「プロセスは終了しました」の状態のまま画面に残る（実機で踏んだ不具合）。
+   * ラベルを行の状態で出し分けて、押した結果がどちらになるかを文言で言い切る
+   * （`.claude/skills/design-review/reference/design-rules.md` §6）。
+   */
+  hasOpenTab: boolean;
+}
+
+/**
  * タスク一覧の行の右クリックメニューの項目表。
  *
  * ⛔ **「タブに戻す」は無い。** 行そのものをクリックすれば戻れるので、
@@ -151,10 +169,19 @@ export type TaskContextMenuItem = { kind: 'action'; label: string; action: AppAc
  * 「『戻す』ボタンは作らない」をメニューにも適用した）。加えて `AppAction` には
  * この操作に対応する type がそもそも無い（キー/メニュー共有の語彙にまだ登録されていない）。
  *
- * ⭐ **項目は行の状態によらず固定。** 分割数などで出し分ける `terminalContextMenuItems()`
- * と違い、引数を取らない。今後「戻せない行では無効化する」のような分岐が要るときに
- * 状態を引数へ足す。
+ * ⭐ **`AppAction` は行の状態によらず同じ `{ type: 'kill-agent-session' }` のまま。**
+ * 変わるのはラベルだけで、どちらの経路になるか（tmux セッションだけを終了させるか、
+ * ペインを閉じるか）は Renderer 側（`App.tsx` の `performKillSession`）が対象の
+ * `agentSessionId` から都度判定する。ここで2種類の `AppAction` に分けると、
+ * Main 側にも「行の状態」を運ぶ必要が生まれ、対象を掴んでいる Renderer と二重に
+ * 状態を持つことになる。
  */
-export function taskContextMenuItems(): TaskContextMenuItem[] {
-  return [{ kind: 'action', label: 'この AI を終了', action: { type: 'kill-agent-session' } }];
+export function taskContextMenuItems(state: TaskContextMenuState): TaskContextMenuItem[] {
+  return [
+    {
+      kind: 'action',
+      label: state.hasOpenTab ? 'このペインを閉じて AI を終了' : 'この AI を終了',
+      action: { type: 'kill-agent-session' },
+    },
+  ];
 }

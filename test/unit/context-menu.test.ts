@@ -180,20 +180,37 @@ describe('コンテキストメニューの語がアプリメニューと一致�
   });
 });
 
-// タスク一覧の行の右クリックメニュー（Issue #244 周6-a）。
+// タスク一覧の行の右クリックメニュー（Issue #244 周6-a、実機不具合の差し戻し）。
 describe('taskContextMenuItems', () => {
-  it('「この AI を終了」の1項目だけを返す', () => {
+  it('タブを開いていない行（hasOpenTab: false）では「この AI を終了」の1項目だけを返す', () => {
     // **「タブに戻す」は作らない。** 行そのものをクリックすれば戻れるので、
     // 同じ操作の入口をメニューにもう1つ作らない設計判断
     // （design-review/proposal-v2-after-review.md §2-E'）。
-    const items = taskContextMenuItems();
+    const items = taskContextMenuItems({ hasOpenTab: false });
     expect(items).toEqual([
       { kind: 'action', label: 'この AI を終了', action: { type: 'kill-agent-session' } },
     ]);
   });
 
-  it('**新しい能力を1つも作っていない**（action は既存の AppAction）', () => {
-    const actions = taskContextMenuItems().map((i) => i.action.type);
-    expect(actions).toEqual(['kill-agent-session']);
+  it('タブが開いている行（hasOpenTab: true）では「このペインを閉じて AI を終了」になる', () => {
+    // 実機不具合の差し戻し: タブが開いている行で「この AI を終了」を選んでも、
+    // 直す前はタブ（ペイン）が閉じずに残っていた。行き先が2つに分かれる操作は
+    // 文言で言い切る（design-rules §6）。
+    const items = taskContextMenuItems({ hasOpenTab: true });
+    expect(items).toEqual([
+      {
+        kind: 'action',
+        label: 'このペインを閉じて AI を終了',
+        action: { type: 'kill-agent-session' },
+      },
+    ]);
+  });
+
+  it('**新しい能力を1つも作っていない**（action は hasOpenTab によらず既存の AppAction のまま）', () => {
+    const actions = [
+      ...taskContextMenuItems({ hasOpenTab: false }),
+      ...taskContextMenuItems({ hasOpenTab: true }),
+    ].map((i) => i.action.type);
+    expect(actions).toEqual(['kill-agent-session', 'kill-agent-session']);
   });
 });
