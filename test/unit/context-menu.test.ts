@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   terminalContextMenuItems,
+  taskContextMenuItems,
   type TerminalContextMenuItem,
 } from '../../src/shared/context-menu';
 
@@ -176,5 +177,23 @@ describe('コンテキストメニューの語がアプリメニューと一致�
       // menu.ts 側にも同じ組があること。
       expect(MENU, `menu.ts の ${label} のキーが違う`).toContain(`'${label}', '${accelerator}'`);
     }
+  });
+});
+
+// タスク一覧の行の右クリックメニュー（Issue #244 周6-a）。
+describe('taskContextMenuItems', () => {
+  it('「この AI を終了」の1項目だけを返す', () => {
+    // **「タブに戻す」は作らない。** 行そのものをクリックすれば戻れるので、
+    // 同じ操作の入口をメニューにもう1つ作らない設計判断
+    // （design-review/proposal-v2-after-review.md §2-E'）。
+    const items = taskContextMenuItems();
+    expect(items).toEqual([
+      { kind: 'action', label: 'この AI を終了', action: { type: 'kill-agent-session' } },
+    ]);
+  });
+
+  it('**新しい能力を1つも作っていない**（action は既存の AppAction）', () => {
+    const actions = taskContextMenuItems().map((i) => i.action.type);
+    expect(actions).toEqual(['kill-agent-session']);
   });
 });

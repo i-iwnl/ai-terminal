@@ -13,6 +13,7 @@ import {
 } from '../../src/main/pty/manager';
 import {
   buildTmuxEnvNames,
+  buildTmuxKillSessionCommand,
   buildTmuxSessionName,
   buildTmuxUpdateEnvironment,
   wrapCommandWithTmux,
@@ -448,6 +449,28 @@ describe('buildAttachPlan（生きている tmux セッションへ繋ぐ）', (
   it('tmux セッション名の規約は buildTmuxSessionName と一致する', () => {
     const id = 'e2f9c1a0-1111-2222-3333-444455556666';
     expect(buildAttachPlan(id).args).toContain(buildTmuxSessionName(id));
+  });
+});
+
+describe('buildTmuxKillSessionCommand（タブを閉じたら AI ごと終了する）', () => {
+  // #244。閉じても死ぬのは tmux クライアントだけで、内側の claude / gemini は
+  // 生き残っていた。名前を指定して1セッションだけ落とす。
+  it('名前を指定して1セッションだけ終了する', () => {
+    const spec = buildTmuxKillSessionCommand('aiterm-abc-123');
+    expect(spec.command).toBe('tmux');
+    expect(spec.args).toEqual(['kill-session', '-t', 'aiterm-abc-123']);
+  });
+
+  // ⛔ kill-server は利用者自身が立てた無関係なセッションまで巻き込む。
+  it('kill-server を使わない（無関係なセッションを巻き込まない）', () => {
+    expect(buildTmuxKillSessionCommand('aiterm-abc').args).not.toContain('kill-server');
+    expect(buildTmuxKillSessionCommand('aiterm-abc').args).not.toContain('-a');
+  });
+
+  // tmux セッション名の組み立ては1箇所（buildTmuxSessionName）に閉じている。
+  it('tmux セッション名の規約は buildTmuxSessionName と一致する', () => {
+    const id = 'e2f9c1a0-1111-2222-3333-444455556666';
+    expect(buildTmuxKillSessionCommand(buildTmuxSessionName(id)).args).toContain(`aiterm-${id}`);
   });
 });
 

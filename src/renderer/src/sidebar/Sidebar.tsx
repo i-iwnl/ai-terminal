@@ -46,6 +46,12 @@ export interface SidebarProps {
   canFocusTaskTab: (agentSessionId: string) => boolean;
   /** 「タブに戻せる AI」の行を押したとき（tmux セッションへアタッチする） */
   onRecoverSession: (agentSessionId: string, provider: 'claude' | 'gemini') => void;
+  /**
+   * タスク一覧の行を右クリック／フォーカスしたときに、その行の agentSessionId を
+   * App.tsx へ知らせる（Issue #244 周6-a/6-b。`TaskListProps.onTargetSession` 参照）。
+   * 対象が一覧から消えたときは `null` が渡る。
+   */
+  onTargetSession: (agentSessionId: string | null) => void;
   onResumeHistory: (entry: SessionHistoryEntry) => void;
   /** タスク一覧の空状態にある「起動」ボタン用（Issue #20 I-3） */
   onLaunchClaude: () => void;
@@ -79,6 +85,7 @@ export default function Sidebar({
   onFocusTaskTab,
   canFocusTaskTab,
   onRecoverSession,
+  onTargetSession,
   onResumeHistory,
   onLaunchClaude,
   scopeAgentsToCwd,
@@ -161,6 +168,7 @@ export default function Sidebar({
             onLaunchClaude={onLaunchClaude}
             scopedToCwd={scopeAgentsToCwd}
             onRecoverSession={onRecoverSession}
+            onTargetSession={onTargetSession}
           />
         )}
         {tab === 'history' && <HistoryList onResume={onResumeHistory} onOpenMemo={openMemo} />}

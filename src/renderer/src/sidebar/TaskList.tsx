@@ -31,6 +31,8 @@ import {
   taskSessionKey,
   taskRowActionLabel,
 } from './taskRow';
+// 「設定は有効なのに tmux が使えない」パネルの文言（Issue #244 周7）。
+import { tmuxUnavailableCopy } from './tmuxUnavailableCopy';
 // タスク一覧の購読はここで直接 window.api.agents を呼ばず、共有ハブに委ねる
 // （App.tsx の Cmd+J も同じスナップショットを見る必要があるため。lib/agentTasksStore.ts 参照）。
 import { subscribeAgentTasks, recheckAgentTasks } from '../lib/agentTasksStore';
@@ -57,6 +59,25 @@ export interface TaskListProps {
   scopedToCwd: boolean;
   /** 「タブに戻せる AI」の行を押したとき。tmux セッションへアタッチするタブを開く。 */
   onRecoverSession: (agentSessionId: string, provider: 'claude' | 'gemini') => void;
+  /**
+   * 押せる行を右クリックしたとき、または DOM フォーカスを受けたときに、
+   * その行の agentSessionId を親（App.tsx）へ知らせる（Issue #244 周6-a）。
+   *
+   * ⭐ **右クリックとフォーカスの両方から同じコールバックを呼ぶ。** App.tsx 側は
+   * これを「最後に終了対象として指し示された AI セッション」として1つだけ保持し、
+   * 右クリックメニュー「この AI を終了」、およびメニューバー「選択中の AI を終了」
+   * （Issue #244 周6-b）が飛んできたときに使う。その「選択中」は**最後にフォーカスした行**
+   * と決まっている。ここで経路を分けると、2つ目の似た state が生える。
+   *
+   * ⭐ **対象が一覧から消えたら `null` を通知する。** 下の「終了後のフォーカス後始末」の
+   * `useEffect`（`focusedRowRef` 冒頭コメント）が、対象の行が消えた瞬間を既に捉えている
+   * ので、そこで新しい対象（または `null`）をあわせて通知する。ここに2つ目の監視機構
+   * （別の `useEffect` や差分検出）は作らない。
+   *
+   * ⚠ **これをしないと、メニュー「選択中の AI を終了」が「もう存在しない AI」を
+   * 指したまま有効に見え続ける**（Issue #244 周6-b）。
+   */
+  onTargetSession: (agentSessionId: string | null) => void;
 }
 
 export default function TaskList({
@@ -65,11 +86,16 @@ export default function TaskList({
   onLaunchClaude,
   scopedToCwd,
   onRecoverSession,
+  onTargetSession,
 }: TaskListProps) {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [liveSessions, setLiveSessions] = useState<LiveAgentSession[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [errorKind, setErrorKind] = useState<AgentTasksEvent['errorKind']>(undefined);
+  // Issue #244 周7: 設定は有効なのに tmux が使えない、というパネル単位のメッセージ。
+  // 判定は Main（poller.ts）が確定済みで、ここでは受け取った値をそのまま表示する
+  // （`liveSessions.length === 0` 等から Renderer が推測しない。鉄則5の逆になる）。
+  const [tmuxUnavailable, setTmuxUnavailable] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   // Issue #20 I-3「claude が PATH に無い」: ポーリングは pollIntervalMs（既定3秒）ごとに
@@ -102,6 +128,8 @@ export default function TaskList({
       setLiveSessions(e.liveSessions ?? []);
       setError(e.error);
       setErrorKind(e.errorKind);
+      // errorKind の loud/quiet 判定（下）とは独立の値なので、早期 return の前に必ず反映する。
+      setTmuxUnavailable(e.tmuxUnavailable === true);
 
       if (e.errorKind !== 'not-found') {
         // 解消した（または別種のエラーになった）ので、次に not-found が来たら
@@ -158,6 +186,34 @@ export default function TaskList({
     return () => window.clearInterval(timer);
   }, []);
 
+  // 終了後のフォーカス後始末（Issue #244 周6-a。差し戻し分の再設計）。
+  //
+  // ⚠ AI セッションの終了に成功すると、一覧から消えるのは**フォーカス中の要素
+  // そのもの**（右クリックでメニューを開く前に下の onContextMenu が対象を
+  // 掴んでいるので、その行は既にフォーカスされている）。明示的に次のフォーカス先へ
+  // 移さないと、フォーカスが `<body>` へ落ちる（実機で観測。周6-a 初版はこれを
+  // 「前レンダーとのスナップショット差分」で検出していたが、差分の基準となる
+  // スナップショットの更新タイミングが常に効果の実行タイミングと噛み合う保証が
+  // 無く、崩れる余地があった）。
+  //
+  // **いま何節にいるかは、消える前にしか分からない情報ではない。** 対象を
+  // 掴む瞬間（onFocus / onContextMenu）に、行そのものの `sessionKey` に加えて
+  // **どの節にいるか**（状態グループなら `TaskState`、「タブに戻せる AI」節なら
+  // 固定の `'recoverable'`）も一緒に憶えておけば、消えたかどうかは**そのレンダーで
+  // 確定している最新の `groups` / `recoverable` だけ**を見れば判定できる。
+  // 前レンダーとの差分を取る必要が無いぶん、効果が何回・どんな順序で走っても
+  // 同じ結論になる（idempotent）。
+  const focusedRowRef = useRef<{ key: string; sectionKey: string } | null>(null);
+  const rowElementRefs = useRef(new Map<string, HTMLButtonElement>());
+  // 節がまるごと空になったときの最終フォールバック先。**節自身の見出し
+  // （`.task-group__heading`）には逃がせない** — あれは「その節に1件以上ある」
+  // ときしか描画されない（`groupTasksForDisplay` が0件のグループを結果から
+  // 除外し、「タブに戻せる AI」節も `recoverable.length > 0` の条件レンダリング）。
+  // つまり最後の1行が消えるのと同じコミットで見出し自身も消えるため、
+  // 「節の見出しへ」という逃がし先はそもそも存在しない。常に描画されている
+  // パネル見出し（`<h2 className="panel-scope">`）を最終フォールバックにする。
+  const panelHeadingRef = useRef<HTMLHeadingElement | null>(null);
+
   // 表示順（グループ単位）の唯一の正は groupTasksForDisplay（src/shared/agent-status.ts）。
   // 「あなたの番」を先頭に固定し、未知の状態は3つ目のグループとして末尾に置く
   // （「あなたの番」に混ぜない。CLI が新しい status 値を返し始めても誤って人間を急かさないため）。
@@ -173,6 +229,48 @@ export default function TaskList({
     new Set(tasks.map((t) => taskSessionKey(t))),
     new Set(liveSessions.filter((s) => canFocus(s.agentSessionId)).map((s) => s.agentSessionId)),
   );
+
+  /** `focusedRowRef` が指す節の、いまの行キー一覧（このレンダーの `groups` / `recoverable` から直接引く）。 */
+  const keysInSection = (sectionKey: string): string[] => {
+    if (sectionKey === 'recoverable') return recoverable.map((s) => s.agentSessionId);
+    const group = groups.find((g) => (g.state as string) === sectionKey);
+    return group ? group.tasks.map((t) => taskSessionKey(t)) : [];
+  };
+
+  // 上の focusedRowRef 冒頭コメントの実装本体。
+  // **依存は `[tasks, liveSessions]`**（`groups` / `recoverable` は毎レンダー新しい
+  // 配列参照になるため、依存に入れると `now` の10秒ティックのたびに無駄に走る）。
+  // 効果の中身はこのレンダーで確定した `groups` / `recoverable`（クロージャ、
+  // `keysInSection` 経由）を読む。**前レンダーの状態を一切参照しない**ので、
+  // 呼ばれる回数やタイミングがずれても結論は変わらない。
+  useEffect(() => {
+    const focused = focusedRowRef.current;
+    if (focused === null) return;
+
+    const currentKeys = keysInSection(focused.sectionKey);
+    if (currentKeys.includes(focused.key)) return; // まだ居る。何もしない。
+
+    const nextKey = currentKeys[0];
+    if (nextKey !== undefined) {
+      // 同じ節に行が残っている。先頭（表示順の最初）へ。
+      rowElementRefs.current.get(nextKey)?.focus();
+      focusedRowRef.current = { key: nextKey, sectionKey: focused.sectionKey };
+      // 「最後に指し示された行」を新しいフォーカス先に合わせる（TaskListProps.onTargetSession
+      // 冒頭コメント参照）。移った先の行の onFocus でも同じ呼び出しが起きるが、
+      // それに頼らずここで明示的に呼ぶ（呼ばれる順序に依存しない）。
+      onTargetSession(nextKey);
+    } else {
+      // 同じ節がまるごと消えた（残り0件。上の panelHeadingRef 冒頭コメント参照）。
+      panelHeadingRef.current?.focus();
+      focusedRowRef.current = null;
+      // 対象そのものが一覧から消えた。**必ず null を通知する**（消さないと
+      // メニュー「選択中の AI を終了」が「もう存在しない AI」を指したまま有効に見える）。
+      onTargetSession(null);
+    }
+    // `groups` / `recoverable` / `keysInSection` を依存に含めない（このリポジトリに
+    // react-hooks の exhaustive-deps lint は無い）。上のコメントのとおり毎レンダー
+    // 新しい参照になるため、含めると `now` の10秒ティックのたびに無駄に走る。
+  }, [tasks, liveSessions]);
 
   const renderTask = (task: AgentTask) => {
     // 押せるか / 押すと何が起きるかの唯一の正は resolveTaskRowAction（taskRow.ts）。
@@ -291,6 +389,34 @@ export default function TaskList({
             className="task-item__row"
             aria-label={ariaLabel}
             onClick={() => onFocusTab(sessionKey)}
+            // 「最後に終了対象として指し示された AI セッション」を親へ知らせる
+            // （TaskListProps.onTargetSession 参照）。DOM フォーカスを受けた
+            // 時点でも右クリックと同じ扱いにする。あわせて「終了後のフォーカス
+            // 後始末」用に、いまどの節（状態グループ）にいるかも憶えておく
+            // （`focusedRowRef` 冒頭コメント参照）。
+            onFocus={() => {
+              focusedRowRef.current = { key: sessionKey, sectionKey: state };
+              onTargetSession(sessionKey);
+            }}
+            // 右クリックメニュー（Issue #244 周6-a）。**押せない行（<div>）には
+            // 付けない。** 終了できる対象（生きている tmux セッション）がそもそも
+            // 無いので、出すこと自体が誤りになる（S113 の否定側）。
+            //
+            // 項目表は `src/shared/context-menu.ts` の `taskContextMenuItems()` が
+            // 決める。Main はそれを `MenuItemConstructorOptions` に変換して
+            // `Menu.popup()` するだけ（`TerminalPane.tsx` の onContextMenu と同じ形）。
+            onContextMenu={(e) => {
+              e.preventDefault();
+              // メニューを出す前に、対象をこの行へ揃える（`close-pane` が
+              // 「アクティブなペイン」を先に onActivate?.() で揃えるのと同じ作法）。
+              focusedRowRef.current = { key: sessionKey, sectionKey: state };
+              onTargetSession(sessionKey);
+              window.api.menu.showTaskContextMenu();
+            }}
+            ref={(el) => {
+              if (el) rowElementRefs.current.set(sessionKey, el);
+              else rowElementRefs.current.delete(sessionKey);
+            }}
           >
             {bodyContent}
           </button>
@@ -310,7 +436,17 @@ export default function TaskList({
       {/* ⛔ **プロバイダ名を焼き込まない。** 下の「タブに戻せる AI」節には
           gemini も入る（tmux から取るので `claude agents --json` に依らない）ので、
           「…の Claude」と名乗ると、その節が出た瞬間に見出しが嘘になる。 */}
-      <h2 className="panel-scope">
+      <h2
+        className="panel-scope"
+        // 終了後のフォーカス後始末（`panelHeadingRef` 冒頭コメント）の最終
+        // フォールバック先。節そのものの見出しへは逃がせない（節は0件になると
+        // 見出しごと消えるため）ので、常に描画されているこの見出しへ着地させる。
+        // **`tabIndex="0"` にしない** — Tab は xterm が食うのでタブ順には入れないが、
+        // `tabIndex={-1}` ならプログラム的な `.focus()` は効く
+        // （`PaneSplitterHandle.tsx` と同じ考え方）。
+        tabIndex={-1}
+        ref={panelHeadingRef}
+      >
         {scopedToCwd ? 'このフォルダの AI' : 'このマシン全体の AI'}
       </h2>
       {errorKind === 'not-found' ? (
@@ -327,6 +463,14 @@ export default function TaskList({
           <button type="button" className="panel-empty__action" onClick={recheck}>
             再確認
           </button>
+        </div>
+      ) : tmuxUnavailable ? (
+        // Issue #244 周7: 設定「アプリを閉じても AI の作業を続ける」は有効なのに
+        // tmux が使えず、全行が一斉に押せない状態。**パネルに1つだけ**出す
+        // （行ごとに理由を出さない。tmuxUnavailableCopy.ts 冒頭参照）。
+        <div className="panel-message panel-empty panel-empty--tmux-unavailable">
+          <h3 className="panel-empty__heading">{tmuxUnavailableCopy().heading}</h3>
+          <p className="panel-empty__body">{tmuxUnavailableCopy().body}</p>
         </div>
       ) : error ? (
         <div className="panel-message panel-message--error">
@@ -376,6 +520,29 @@ export default function TaskList({
                     className="task-item__row"
                     aria-label={label}
                     onClick={() => onRecoverSession(session.agentSessionId, session.provider)}
+                    // 「タブに戻せる AI」の行も終了できる対象（S113 の docstring・
+                    // `taskContextMenuItems()` のコメント参照）。state 群の行と同じ
+                    // 作法（onFocus / onContextMenu で対象を親へ知らせてからメニューを出す）。
+                    onFocus={() => {
+                      focusedRowRef.current = {
+                        key: session.agentSessionId,
+                        sectionKey: 'recoverable',
+                      };
+                      onTargetSession(session.agentSessionId);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      focusedRowRef.current = {
+                        key: session.agentSessionId,
+                        sectionKey: 'recoverable',
+                      };
+                      onTargetSession(session.agentSessionId);
+                      window.api.menu.showTaskContextMenu();
+                    }}
+                    ref={(el) => {
+                      if (el) rowElementRefs.current.set(session.agentSessionId, el);
+                      else rowElementRefs.current.delete(session.agentSessionId);
+                    }}
                   >
                     <span className="task-item__status-dot" aria-hidden="true" />
                     <div className="task-item__body">

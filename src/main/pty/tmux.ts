@@ -36,7 +36,7 @@
 //
 // tmux が存在しない環境では必ず素の起動にフォールバックできることが前提（tmux 必須にしない）。
 
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 
 /** 起動するコマンドと引数の組。 */
 export interface CommandSpec {
@@ -173,6 +173,75 @@ export function wrapCommandWithTmux(sessionName: string, spec: CommandSpec): Com
  */
 export function buildTmuxAttachCommand(sessionName: string): CommandSpec {
   return { command: 'tmux', args: ['attach-session', '-t', sessionName] };
+}
+
+/**
+ * 生きている tmux セッションを**終了する**コマンドを組み立てる（Issue #244）。
+ *
+ * ⭐ **なぜ「クライアントを殺す」では足りないのか。** `pty.kill()` が殺せるのは
+ * tmux クライアントだけで、サーバ側のセッションと内側の `claude` / `gemini` は
+ * 生き残る（`.claude/skills/terminal/reference/pty-pitfalls.md` の 2026-08-03 実測）。
+ * タブを閉じるたびに1本ずつ残り、それを刈る仕組みがどこにも無かったため
+ * **累積した**（実機で7本が1〜2日前から入力待ちのまま生存していた）。
+ *
+ * ⛔ **`kill-server` を使わないこと。** 利用者自身が立てた無関係な tmux セッションまで
+ * 巻き込む。名前を指定して1つだけ落とす。
+ */
+export function buildTmuxKillSessionCommand(sessionName: string): CommandSpec {
+  return { command: 'tmux', args: ['kill-session', '-t', sessionName] };
+}
+
+/** tmux を叩くときの上限。ハングしたサーバに引きずられて閉じる操作が固まらないようにする。 */
+const TMUX_KILL_TIMEOUT_MS = 3000;
+
+/**
+ * tmux セッションを終了する。**投げっぱなし。待たない。失敗しても投げない。**
+ *
+ * ⛔⛔ **`spawnSync` を使わないこと**（2026-08-09 の design-review で指摘され、書き直した）。
+ * 「タブを閉じる」は1日に何十回もあるホットパスで、`Cmd+Option+W` は分割中のペインを
+ * 一度に閉じる。`spawnSync` だと tmux サーバがハングしたときに
+ * **Main プロセスが最大 3秒 × ペイン数ブロックし、その間ほかのタブの PTY 入出力も全部止まる**
+ * （Renderer は Main 経由でしか PTY に触れない。IPC ハンドラは直列に処理される）。
+ *
+ * ⚠ **同じファイルの `isTmuxAvailable()` / `ensureTmuxUpdateEnvironment()` は `spawnSync` だが、
+ * あれを写さないこと。** あの2つは**起動時に1度だけ**呼ばれるのでブロックが問題にならない。
+ * **頻度が違うものに同じ作法を写した**のが最初の誤りだった。前例にすべきは
+ * `src/main/pty/cwd.ts` の `runLsof()`（非同期 `execFile` + timeout）のほう。
+ *
+ * 非ゼロで終わる正常な場合が2つある:
+ *
+ * - セッションが既に消えている（内側の CLI が自分で終了していた）
+ * - tmux サーバごと落ちている
+ *
+ * どちらも「終了させたい」という目的は達成されているので、**タブを閉じる操作を
+ * 止める理由にならない**（ルート CLAUDE.md 鉄則5 と同じ方針）。
+ *
+ * ⭐ **`env` は、そのセッションを作ったときと同じものを渡すこと**（code-review 2026-08-09）。
+ * tmux はサーバ・クライアント型で、**どのサーバに繋ぐかは `TMUX_TMPDIR` が決める**。
+ * セッションは `mergeUserEnv(process.env, loginShellEnv())` を渡した node-pty から
+ * 作られているので、Main の素の `process.env` で kill しに行くと、
+ * **`~/.zshrc` で `TMUX_TMPDIR` を設定している利用者では別のサーバを見て空振りする**
+ * （そして本人は「閉じたら終わった」と思っている）。
+ */
+export function killTmuxSession(
+  sessionName: string,
+  env: Record<string, string | undefined>,
+): void {
+  const spec = buildTmuxKillSessionCommand(sessionName);
+  try {
+    execFile(spec.command, spec.args, { timeout: TMUX_KILL_TIMEOUT_MS, env }, (err, _out, stderr) => {
+      if (!err) return;
+      // 「セッションが見つからない」は正常（内側の CLI が自分で終了していた等）なので黙る。
+      // ⭐ **それ以外は必ず出す。** tmux が PATH に無い（ENOENT）・タイムアウトした、を
+      // 握り潰すと、**終了できていないのに画面上は終了したように見える**状態が
+      // 誰にも気づかれないまま累積する（この Issue の症状そのもの）。
+      if (/can't find session/i.test(stderr ?? '')) return;
+      console.warn(`[pty] tmux セッション ${sessionName} を終了できませんでした:`, err.message);
+    });
+  } catch (err) {
+    // execFile が同期的に投げるのは引数が不正なときだけ。ここでアプリを止めない。
+    console.warn(`[pty] tmux セッション ${sessionName} の終了を開始できませんでした:`, err);
+  }
 }
 
 let updateEnvironmentApplied = false;

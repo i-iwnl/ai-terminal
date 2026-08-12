@@ -125,6 +125,36 @@ export interface PtyExitEvent {
   signal?: number;
 }
 
+/**
+ * PTY を終了させる要求（Issue #244）。
+ *
+ * ⭐ **`terminateSession` は「その AI を終わらせるつもりか」という利用者の意図**であって、
+ * tmux が使われているかどうかではない。ラップされていなければ Main 側で黙って無視される。
+ *
+ * ⭐ **なぜ Renderer が意図を渡すのか。** Main はどの経路から呼ばれたかを知らないため。
+ * このアプリには「閉じたら終わる」ものと「閉じても残る」ものが混在する:
+ *
+ * | 経路 | `terminateSession` |
+ * |---|---|
+ * | タブ / ペインを閉じる（`Cmd+W` / `Cmd+Option+W` / タブバーの x） | `true` |
+ * | **アプリ終了（`before-quit`）** | **そもそもこの経路を通らない**（下記） |
+ *
+ * ⚠ **`false` を渡す呼び出し元は、いまはまだ1つも無い。** メニュー
+ * 「AI を残してタブを閉じる」を足す周（Issue #244 の周3）で入る。
+ * 省略時が `false` なのは、**渡し忘れたときに倒れる先を「従来どおり生き残る」側に
+ * するため**（逆に倒すと、意図しない終了が黙って起きる）。
+ *
+ * ⛔ **`before-quit` は `disposePtyAll()` が `entry.pty.kill()` を直接呼ぶので、
+ * このチャンネルを1度も通らない。** したがって「アプリを閉じても AI が生き残る」は
+ * ここを変更しても自動的に維持される。**`disposeEntry()` の中で tmux を終了させないこと**
+ * （そこへ書くと `before-quit` にも波及して、このアプリの差別化がそのまま消える）。
+ */
+export interface KillPtyRequest {
+  ptyId: string;
+  /** 省略時は `false`（従来どおり tmux セッションを残す）。 */
+  terminateSession?: boolean;
+}
+
 /** Renderer からの入力 */
 export interface PtyInputRequest {
   ptyId: string;
@@ -270,6 +300,27 @@ export interface AgentTasksEvent {
    * 従来どおり赤字の一行エラーのまま（打つ手がある／一時的な失敗であるため）。
    */
   errorKind?: 'not-found' | 'timeout' | 'failed';
+  /**
+   * 設定の `useTmux` は有効なのに、実際には tmux が使えない状態を検知したとき true
+   * （Issue #244 周7）。
+   *
+   * ⛔⛔ **`errorKind` に値を足さない。** `errorKind` は `claude agents --json`
+   * **そのものの失敗**（PATH に claude が無い・タイムアウト・その他）を表す軸で、
+   * tmux の可否とは**軸が違う**。claude は正常に動きつつ tmux だけ壊れている
+   * （あるいはその逆）が同時に起こりうるため、1つの値には表せない。**だから別フィールド**。
+   *
+   * `useTmux: false`（利用者が設定を切っている）のときは常に false/undefined。
+   * それは利用者の意図であって異常ではないため、メッセージを出さない
+   * （TaskList.tsx が判定するのではなく、ここで Main が既に絞り込んでいる）。
+   *
+   * ⭐ **Main（`src/main/agents/poller.ts`）が Main プロセス起動時に1度だけ
+   * `isTmuxAvailable()` を評価してキャッシュした結果を使う。** `isTmuxAvailable()` は
+   * `spawnSync('which', ['tmux'])` を伴う同期呼び出しで、起動時に1度だけ呼ばれる想定で
+   * 書かれている（`src/main/pty/tmux.ts` 冒頭）。3秒周期のポーリングから毎回呼ぶと
+   * 「頻度が違うものに同じ作法を写す」誤りを繰り返す（`killTmuxSession()` を
+   * `spawnSync` で書いて指摘された前例が `known-issues.md` 3-a 番にある）。
+   */
+  tmuxUnavailable?: boolean;
   /** 取得時刻（epoch ミリ秒） */
   fetchedAt: number;
 }
@@ -589,6 +640,19 @@ export type YourTurnJumpDirection = 'forward' | 'backward';
 export type AppAction =
   | { type: 'new-shell-tab' }
   | { type: 'close-tab' }
+  /**
+   * タブを閉じるが、**中の AI は終了させずに残す**（Issue #244）。
+   *
+   * 通常の `close-tab` / `close-pane` は tmux セッションごと終了する。
+   * こちらは従来の挙動（tmux クライアントだけを殺す）を明示的に選ぶ操作で、
+   * **メニューからしか到達できない**。
+   *
+   * ⛔ **ショートカットを割り当てていない。** `Cmd+Shift+W` は
+   * 「ウィンドウを閉じる」に使う（`src/main/menu.ts`）。めったに使わない操作なので
+   * メニューで足り、`Cmd+Option+W` の隣に置けば発見可能性も確保できる
+   * （design-review 2026-08-09 / ユーザー判断）。
+   */
+  | { type: 'close-tab-keep-agents' }
   | { type: 'switch-tab'; index: number }
   | { type: 'new-claude-tab' }
   | { type: 'new-gemini-tab' }
@@ -703,7 +767,28 @@ export type AppAction =
    * 消費するため、フォーカスがターミナルにある限り DOM のフォーカス順に出られない）。
    * WCAG 2.1.1（キーボード）。
    */
-  | { type: 'switch-sidebar-panel'; panel: SidebarPanel };
+  | { type: 'switch-sidebar-panel'; panel: SidebarPanel }
+  /**
+   * サイドバーのタスク一覧の行を右クリックし、「この AI を終了」を選んだ
+   * （Issue #244 周6-a）。
+   *
+   * ⭐ **タブを開かずに終了させる導線がこれで初めて生まれる。** 既存の `close-tab` /
+   * `close-pane` 系はすべて「開いているタブ（PTY）」が起点で、一覧の行だけを見て
+   * AI を終了させる経路が無かった（タブを閉じた後や、アプリ再起動後に「戻せる」だけの
+   * 行として残っているセッションは、終了させるには一度タブを開き直すしかなかった）。
+   *
+   * ⛔ **`agentSessionId` を運ばない。** どの行に対する操作かは、右クリックした
+   * Renderer 側が既に把握している（`close-pane` が明示的な ID を持たず
+   * 「アクティブなペイン」を暗黙の対象にするのと同じ作法）。Renderer はこの操作を
+   * 受け取った時点で、右クリックした行の agentSessionId を添えて
+   * `window.api.agents.killSession()` を呼ぶ。
+   *
+   * ⛔ **メニューに「タブに戻す」は無い。** 行そのものをクリックすれば戻れるので、
+   * 同じ操作の入口を2つ作らない（design-review `.claude/workspace/issue-244/
+   * design-review/proposal-v2-after-review.md` §2-E' の「『戻す』ボタンは作らない」
+   * という判断をメニューにも適用した）。
+   */
+  | { type: 'kill-agent-session' };
 
 /** サイドバーの3パネル。`Sidebar.tsx` の内部状態と `AppAction` の両方が使う。 */
 export type SidebarPanel = 'tasks' | 'history' | 'memo';
@@ -730,6 +815,20 @@ export const IpcInvoke = {
   notifyTestWebhook: 'notify:test-webhook',
   appPaths: 'app:paths',
   appAccessibilitySupport: 'app:accessibility-support',
+  /**
+   * サイドバーのタスク一覧の行から、タブを開かずに AI セッションを終了させる
+   * （Issue #244 周6-a。`AppAction`（`kill-agent-session`）参照）。
+   *
+   * ⭐ **`pty:kill` とは別チャンネル。** `pty:kill` は「開いている PTY（ptyId）」が
+   * 起点だが、一覧の行はタブを開いていなくても存在しうる（アプリ再起動後に
+   * `recoverable: true` として残っている行など）。`ptyId` を持たない対象を
+   * 終了させる経路が無かった。
+   *
+   * 引数は `agentSessionId`（string）そのもの。実装（`registerPtyHandlers`）が
+   * `buildTmuxSessionName()` で tmux セッション名へ変換し、`ptyKill` と同じ
+   * 巻き添え死ガード（他の PTY が同じセッションを使っていれば終了させない）を通す。
+   */
+  agentSessionKill: 'agent-session:kill',
 } as const;
 
 /** Renderer -> Main（send / 戻り値なし・高頻度） */
@@ -746,6 +845,28 @@ export const IpcSend = {
    */
   menuPaneCount: 'menu:pane-count',
   /**
+   * アクティブなタブに「残せる AI」が何件あるか（Issue #244）。
+   *
+   * メニュー「AI を残してタブを閉じる」の有効・無効にだけ使う。0 件なら無効化する
+   * （**非表示にはしない**。理由は `src/main/menu.ts` の `updateKeepAgentsEnabled`）。
+   * ペインの木は Renderer だけが持つので、`menuPaneCount` と同じく数だけを渡す。
+   */
+  menuKeepableAgentCount: 'menu:keepable-agent-count',
+  /**
+   * サイドバーのタスク一覧で「最後に指し示された行」に、終了できる対象が
+   * いま在るか（Issue #244 周6-b）。
+   *
+   * メニュー「ファイル > 選択中の AI を終了」の有効・無効にだけ使う。
+   *
+   * ⭐ **`menuPaneCount` / `menuKeepableAgentCount` と違い、`number` ではなく
+   * `boolean` にしてある。** あの2つは「いま何件あるか」を数える値で、複数件を
+   * 同時に扱える操作（タブを閉じる・AI を残す）に対応する。一方この操作の対象は
+   * **常に0件か1件**（`killTargetSessionIdRef` が保持する「最後に指し示された行」
+   * ただ1つ。`App.tsx` 参照）。`number` にすると「複数を同時に終了できる」と
+   * 誤読させる余地が生まれるため、対象の有無だけを表す `boolean` にした。
+   */
+  menuKillableAgentPresent: 'menu:killable-agent-present',
+  /**
    * ターミナル面の右クリックメニューを出す（Issue #135）。
    *
    * **Renderer は「状況」だけを送り、項目表は `src/shared/context-menu.ts` が決める。**
@@ -753,6 +874,23 @@ export const IpcSend = {
    * ペインの木は Renderer だけが持つので、`menuPaneCount` と同じく数だけを渡す。
    */
   contextMenuShow: 'context-menu:show',
+  /**
+   * サイドバーのタスク一覧の行を右クリックしたときのメニューを出す
+   * （Issue #244 周6-a）。
+   *
+   * ⛔ **`contextMenuShow`（ターミナル面用）とは別チャンネル。** payload 型を
+   * 判別ユニオンへ広げて共用する案もあったが、あちらの型は
+   * `e2e/specs/S91-terminal-context-menu.spec.ts` が固定しているターミナル面専用の
+   * 契約で、広げると S91 に波及する。**画面ごとにチャンネルを分けたほうが、
+   * 既存の検査を壊さない。**
+   *
+   * 項目表は `src/shared/context-menu.ts` の `taskContextMenuItems()` が正で、
+   * `contextMenuShow` と同じく Main はそれを `MenuItemConstructorOptions` に
+   * 変換して `Menu.popup()` するだけ。**ただしクリックの配線は違う**（`menu.ts` の
+   * 実装コメント参照。設定ウィンドウにフォーカスがあるときに本体へ送らない
+   * 保護＝`routeMenuAction()` を通す）。
+   */
+  taskContextMenuShow: 'task-context-menu:show',
   /** ウィンドウタイトルの設定（Issue #119 周5 / #20 の K-10） */
   windowSetTitle: 'window:set-title',
 } as const;
@@ -785,7 +923,7 @@ export const IpcEvent = {
 export interface RendererApi {
   pty: {
     spawn(req: SpawnPtyRequest): Promise<SpawnPtyResult>;
-    kill(ptyId: string): Promise<void>;
+    kill(req: KillPtyRequest): Promise<void>;
     /**
      * その PTY プロセスがいま居るディレクトリ。
      * シェルタブの `cd` に追従するために、アクティブなタブへ定期的に問い合わせる。
@@ -801,6 +939,11 @@ export interface RendererApi {
     list(req: ListAgentsRequest): Promise<AgentTasksEvent>;
     /** ポーリング結果の購読。購読解除関数を返す */
     onTasks(listener: (e: AgentTasksEvent) => void): () => void;
+    /**
+     * サイドバーのタスク一覧の行から、タブを開かずに AI セッションを終了させる
+     * （Issue #244 周6-a。`IpcInvoke.agentSessionKill` 参照）。
+     */
+    killSession(agentSessionId: string): Promise<void>;
   };
   history: {
     list(req: ListHistoryRequest): Promise<ListHistoryResult>;
@@ -872,10 +1015,33 @@ export interface RendererApi {
      */
     reportPaneCount(count: number): void;
     /**
+     * アクティブなタブに「残せる AI」が何件あるかを Main へ知らせる（Issue #244）。
+     * メニュー「AI を残してタブを閉じる」の有効・無効にだけ使う。
+     */
+    reportKeepableAgentCount(count: number): void;
+    /**
+     * サイドバーのタスク一覧で「最後に指し示された行」に、終了できる対象が
+     * いま在るかを Main へ知らせる（Issue #244 周6-b。`IpcSend.menuKillableAgentPresent`
+     * 参照）。メニュー「選択中の AI を終了」の有効・無効にだけ使う。
+     *
+     * ⚠ **対象が消えたら（一覧から行が消えたら）必ず `false` を送ること。**
+     * 送り忘れると、メニューが「もう存在しない AI」を指したまま有効に見え続ける。
+     */
+    reportKillableAgentPresent(present: boolean): void;
+    /**
      * ターミナル面の右クリックメニューを出す（Issue #135。IpcSend.contextMenuShow 参照）。
      * 項目が選ばれた結果は既存の `onAction` 経由で戻ってくる（新しい経路を作らない）。
      */
     showContextMenu(state: TerminalContextMenuState): void;
+    /**
+     * サイドバーのタスク一覧の行の右クリックメニューを出す
+     * （Issue #244 周6-a。`IpcSend.taskContextMenuShow` 参照）。
+     *
+     * 項目は行によらず固定（`taskContextMenuItems()` が唯一の正）なので、
+     * `showContextMenu()` と違い状態を運ばない。選ばれた結果は
+     * 既存の `onAction` 経由で戻ってくる（新しい経路を作らない）。
+     */
+    showTaskContextMenu(): void;
   };
   session: {
     /**

@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { launchApp, closeApp, type LaunchedApp } from '../fixtures/harness';
+import { readKilledTmuxSessions, waitForNewTmuxSessionName } from '../fixtures/tmuxLivePanes';
 
 let launched: LaunchedApp;
 
 test.beforeEach(async () => {
   // **偽 tmux + `useTmux: true`。** これが無いと `wrappedInTmux` が立たず、
-  // 「閉じると回収できなくなる」状態そのものを作れない（S84 と同じ構成）。
+  // 「閉じると AI が終了する」状態そのものを作れない（S84 と同じ構成）。
   launched = await launchApp({ config: { useTmux: true }, fakeTmux: true });
 });
 
@@ -13,38 +14,71 @@ test.afterEach(async () => {
   await closeApp(launched);
 });
 
+/** メニュー項目を Main プロセス側で探して押す（S36 と同じ手口）。 */
+async function clickMenuItem(app: LaunchedApp['app'], label: string): Promise<boolean> {
+  return app.evaluate(({ Menu }, target) => {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) return false;
+    let found: Electron.MenuItem | undefined;
+    const walk = (items: Electron.MenuItem[]): void => {
+      for (const item of items) {
+        if (item.label === target) found = item;
+        if (item.submenu) walk(item.submenu.items);
+      }
+    };
+    walk(menu.items);
+    if (!found?.click || !found.enabled) return false;
+    found.click();
+    return true;
+  }, label);
+}
+
+/** メニュー項目が有効かどうか。 */
+async function menuItemEnabled(app: LaunchedApp['app'], label: string): Promise<boolean | null> {
+  return app.evaluate(({ Menu }, target) => {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) return null;
+    let found: Electron.MenuItem | undefined;
+    const walk = (items: Electron.MenuItem[]): void => {
+      for (const item of items) {
+        if (item.label === target) found = item;
+        if (item.submenu) walk(item.submenu.items);
+      }
+    };
+    walk(menu.items);
+    return found ? found.enabled : null;
+  }, label);
+}
+
 /**
- * Issue #158。**`Cmd+W`（ペインを閉じる）が、確認の判定を通ること。**
+ * Issue #158 / #244。**「閉じる」の2つの意味が、それぞれ正しく効くこと。**
  *
- * `Cmd+W` はペインが1枚しか無いタブでは結果としてタブごと閉じるが、
- * **その経路は「タブを閉じる唯一の入口」とされていた `requestCloseTab` を
- * 通っていなかった**（`App.tsx` の `case 'close-pane'` が `closeActivePane` を
- * 直接呼んでいた）。そのため tmux でラップされた gemini のペインを `Cmd+W` で
- * 閉じると、**確認も通知も一切出ないまま、アプリからは二度と回収できない
- * tmux セッションとプロセスが残る**。
+ * #158 の時点では `Cmd+W` が確認の判定を通ることだけを見ていた。
+ * **#244 で「閉じる」の意味そのものが変わった**ので、この spec も対を見る形へ書き直した。
  *
- * 回収できるかの条件は `src/main/pty/tmux.ts` 冒頭が唯一の正。
+ * | 操作 | AI | 告知の面 |
+ * |---|---|---|
+ * | `Cmd+W` / `Cmd+Option+W` / タブバーの x | **終了する** | live region（目で見て分かる結果なので） |
+ * | メニュー「AI を残してタブを閉じる」 | **残る** | 通知バナー（**残ったことは目で見えない**） |
  *
- * ⭐ **Issue #155 で前提が反転した。** gemini にも安定した `agentSessionId` が入り
- * （S102）、分類が `ptyKind` から `agentSessionId` の有無へ変わったので、
- * **tmux + gemini の1ペインでは確認が出なくなった**。この spec はその新しい
- * 振る舞いと、**確認を消した分の受け皿（閉じた直後の告知）が実際に鳴ること**を見る。
+ * ⭐ **片方だけ見ると、両方とも通る実装が緑になる。**
+ * 「常に終了する」実装は 2 を、「常に残す」実装は 1 を、それぞれ落とせない。
  *
- * **`Cmd+W` は `Cmd+Option+W` より押しやすく、実運用ではこちらが主要な経路になる。**
+ * ⛔ **面を取り違えないこと**（design-rules 節8）。`.app-status` は
+ * `clip: rect(0,0,0,0)` で画面から隠されているので、**目で見えない事実をそこへ流すと
+ * 支援技術利用者にしか届かない**。逆に、目で見て分かる結果をバナーに出すと
+ * 1日に何十回の雑音になる。判定の正は `closedTabChannel()`。
  *
- * 判定の正は `closeTabCopy.ts` の `needsCloseConfirmation`（`test/unit/` が
- * 「1 leaf・tmux+gemini / tmux+claude / tmux 無し」の3ケースを固定している）。
- * ここでは**実際に `Cmd+W` を押したときにその判定を通ること**だけを見る。
- *
- * **手数が増えていないことも同じ spec で見る。** 確認が要らない側（tmux でラップ
- * されないシェル）で `Cmd+W` を押してもダイアログが出ないこと。これが無いと
- * 「全部確認するようにした」という直し方でも green になってしまう。
+ * ⛔ 見出し・文言に「実行中」「回収」を出さない（design-rules の禁止語 / 内部語）。
  */
-test('S90 Cmd+W で回収できる gemini ペインは確認なしで閉じ、2枚同時なら確認が出る', async () => {
-  const { window } = launched;
+test('S90 閉じれば AI は終了し、メニューから明示したときだけ残る', async () => {
+  const { window, fixturesDir } = launched;
 
   const tabs = window.locator('.tab-bar__tab');
   const dialog = window.locator('[role="alertdialog"]');
+  const notices = window.locator('.notice-banner');
+  const status = window.locator('.app-status');
+  const readKilled = (): string => readKilledTmuxSessions(fixturesDir);
 
   await expect(tabs).toHaveCount(1, { timeout: 15_000 });
   await expect(window.locator('.terminal-pane__container .xterm-screen').first()).toContainText(
@@ -52,72 +86,75 @@ test('S90 Cmd+W で回収できる gemini ペインは確認なしで閉じ、2�
     { timeout: 20_000 },
   );
 
-  // --- 否定側を先に見る: シェルタブの Cmd+W は確認を出さない -------------------
+  // --- 否定側を先に見る: シェルタブでは確認も出ず、「残す」も選べない -----------
   //
-  // **先に見るのが要点。** あとに置くと、直前の確認をキャンセルした状態が
-  // 残っているせいで通ったのか区別しにくい。
   // シェルは `maybeWrapWithTmux` が必ず素通しするので `wrappedInTmux` は false。
+  // ⭐ **「AI を残してタブを閉じる」は無効化する。非表示にはしない**（macOS の作法。
+  // 項目の位置が動くと学習が壊れる。design-review で4人が一致）。
   await window.keyboard.press('Meta+t');
   await expect(tabs).toHaveCount(2, { timeout: 15_000 });
+  await expect
+    .poll(() => menuItemEnabled(launched.app, 'AI を残してタブを閉じる'), { timeout: 10_000 })
+    .toBe(false);
+
   await window.keyboard.press('Meta+w');
-  // タブが1枚に戻る = 確認を挟まずそのまま閉じた。
   await expect(tabs).toHaveCount(1, { timeout: 15_000 });
   await expect(dialog).toHaveCount(0);
 
-  // --- 本題1: tmux でラップされた gemini タブは、確認なしで閉じる ---------------
-  //
-  // ⭐ **Issue #155 でここが反転した。** gemini にも安定した `agentSessionId` が
-  // 入り、履歴から戻れるようになったので、止める理由が消えた。
+  // --- 本題1: `Cmd+W` は tmux でラップされた gemini を終了する -------------------
   await window.keyboard.press('Meta+Shift+E');
   await expect(tabs).toHaveCount(2, { timeout: 15_000 });
   await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
-  // ラップされたことを画面から確認する（`wrappedInTmux` が Renderer まで
-  // 届いていなければ、以降の assert は別の理由で通ってしまう。S84 と同じ hook）。
+  // ラップされたことを画面から確認する（`wrappedInTmux` が Renderer まで届いて
+  // いなければ、以降の assert は別の理由で通ってしまう。S84 と同じ hook）。
   await window.keyboard.press('Meta+f');
   await expect(window.locator('.terminal-search__hint')).toBeVisible({ timeout: 15_000 });
   await window.keyboard.press('Escape');
 
-  await window.keyboard.press('Meta+w');
+  // 残せる AI が居るので、メニュー項目は有効になっている。
+  await expect
+    .poll(() => menuItemEnabled(launched.app, 'AI を残してタブを閉じる'), { timeout: 10_000 })
+    .toBe(true);
 
+  const terminatedSession = await waitForNewTmuxSessionName(fixturesDir, '');
+
+  await window.keyboard.press('Meta+w');
   await expect(tabs).toHaveCount(1, { timeout: 15_000 });
   await expect(dialog).toHaveCount(0);
 
-  // ⭐ **確認を消した分の受け皿が実際に鳴っていること**（design-review で4人が
-  // 「削除ではなく降格にせよ」と指摘した本体）。ここを見ないと、
-  // 「確認をやめただけで何も伝えない」実装でも green になる。
-  //
-  // ⛔ **行き先は `.app-status` ではなく通知バナー**（2026-08-07 に変更）。
-  // `.app-status` は `clip: rect(0,0,0,0)` で**画面から隠されている**ので、
-  // そこへ流していた間、「タブを閉じても AI は走り続けている」という
-  // この操作でいちばん驚く事実が**支援技術利用者にしか届いていなかった**。
-  // Issue #155 が心配した非対称が、ちょうど裏返しの形で実現していた
-  // （design-review で5人中4人が独立に指摘）。
-  //
-  // `.notice-list` は error が無ければ `role="status"` なので、**視覚と読み上げの
-  // 両方に1回ずつ**届く。判定の正は `closedTabChannel`（`test/unit/close-tab-copy.test.ts`）。
-  const notices = window.locator('.notice-banner');
-  await expect(notices).toContainText(['終了せず残っています']);
-  await expect(notices).toContainText(['Gemini 1 件']);
+  // ⭐ 実際に終了させている。
+  await expect
+    .poll(readKilled, { timeout: 15_000, message: 'Cmd+W が tmux セッションを終了させていない' })
+    .toContain(terminatedSession);
 
-  // ⛔ **同じ文言を2回告知したら2回とも届くこと**（Issue #155 の design-review で
-  // a11y が「受け皿が成立する前提条件」と指摘）。バナーは1件ごとに別 key で
-  // 積まれるので（`pushNotice`）、2回目は**新しい要素として増える**。
-  // 同じ文言をまとめてしまう実装（dedupe）に変えると、ここが 1 のままで落ちる。
-  const persistentNotices = window.locator('.notice-banner', { hasText: '終了せず残っています' });
-  await expect(persistentNotices).toHaveCount(1);
+  // ⭐ **告知は live region に1回だけ**（目で見て分かる結果なので、バナーは出さない）。
+  await expect(status).toContainText('終了しました', { timeout: 15_000 });
+  // ⛔ 事実と逆の旧文言が残っていないこと。**ここが #244 以前の嘘そのもの。**
+  await expect(status).not.toContainText('終了せず残っています');
+  await expect(notices).toHaveCount(0);
 
+  // --- 本題2: メニューから明示したときだけ、AI は残る --------------------------
   await window.keyboard.press('Meta+Shift+E');
   await expect(window.locator('.tab-bar__tab--gemini')).toHaveCount(1, { timeout: 15_000 });
-  await window.keyboard.press('Meta+w');
+  await expect(tabs).toHaveCount(2, { timeout: 15_000 });
+  const keptSession = await waitForNewTmuxSessionName(fixturesDir, terminatedSession);
+
+  await expect
+    .poll(() => clickMenuItem(launched.app, 'AI を残してタブを閉じる'), { timeout: 10_000 })
+    .toBe(true);
   await expect(tabs).toHaveCount(1, { timeout: 15_000 });
-  await expect(persistentNotices).toHaveCount(2, { timeout: 15_000 });
 
-  // ⛔ **同じ文を live region にも流していないこと**（VoiceOver が2回読む）。
-  // 「両方に流さない」は `closedTabChannel` が守っている唯一の規約なので、
-  // 破ったら気づけるようにここで見る。
-  await expect(window.locator('.app-status')).not.toContainText('終了せず残っています');
+  // ⭐ **こちらは通知バナー**（残ったことは目で見えないので、視覚面に出す）。
+  await expect(notices).toContainText(['終了せず残っています'], { timeout: 15_000 });
+  await expect(notices).toContainText(['Gemini 1 件']);
+  // ⛔ 同じ文を live region にも流さない（VoiceOver が2回読む）。
+  await expect(status).not.toContainText('終了せず残っています');
+  // ⭐ そして**終了させていない**。
+  expect(readKilled(), 'AI を残すはずなのに tmux セッションを終了させている').not.toContain(
+    keptSession,
+  );
 
-  // --- 本題2: 2枚を一度に閉じるときは、いまも確認が出る -------------------------
+  // --- 本題3: 2枚を一度に閉じるときは、いまも確認が出る -------------------------
   //
   // **確認の機構ごと消す直し方**（`needsCloseConfirmation` が常に false）でも
   // 上までは green になるので、残っている条件を必ず1つ踏む。
@@ -128,7 +165,6 @@ test('S90 Cmd+W で回収できる gemini ペインは確認なしで閉じ、2�
 
   // ⛔ **`.terminal-pane` の総数で分割を確かめない。** この時点でタブが2枚あるので、
   // 分割していなくても総数は2になる（実際にこれで空振りした）。
-  // **アクティブなタブの x ボタンのラベル**は、そのタブのペイン数だけを見ている。
   await expect(tabs.nth(1).locator('.tab-bar__close')).toHaveAttribute(
     'aria-label',
     'タブを閉じる（2 ペイン）',
@@ -138,6 +174,10 @@ test('S90 Cmd+W で回収できる gemini ペインは確認なしで閉じ、2�
   await window.keyboard.press('Meta+Alt+w');
 
   await expect(dialog).toBeVisible({ timeout: 10_000 });
+  // ⭐ 確認の文言も「終了します」側になっていること（#244 以前は
+  // 「AI の作業は続きます」と出ており、確定した瞬間に嘘になっていた）。
+  await expect(dialog).toContainText('終了します');
+  await expect(dialog).not.toContainText('続きます');
   await expect(tabs).toHaveCount(2);
 
   // キャンセルすればタブは残る（確認が形だけになっていないこと）。

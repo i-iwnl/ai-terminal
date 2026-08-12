@@ -117,6 +117,20 @@ test('S36 アプリケーションメニューが定義され、再読み込み�
   // 起動直後はタブが1枚だけなのでラベルに「（N ペイン）」は付かない
   // （menu.ts の updateCloseTabLabel 参照）。
   expect(byLabel.get('タブを閉じる')?.accelerator).toBe('Cmd+Option+W');
+  // Issue #244。**「閉じる」の意味を変えた分の代替導線。**
+  // ⛔ アクセラレータを持たない（`Cmd+Shift+W` は下の「ウィンドウを閉じる」が使う）。
+  // これが唯一の到達手段なので、**メニューから消えると機能ごと到達不能になる。**
+  expect(byLabel.has('AI を残してタブを閉じる')).toBe(true);
+  // ⚠ `evaluate` の戻り値は構造化クローンを通るので、**未設定は `undefined` ではなく `null`**。
+  expect(byLabel.get('AI を残してタブを閉じる')?.accelerator ?? null).toBeNull();
+  // ⭐ **第3の層**（Issue #244 / design-review の macOS ペルソナ）。
+  // `window-all-closed` は darwin で `app.quit()` を呼ばないので、
+  // **ウィンドウを閉じても AI は生き残る**（アプリ終了と同じ扱い）。
+  // ⛔ 既定の accelerator は `Cmd+W`（= ペインを閉じる）と衝突するので、
+  // 明示的に `Cmd+Shift+W` へ振り替えてある。ここが `Cmd+W` に戻ったら
+  // **1つのキーが2つの意味を持つ。**
+  expect(byLabel.get('ウィンドウを閉じる')?.accelerator).toBe('Cmd+Shift+W');
+  expect(byLabel.get('ウィンドウを閉じる')?.role?.toLowerCase()).toBe('close');
   // ターミナルの文字サイズ（Issue #120 周1）。**Electron の zoom を置き換えたもの。**
   // こちらは `AppConfig.fontSize` を動かすので config.json に保存され、
   // xterm の文字だけが変わる（サイドバー・タブバーは動かない）。

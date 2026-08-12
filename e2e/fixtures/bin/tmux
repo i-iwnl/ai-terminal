@@ -23,9 +23,15 @@
 #   挙動は無い）。
 # - `-A`（同名セッションがあれば attach、無ければ new-session）の分岐は
 #   検証していない。常に「新規にコマンドを exec する」動きしかしない。
+# - `attach-session` には応答しない（アプリは `-A` 経由でしかアタッチしない）。
 #
 # list-sessions は上記と別に扱う（下を参照）。**一覧の中身はフィクスチャが決める**ので、
 # 「アプリが一覧をどう読むか」は検証できるが、「実際にアタッチできるか」は検証できない。
+#
+# kill-session も同じ枠組みで扱う（Issue #244）。**このシムは exec するだけなので
+# 「生きているセッション」の実体を持たない。** 生存を表しているのは
+# tmux-live-panes.txt というフィクスチャのほうなので、kill-session は
+# **そのフィクスチャから該当行を落とす**ことで「セッションが消えた」を表現する。
 
 set -uo pipefail
 
@@ -55,6 +61,66 @@ if [ "${1:-}" = "list-sessions" ]; then
     exit 0
   fi
   echo "no server running" >&2
+  exit 1
+fi
+
+# kill-session -t <sessionName>: セッションを終了する（Issue #244）。
+#
+# 受けた名前は ${AI_TERMINAL_E2E_FIXTURES}/tmux-killed-sessions.txt へ**追記**する。
+# spec 側はこのファイルを読むことで「アプリが実際に kill-session を叩いたか」を検証できる。
+# ⭐ **成否によらず必ず記録する。** 記録しているのは「アプリが何を要求したか」で、
+# tmux 側の結果ではない。ここを成功時だけにすると、**縮退した（諦めた）実装と
+# 呼んですらいない実装が区別できなくなる**。
+#
+# あわせて tmux-live-panes.txt から該当行を落とす（このシムでの「セッションの生存」は
+# あのファイルが唯一の正なので、消さないと「終了したのに一覧に残る」が再現できない）。
+#
+# ⛔⛔ **記録は必ず最後に書く。順序に意味がある。**
+# spec は `expect.poll(readKilled)` で「叩かれた」を待ってから、live-panes を**同期で**
+# 確かめる。記録を先に書くと、**poll が緑になった時点でまだ live-panes を書き換えて
+# いない**瞬間があり、直後の同期 assert が理由不明で落ちる（フレークになる）。
+# design-review の保守レビュー（2026-08-09）が指摘し、順序を入れ替えた。
+#
+# 終了ステータスは本物に合わせる: 見つかれば 0、無ければ非ゼロ + `can't find session`。
+# **アプリはこの非ゼロで落ちてはいけない**（tmux が既に死んでいる場合が普通にある）。
+if [ "${1:-}" = "kill-session" ]; then
+  target=""
+  kill_args=("$@")
+  j=1
+  while [ "$j" -lt "$#" ]; do
+    if [ "${kill_args[$j]}" = "-t" ]; then
+      j=$((j + 1))
+      target="${kill_args[$j]:-}"
+      break
+    fi
+    j=$((j + 1))
+  done
+
+  killed=1
+  live="${AI_TERMINAL_E2E_FIXTURES:-}/tmux-live-panes.txt"
+  if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ] && [ -f "$live" ] && [ -n "$target" ]; then
+    # 第1フィールド（#{session_name}）が一致する行だけを落とす。区切りは 0x1f。
+    #
+    # ⛔ **`-F'\x1f'` と書かないこと。** macOS の awk（BSD awk）は `\x` エスケープを
+    # 解釈しないので、区切りが「バックスラッシュ・x・1・f のいずれかの1文字」になり、
+    # **一致しないまま静かに失敗する**（2026-08-09 に実際に踏んだ）。
+    # bash の ANSI-C 引用（`$'\037'`）でバイトそのものを渡す。
+    sep=$'\037'
+    if awk -F"$sep" -v t="$target" '$1 == t { found = 1 } END { exit found ? 0 : 1 }' "$live"; then
+      awk -F"$sep" -v t="$target" '$1 != t' "$live" > "$live.tmp" && mv "$live.tmp" "$live"
+      killed=0
+    fi
+  fi
+
+  # ここで初めて記録する（上の ⛔ を参照）。
+  if [ -n "${AI_TERMINAL_E2E_FIXTURES:-}" ]; then
+    printf '%s\n' "$target" >> "${AI_TERMINAL_E2E_FIXTURES}/tmux-killed-sessions.txt"
+  fi
+
+  if [ "$killed" -eq 0 ]; then
+    exit 0
+  fi
+  echo "can't find session: $target" >&2
   exit 1
 fi
 

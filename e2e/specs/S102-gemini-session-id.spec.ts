@@ -40,9 +40,10 @@ test('S102 gemini の tmux セッション名が新規起動と履歴 resume で
   // **最初のシェルタブのプロンプトが出るまで待ってから操作する**（S09 / S10 と同じ）。
   // これが無いと、タブは作られるのにアクティブにならず、以降の assert が
   // シェルのペインを見続けて 20 秒待って落ちる（実際に踏んだ）。
-  await expect(
-    window.locator('.terminal-pane__container .xterm-screen').first(),
-  ).toContainText(/[$%#>]/, { timeout: 20_000 });
+  await expect(window.locator('.terminal-pane__container .xterm-screen').first()).toContainText(
+    /[$%#>]/,
+    { timeout: 20_000 },
+  );
 
   // --- 1. 新規起動 -----------------------------------------------------------
   await window.keyboard.press('Meta+Shift+E');
