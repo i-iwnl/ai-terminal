@@ -16,6 +16,7 @@ import { getAppPaths } from '../app-paths';
 import { getConfig } from '../config';
 import { notify } from '../notify';
 import { retryLoginShellPath } from '../shell-path';
+import { isTmuxAvailable } from '../pty/tmux';
 import { listLiveAgentSessions } from '../pty/tmuxSessions';
 import { listClaudeAgents } from './claude';
 import { selectCompletedTasks } from './completionNotice';
@@ -84,6 +85,22 @@ let targetWindow: BrowserWindow | null = null;
 let started = false;
 
 /**
+ * tmux が使えるかどうかを、Main 起動時に1度だけ判定してキャッシュした値
+ * （`AgentTasksEvent.tmuxUnavailable` の JSDoc参照）。
+ *
+ * ⛔ **`fetchTasks()`（3秒周期のポーリングから毎回呼ばれる）の中で `isTmuxAvailable()`
+ * を直接呼ばないこと。** `isTmuxAvailable()` 自体は `spawnSync` を伴い、起動時に
+ * 1度だけ呼ばれる想定で書かれている（`src/main/pty/tmux.ts` 冒頭）。
+ * `registerAgentHandlers()`（Main 起動時に1度だけ呼ばれる）でこの変数へ結果を
+ * 控え、以後の周期はここを読むだけにする。
+ *
+ * 既定値の `false` は「まだ評価していない」の意味ではなく、
+ * `registerAgentHandlers()` が必ず `runPollCycle()` の起動より前に代入し終えるため
+ * 実際に未評価のまま参照されることは無い。
+ */
+let tmuxAvailableAtStartup = false;
+
+/**
  * エージェントタスク一覧関連の IPC ハンドラを登録し、ポーリングを開始する。
  * @param win ポーリング結果を push する対象のウィンドウ。
  */
@@ -94,6 +111,10 @@ export function registerAgentHandlers(win: BrowserWindow): void {
   // （ipcMain.handle の二重登録はエラーになるため、多重タイマー防止も兼ねてここで防ぐ）。
   if (started) return;
   started = true;
+
+  // tmux の可否はここで1度だけ判定してキャッシュする（tmuxAvailableAtStartup 冒頭コメント）。
+  // このあとの `runPollCycle()` 起動より前に必ず終わらせる。
+  tmuxAvailableAtStartup = isTmuxAvailable();
 
   ipcMain.handle(
     IpcInvoke.agentsList,
@@ -160,6 +181,9 @@ async function fetchTasks(): Promise<AgentTasksEvent> {
     liveSessions,
     error: result.error,
     errorKind: result.errorKind,
+    // 設定は有効なのに実際には使えない、という異常だけを立てる。
+    // `useTmux: false`（利用者の意図）では常に false（AgentTasksEvent.tmuxUnavailable 冒頭参照）。
+    tmuxUnavailable: config.useTmux && !tmuxAvailableAtStartup,
     fetchedAt: Date.now(),
   };
 }

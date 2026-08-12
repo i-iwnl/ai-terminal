@@ -18,7 +18,11 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron';
 import { IpcEvent, IpcSend, type AppAction } from '@shared/ipc';
-import { terminalContextMenuItems, type TerminalContextMenuState } from '@shared/context-menu';
+import {
+  terminalContextMenuItems,
+  taskContextMenuItems,
+  type TerminalContextMenuState,
+} from '@shared/context-menu';
 import { routeMenuAction } from './menu-action-routing';
 import { openSettingsWindow } from './settings-window';
 
@@ -37,11 +41,20 @@ const CLOSE_TAB_MENU_ITEM_ID = 'file-close-tab';
  */
 const KEEP_AGENTS_MENU_ITEM_ID = 'file-close-tab-keep-agents';
 
+/**
+ * 「選択中の AI を終了」メニュー項目の id（Issue #244 周6-b）。
+ * サイドバーのタスク一覧で「最後に指し示された行」に終了できる対象が無ければ無効化する。
+ */
+const KILL_SELECTED_AGENT_MENU_ITEM_ID = 'file-kill-selected-agent';
+
 /** 直近に構築したメニューの「タブを閉じる」項目。ウィンドウ再生成のたびに張り直す。 */
 let closeTabMenuItem: Electron.MenuItem | null = null;
 
 /** 直近に構築したメニューの「AI を残してタブを閉じる」項目。 */
 let keepAgentsMenuItem: Electron.MenuItem | null = null;
+
+/** 直近に構築したメニューの「選択中の AI を終了」項目。 */
+let killSelectedAgentMenuItem: Electron.MenuItem | null = null;
 
 function closeTabLabel(paneCount: number): string {
   return paneCount > 1 ? `タブを閉じる（${paneCount} ペイン）` : 'タブを閉じる';
@@ -72,6 +85,19 @@ export function updateCloseTabLabel(paneCount: number): void {
 export function updateKeepAgentsEnabled(keepableCount: number): void {
   if (!keepAgentsMenuItem) return;
   keepAgentsMenuItem.enabled = keepableCount > 0;
+}
+
+/**
+ * サイドバーのタスク一覧で「最後に指し示された行」に終了できる対象が居るかに応じて、
+ * 「選択中の AI を終了」の有効・無効を切り替える（Issue #244 周6-b）。
+ *
+ * ⛔ **非表示にしない。** `updateKeepAgentsEnabled` と同じ理由（位置が動くと
+ * 学習が壊れる）。初期状態は `enabled: false`（`buildTemplate` 参照）で、
+ * サイドバーのタスク一覧の行を右クリック／フォーカスするまで有効にならない。
+ */
+export function updateKillSelectedAgentEnabled(present: boolean): void {
+  if (!killSelectedAgentMenuItem) return;
+  killSelectedAgentMenuItem.enabled = present;
 }
 
 /**
@@ -369,6 +395,28 @@ function buildTemplate(win: BrowserWindow): MenuItemConstructorOptions[] {
           id: KEEP_AGENTS_MENU_ITEM_ID,
           enabled: false,
         },
+        // Issue #244 周6-b。周6-a で入った「一覧の行を右クリックして終了」
+        // （`AppAction`（`kill-agent-session`）参照）の、**キーボード経路**。
+        //
+        // ⭐ design-review の5ペルソナが「右クリックだけだとターゲットサイズ・
+        // 色覚・タブストップの問題が残るので、メニューバー経由のキーボード経路を
+        // 必ず用意する」と確定させた項目。新しい AppAction は要らない
+        // （既存の `{ type: 'kill-agent-session' }` を同じ経路でそのまま流す。
+        // 対象は Renderer 側の `killTargetSessionIdRef` が持つ「最後に指し示された行」）。
+        //
+        // ⛔ **ショートカットを割り当てない。** `Cmd+Shift+W` は「ウィンドウを閉じる」で
+        // 埋まっており（このファイル冒頭の「ウィンドウを閉じる」項目参照）、
+        // `shortcuts.ts` の `passesModifierGate` が Shift 付きのキーを素通しするため、
+        // 新たに奪うと端末入力を奪う破壊的変更になる。
+        //
+        // 初期状態は `enabled: false`。⛔ **非表示にしない**（`updateKeepAgentsEnabled`
+        // と同じ macOS の作法。design-review で4/4 一致）。有効・無効の切り替えは
+        // `updateKillSelectedAgentEnabled` が唯一の正。
+        {
+          ...actionItem(win, '選択中の AI を終了', undefined, { type: 'kill-agent-session' }),
+          id: KILL_SELECTED_AGENT_MENU_ITEM_ID,
+          enabled: false,
+        },
         { type: 'separator' },
         // ⭐ **第3の層**（Issue #244 / design-review の macOS ペルソナ）。
         // `app.on('window-all-closed')` は darwin では `app.quit()` を呼ばないので、
@@ -459,6 +507,7 @@ export function registerApplicationMenu(win: BrowserWindow): void {
   Menu.setApplicationMenu(menu);
   closeTabMenuItem = menu.getMenuItemById(CLOSE_TAB_MENU_ITEM_ID);
   keepAgentsMenuItem = menu.getMenuItemById(KEEP_AGENTS_MENU_ITEM_ID);
+  killSelectedAgentMenuItem = menu.getMenuItemById(KILL_SELECTED_AGENT_MENU_ITEM_ID);
 }
 
 /**
@@ -476,6 +525,13 @@ export function registerMenuHandlers(): void {
   ipcMain.on(IpcSend.menuKeepableAgentCount, (_event, count: unknown) => {
     if (typeof count !== 'number') return;
     updateKeepAgentsEnabled(count);
+  });
+
+  // Issue #244 周6-b。サイドバーのタスク一覧で「最後に指し示された行」に
+  // 終了できる対象が居るか。
+  ipcMain.on(IpcSend.menuKillableAgentPresent, (_event, present: unknown) => {
+    if (typeof present !== 'boolean') return;
+    updateKillSelectedAgentEnabled(present);
   });
 
   // ターミナル面の右クリック（Issue #135）。
@@ -521,6 +577,27 @@ export function registerMenuHandlers(): void {
     // **座標を渡さない。** 省略すると Electron が現在のカーソル位置に出す。
     // 渡すと DIP と `titleBarStyle: 'hiddenInset'` のコンテンツ座標のずれを
     // 自分で管理することになり、画面端での反転も自前になる。
+    Menu.buildFromTemplate(template).popup({ window: win });
+  });
+
+  // タスク一覧の行の右クリック（Issue #244 周6-a）。
+  //
+  // **項目表は `src/shared/context-menu.ts` の taskContextMenuItems() が決める。**
+  // 上の contextMenuShow と同じく、ここは変換して popup するだけ。
+  //
+  // ⛔ **クリックは `actionItem()` と同じ経路（`routeMenuAction()`）を通す。**
+  // 上の contextMenuShow は `win.webContents.send()` を直接呼んでいるが、
+  // こちらはそれをせず `actionItem()` を再利用する。設定ウィンドウにフォーカスが
+  // あるときに本体へ操作を送らない保護（`routeMenuAction` 冒頭のコメント参照）を
+  // ここでも落とさないため（依頼元の指示）。
+  ipcMain.on(IpcSend.taskContextMenuShow, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return;
+
+    const template: MenuItemConstructorOptions[] = taskContextMenuItems().map((item) =>
+      actionItem(win, item.label, undefined, item.action),
+    );
+
     Menu.buildFromTemplate(template).popup({ window: win });
   });
 }

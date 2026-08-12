@@ -127,3 +127,34 @@ export function terminalContextMenuItems(
 
   return items;
 }
+
+// ---------------------------------------------------------------------------
+// タスク一覧の右クリックメニュー（Issue #244 周6-a）
+// ---------------------------------------------------------------------------
+
+/**
+ * タスク一覧の行の右クリックメニューの項目1つ。
+ *
+ * `TerminalContextMenuItem` と同じ判別ユニオンの作法だが、いまのところ
+ * `role`（コピー/ペースト）は要らない（タスク一覧の行はテキスト選択の対象ではない）ので
+ * 持たせていない。増えたときに `TerminalContextMenuItem` へ寄せて統合するかは
+ * そのとき判断する。
+ */
+export type TaskContextMenuItem = { kind: 'action'; label: string; action: AppAction };
+
+/**
+ * タスク一覧の行の右クリックメニューの項目表。
+ *
+ * ⛔ **「タブに戻す」は無い。** 行そのものをクリックすれば戻れるので、
+ * 同じ操作の入口をメニューにもう1つ作らない設計判断
+ * （`.claude/workspace/issue-244/design-review/proposal-v2-after-review.md` §2-E' の
+ * 「『戻す』ボタンは作らない」をメニューにも適用した）。加えて `AppAction` には
+ * この操作に対応する type がそもそも無い（キー/メニュー共有の語彙にまだ登録されていない）。
+ *
+ * ⭐ **項目は行の状態によらず固定。** 分割数などで出し分ける `terminalContextMenuItems()`
+ * と違い、引数を取らない。今後「戻せない行では無効化する」のような分岐が要るときに
+ * 状態を引数へ足す。
+ */
+export function taskContextMenuItems(): TaskContextMenuItem[] {
+  return [{ kind: 'action', label: 'この AI を終了', action: { type: 'kill-agent-session' } }];
+}

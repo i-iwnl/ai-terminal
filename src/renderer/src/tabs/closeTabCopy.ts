@@ -154,8 +154,13 @@ export function countWorkingAgentPanes(
   return count;
 }
 
-/** 設定パネル（SettingsPanel.tsx）に出ている語と揃える。別の言い回しを発明しない。 */
-const PERSIST_SETTING_LABEL = 'アプリを閉じても AI の作業を続ける';
+/**
+ * 設定パネル（SettingsPanel.tsx）に出ている語と揃える。別の言い回しを発明しない。
+ *
+ * **export しているのはこのファイルの外でも使うため**（`sidebar/tmuxUnavailableCopy.ts`。
+ * Issue #244 周7）。文字列の正はここ1箇所に留め、書き写さない。
+ */
+export const PERSIST_SETTING_LABEL = 'アプリを閉じても AI の作業を続ける';
 
 /** 内訳の並び順。件数で並べ替えると、同じ構成でも表示が揺れて読み上げが安定しない。 */
 const PROVIDER_ORDER: readonly PtyKind[] = ['claude', 'gemini', 'shell'];

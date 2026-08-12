@@ -318,8 +318,14 @@ const tmuxSessionNames = new Map<string, string>();
  * その状態で片方のタブを閉じたときにセッションごと終了させると、
  * **利用者が閉じていないほうのタブの AI まで巻き添えで死ぬ**（code-review 2026-08-09 で指摘）。
  * 残っているクライアントがあるなら、閉じる側は**デタッチするだけ**にする。
+ *
+ * ⭐⭐ **`ptyId` は省略できる**（Issue #244 周6-a）。`agent-session:kill`（タスク一覧の
+ * 行から終了する経路）には除外すべき「自分自身の PTY」が無い ―― 対象はタブを
+ * 開いていない行かもしれないため。省略時は全件を見る（`otherPtyId === undefined` は
+ * 常に偽なので、比較を消さずに済む）。**同じ判定を2箇所に書き写さない**ための
+ * 唯一のガード関数。
  */
-function isTmuxSessionSharedWithOtherPty(ptyId: string, sessionName: string): boolean {
+function isTmuxSessionSharedWithOtherPty(sessionName: string, ptyId?: string): boolean {
   for (const otherPtyId of entries.keys()) {
     if (otherPtyId === ptyId) continue;
     if (tmuxSessionNames.get(otherPtyId) === sessionName) return true;
@@ -544,7 +550,7 @@ export function registerPtyHandlers(): void {
     // `if (!entry) return` を先に置くと、**その状態のタブを閉じたときにセッションが
     // 永久に残る** = この Issue が直そうとしている累積そのものが再発する。
     if (terminateSession === true && sessionName !== undefined) {
-      if (isTmuxSessionSharedWithOtherPty(ptyId, sessionName)) {
+      if (isTmuxSessionSharedWithOtherPty(sessionName, ptyId)) {
         // 同じセッションを別のタブも開いている。閉じる側はデタッチするだけにする
         // （終了させると、利用者が閉じていないほうの AI まで巻き添えで死ぬ）。
         console.info(`[pty] ${sessionName} は他のペインも使用中のため終了させません`);
@@ -562,6 +568,37 @@ export function registerPtyHandlers(): void {
     }
     disposeEntry(ptyId);
   });
+
+  /**
+   * サイドバーのタスク一覧の行から、タブを開かずに AI セッションを終了させる
+   * （Issue #244 周6-a）。
+   *
+   * ⭐ **`ptyKill` とは対称的に、`ptyId` も `entries` も一切触らない。** 対象の行は
+   * タブを開いていない（＝ `entries` に無い）ことがあるため、`ptyId` からではなく
+   * `agentSessionId` から直接 tmux セッション名を組み立てる。`entries` を触らないので
+   * `ptyKill` のように「`disposeEntry()` と同一 tick で終える」制約も無く、`async` にしても
+   * `proc.onExit` の抑止分岐に影響しない。
+   */
+  ipcMain.handle(
+    IpcInvoke.agentSessionKill,
+    (_event: IpcMainInvokeEvent, rawAgentSessionId: unknown): void => {
+      if (typeof rawAgentSessionId !== 'string') {
+        throw new Error('不正な agent-session:kill リクエストです');
+      }
+      const sessionName = buildTmuxSessionName(rawAgentSessionId);
+
+      // ⭐ 共有ガードは `ptyKill` と同じ関数（`isTmuxSessionSharedWithOtherPty`）を使う。
+      // 生きている PTY のどれかが同じ tmux セッションを使っているなら、そのタブの AI が
+      // 巻き添えで死ぬ（`ptyKill` 側で一度実際に指摘された欠陥。上のコメント参照）。
+      // 自分自身の PTY を除外する必要が無いので `ptyId` は渡さない。
+      if (isTmuxSessionSharedWithOtherPty(sessionName)) {
+        console.info(`[pty] ${sessionName} は他のペインも使用中のため終了させません`);
+        return;
+      }
+
+      killTmuxSession(sessionName, mergeUserEnv(process.env, loginShellEnv()));
+    },
+  );
 
   // 高頻度なので invoke ではなく send。受け取ったら同期的に write するだけ。
   ipcMain.on(IpcSend.ptyInput, (_event: IpcMainEvent, rawReq: unknown): void => {

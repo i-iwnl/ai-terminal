@@ -40,10 +40,26 @@ Issue 本文の完了条件をそのまま追う（周ごとの割り当ては `
 - [ ] アプリを終了してもセッションが生き残ることは変わっていない
 - [x] タスク一覧の行に、押せることが**見える**手がかりがある（ホバーとカーソル以外）
       -> 周5。`border-left: 2px solid var(--border-control)`（幅コスト 0px）。S112 が固定
-- [ ] タスク一覧から**セッションを終了できる**
-- [ ] 押せない行に、押せない理由が出る
+- [x] タスク一覧から**セッションを終了できる**
+      -> 周6-a。押せる行の右クリック + `IpcInvoke.agentSessionKill`。S113 / S114 / S115 が固定。
+      **本物の tmux でプロセスが死ぬところまで実機で確認済み**
+- [x] ~~押せない行に~~ **押せない理由が出る**（⛔ **字面を外した**。理由は下記）
+      -> 周7。**パネル単位**（`tmuxUnavailable`）。S117 が固定
+
+  **「行に」を外した理由**（loop.md「字面を外すなら理由を2箇所に残す」に従い、
+  `tmuxUnavailableCopy.ts` 冒頭 / `TaskList.tsx` の分岐 / `scenarios.yml` の S117 note に記載済み）:
+
+  1. **design-review で 5/5 が「提案 F はパネル単位。行ごとに同じ文を出さない」と決めた**
+  2. 行ごとの語の根拠にできる `ownedByApp` は **Main のメモリ上の Set で、アプリを再起動すると
+     空になる**（`taskRow.ts` に明記）。**再起動直後は全行に嘘の語が並ぶ**
+  3. 既定フィクスチャは `useTmux: false` なので、**`S01-launch.png`（README 最初の画像）の
+     全行が「操作できません」になる**（保守レビューが事前に警告していた）
+
+  ⛔ **Issue を close するときの書き戻しにも、この理由を1行入れること。**
 - [ ] 上の各検査が、修正前のコードで実際に赤くなることを確認した
-- [ ] `make check` / `make e2e` / `make e2e-lint` が通る。UI が変わるので `make e2e-screenshots` も回す
+- [x] `make check` / `make e2e` / `make e2e-lint` が通る。UI が変わるので `make e2e-screenshots` も回す
+      -> `make check` 858件緑 / `make e2e` **123 passed・0 failed**（5 flaky は負荷起因） /
+      `make e2e-lint` FAIL=0（PASS=935）/ `make e2e-screenshots-check` **PASS=39 FAIL=0**（画素差 0）
 
 ---
 
@@ -52,15 +68,19 @@ Issue 本文の完了条件をそのまま追う（周ごとの割り当ては `
 | 項目 | 状態 |
 |---|---|
 | 設計 | **完了**（5ペルソナの design-review 済み。`design-review/proposal-v2-after-review.md` が唯一の正） |
-| 実装 | 進行中（周1〜5 完了 / 周6・周7 残） |
-| 検証 | 周1〜5 完了（`make check` 847件緑 / `make e2e-lint` FAIL=0 / 新設関門 S107〜S112 はすべて壊して赤を確認済み）。**フル `make e2e` は push 直前にもう一度回す** |
+| 実装 | **完了**（周1〜5・6-a・6-b・7。**周6 は 6-a / 6-b に分割した**） |
+| 検証 | **完了**。`make check` 858件緑 / `make e2e` 123 passed・0 failed / `make e2e-lint` FAIL=0（PASS=935） / `make e2e-screenshots-check` PASS=39・FAIL=0。**新設関門 S107〜S117 はすべて壊して赤を確認済み** |
 
 ---
 
 ## 4. 直近の次アクション
 
+**すべての完了条件を満たした。残るのはユーザーの判断のみ。**
+
 | 優先度 | アクション | 詳細 |
 |---|---|---|
-| **P0** | 周6: 「終了」導線（行の右クリック + メニューバー + `IpcInvoke.agentSessionKill` の新設） | ⭐ **チャンネルは2本要る**。`'recover'` の行は `hasOpenTab === false` = **ptyId が存在しない**ので `ptyKill` では届かない。⚠ 行が消えたときのフォーカス移動（§4-4） |
-| P1 | 周7: 押せない理由 | Main に `AgentTasksEvent.errorKind: 'tmux-unavailable'` を足す作業とセット + **`docs/images` 8枚の撮り直し** |
-| P2 | push 前 | フル `make e2e` + `make e2e-lint`（+ 画像を触っていれば `make e2e-screenshots`）。⚠ `make css-substitution-check` は周5 で意図的に落ちる |
+| **P0** | commit / push / PR | **ユーザーの明示指示待ち**（CLAUDE.md）。周5 まではコミット済み、**周6-a / 6-b / 7 が未コミット** |
+| P1 | Issue #244 への書き戻し | ⛔ **完了条件「押せない行に理由が出る」の字面を外した理由を1行入れること**（上の §2 参照） |
+| P2 | `known-issues.md` の未対処5件 | 4番・6番は範囲外。7番（README の画像に押せる行が写っていない）・8番（ガードの沈黙）・9番（ネイティブメニューの実描画は人の目が要る）は `/workspace-plan promote-known-issues` で起票するかユーザーが判断する |
+
+⚠ **`make css-substitution-check` は周5 で意図的に落ちる**（値の変更を伴う周だったため。CLAUDE.md が「値を意図的に変えるときだけ落ちてよい」としている）。

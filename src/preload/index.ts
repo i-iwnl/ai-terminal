@@ -67,6 +67,8 @@ const api: RendererApi = {
       ipcRenderer.invoke(IpcInvoke.agentsList, req) as Promise<AgentTasksEvent>,
     onTasks: (listener: (e: AgentTasksEvent) => void): (() => void) =>
       subscribe<AgentTasksEvent>(IpcEvent.agentTasks, listener),
+    killSession: (agentSessionId: string): Promise<void> =>
+      ipcRenderer.invoke(IpcInvoke.agentSessionKill, agentSessionId) as Promise<void>,
   },
   history: {
     list: (req: ListHistoryRequest): Promise<ListHistoryResult> =>
@@ -128,8 +130,14 @@ const api: RendererApi = {
     reportKeepableAgentCount: (count: number): void => {
       ipcRenderer.send(IpcSend.menuKeepableAgentCount, count);
     },
+    reportKillableAgentPresent: (present: boolean): void => {
+      ipcRenderer.send(IpcSend.menuKillableAgentPresent, present);
+    },
     showContextMenu: (state: TerminalContextMenuState): void => {
       ipcRenderer.send(IpcSend.contextMenuShow, state);
+    },
+    showTaskContextMenu: (): void => {
+      ipcRenderer.send(IpcSend.taskContextMenuShow);
     },
   },
   session: {

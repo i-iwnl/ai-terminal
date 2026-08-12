@@ -93,6 +93,8 @@ import { subscribeAgentTasks } from './lib/agentTasksStore';
 // ⛔ `status` の文字列をここで解釈しない。翻訳の正は `toTaskState()`。
 import { toTaskState } from '@shared/agent-status';
 import { taskSessionKey } from './sidebar/taskRow';
+// タスク一覧の行から AI を終了する確認ダイアログの文言（Issue #244 周6-a）。
+import { killSessionCopy } from './sidebar/killSessionCopy';
 
 // role="status" の告知テキストを、画面には出さず支援技術にだけ読ませるための見た目。
 // styles.css のトークンを経由しない（CLAUDE.md のトークン規約は「色・サイズの値」を
@@ -242,6 +244,28 @@ export default function App(): ReactElement {
     [],
   );
 
+  /**
+   * タスク一覧の行から AI を終了する前の確認（Issue #244 周6-a）。
+   *
+   * **`closeConfirmation` とは別の state にした。** あちらは `tabId` / `intent`
+   * （タブを閉じる操作固有の情報）を持ち回る形で、一覧からの終了にはタブが
+   * 開いているとは限らない（`tabId` が無い）ため型が合わない。文言の作り方
+   * （`killSessionCopy()`）も別（`closeTabCopy.ts` 冒頭のコメント参照）。
+   * ダイアログのコンポーネント自体（`CloseTabConfirmDialog`）は共有する。
+   */
+  const [killConfirmation, setKillConfirmationState] = useState<{
+    agentSessionId: string;
+    copy: CloseTabCopy;
+  } | null>(null);
+  const killConfirmationRef = useRef(killConfirmation);
+  const setKillConfirmation = useCallback(
+    (value: { agentSessionId: string; copy: CloseTabCopy } | null) => {
+      killConfirmationRef.current = value;
+      setKillConfirmationState(value);
+    },
+    [],
+  );
+
   const showNotice = useCallback(
     (message: string, severity: NoticeSeverity) => {
       setNotices((prev) => pushNotice(prev, { id: nextNoticeId(), message, severity }));
@@ -380,6 +404,78 @@ export default function App(): ReactElement {
     }
     return ids;
   }, []);
+
+  /**
+   * 「最後に終了対象として指し示された AI セッション」（Issue #244 周6-a）。
+   *
+   * ⭐ **ref に持つ。state にしない。** どの行を描画するか・何を表示するかは
+   * 一切この値に依存しない（画面には出ない、内部の「次に kill-agent-session が
+   * 来たら誰に効くか」だけの記録）ので、更新のたびに再描画を起こす理由が無い。
+   * `agentTasksRef` / `tabHistoryRef` と同じ判断。
+   *
+   * ⭐ **右クリックだけでなく、行が `onFocus` されたときにも更新される**
+   * （`targetSession` を `Sidebar` -> `TaskList` の `onTargetSession` として渡し、
+   * `TaskList.tsx` 側が両方から同じコールバックを呼ぶ）。メニューバーの
+   * 「選択中の AI を終了」（Issue #244 周6-b）の「選択中」も
+   * **最後にフォーカスした行**と決まっている。**ここで state を分けると、
+   * 2つ目の似た state が生える**ため、右クリック用とフォーカス用を
+   * 最初から1本の ref に統合してある。
+   *
+   * ⭐ **対象が一覧から消えたときは `null` が渡る**（`TaskListProps.onTargetSession`
+   * 参照）。そのときはメニュー項目を無効に戻す必要があるので、この ref の更新と
+   * 同じ場所で `window.api.menu.reportKillableAgentPresent()` もあわせて呼ぶ
+   * （Main 側の「選択中の AI を終了」の有効・無効はこの通知だけで決まる）。
+   */
+  const killTargetSessionIdRef = useRef<string | null>(null);
+  const targetSession = useCallback((agentSessionId: string | null) => {
+    killTargetSessionIdRef.current = agentSessionId;
+    // ⚠ null が来たら false を送る（対象が消えたら必ず無効に戻す）。
+    window.api.menu.reportKillableAgentPresent(agentSessionId !== null);
+  }, []);
+
+  /**
+   * 実際に `agent-session:kill` を叩く（Issue #244 周6-a）。
+   *
+   * `useTabs.ts` の `closeTab` が PTY の kill を try/catch で無視するのと同じ扱い。
+   * 対象の tmux セッションは既に終了している場合もある（二重クリック、他の経路で
+   * 既に終わっていた等）ため、失敗をエラーバナーで騒がない。
+   */
+  const performKillSession = useCallback(async (agentSessionId: string): Promise<void> => {
+    try {
+      await window.api.agents.killSession(agentSessionId);
+    } catch (err) {
+      console.warn('[agents] AI セッションの終了に失敗しました', err);
+    }
+  }, []);
+
+  /**
+   * タスク一覧の行から AI を終了する唯一の入口（Issue #244 周6-a）。
+   * メニュー「この AI を終了」（`kill-agent-session`）がここを通る。
+   *
+   * **確認を出す条件は「いま作業中（busy）か」だけ**（周4 で確定した安全弁を
+   * そのまま適用。判定・busy 集合は `workingAgentSessionIds()` を再利用し、
+   * ここで2つ目の busy 判定を作らない）。
+   *
+   * ⚠ 「タブに戻せる AI」節の行は `claude agents --json` に出ていないため
+   * `agentTasksRef`（busy 集合の元）にも載らない。**その場合は busy ではないもの
+   * として扱う**（確認を出さない）。状態が分からない以上、無いことにするより
+   * 「危険側で必ず確認する」ほうが安全にも思えるが、この一覧に出る行は
+   * すべて `claude agents --json` から漏れているだけで実在するセッションであり、
+   * 「分からない」を「危険」と決め打つと、通常の idle セッションでも毎回
+   * 確認が要ることになり、周4 の「確認の頻度は損失の重さに比例する」という
+   * 原則（無闇に確認を増やさない）と矛盾する。busy と確認できた場合にだけ
+   * 確認する、という既存の原則をそのまま適用した。
+   */
+  const requestKillSession = useCallback(
+    (agentSessionId: string): void => {
+      if (workingAgentSessionIds().has(agentSessionId)) {
+        setKillConfirmation({ agentSessionId, copy: killSessionCopy() });
+        return;
+      }
+      void performKillSession(agentSessionId);
+    },
+    [performKillSession, workingAgentSessionIds],
+  );
 
   const requestCloseTab = useCallback(
     (tabId: string, intent: CloseIntent = 'terminate'): void => {
@@ -549,7 +645,8 @@ export default function App(): ReactElement {
       // 確認ダイアログ（提案 E'）を開いている間は他の操作を一切通さない
       // （モーダルの標準的な振る舞い。ダイアログ自体のボタンは onClick で
       // 直接 requestCloseTab の結果を処理するため、この経路を通らない）。
-      if (closeConfirmationRef.current) return;
+      // ⭐ 一覧からの終了確認（`killConfirmation`。Issue #244 周6-a）も同じ扱い。
+      if (closeConfirmationRef.current || killConfirmationRef.current) return;
 
       const api = tabsApiRef.current;
       // Cmd+F / Cmd+K 等は「アクティブなタブの、アクティブなペイン」に向ける
@@ -569,6 +666,16 @@ export default function App(): ReactElement {
         case 'close-tab':
           if (api.activeTabId) requestCloseTab(api.activeTabId);
           break;
+        case 'kill-agent-session': {
+          // タスク一覧の行を右クリックして「この AI を終了」（Issue #244 周6-a）。
+          // ⛔ この AppAction は対象の agentSessionId を運ばない（`close-pane` と
+          // 同じ作法）。対象は `killTargetSessionIdRef`（右クリック / onFocus の
+          // 時点で TaskList.tsx 経由の `targetSession` が埋める）を読む。
+          const targetId = killTargetSessionIdRef.current;
+          if (targetId === null) break;
+          requestKillSession(targetId);
+          break;
+        }
         case 'switch-tab': {
           const target = api.tabs[action.index];
           if (target) api.setActiveTabId(target.id);
@@ -865,6 +972,7 @@ export default function App(): ReactElement {
       commitSidebarWidth,
       config.fontSize,
       requestCloseTab,
+      requestKillSession,
       showNotice,
       sidebarCollapsed,
       sidebarWidth,
@@ -1089,6 +1197,7 @@ export default function App(): ReactElement {
         onFocusTaskTab={focusTaskTab}
         canFocusTaskTab={canFocusTaskTab}
         onRecoverSession={recoverSession}
+        onTargetSession={targetSession}
         onResumeHistory={resumeHistory}
         onLaunchClaude={launchClaude}
         scopeAgentsToCwd={config.scopeAgentsToCwd}
@@ -1250,6 +1359,20 @@ export default function App(): ReactElement {
             const { tabId, intent } = closeConfirmation;
             setCloseConfirmation(null);
             void performCloseTab(tabId, intent);
+          }}
+        />
+      )}
+      {killConfirmation && (
+        // タスク一覧の行から AI を終了する前の確認（Issue #244 周6-a）。
+        // busy のときだけ立つ（`requestKillSession` が唯一の正）。
+        // 同じ `CloseTabConfirmDialog` を再利用する（新しいダイアログを作らない）。
+        <CloseTabConfirmDialog
+          copy={killConfirmation.copy}
+          onCancel={() => setKillConfirmation(null)}
+          onConfirm={() => {
+            const { agentSessionId } = killConfirmation;
+            setKillConfirmation(null);
+            void performKillSession(agentSessionId);
           }}
         />
       )}
