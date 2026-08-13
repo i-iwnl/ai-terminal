@@ -23,6 +23,71 @@
 //
 // ⛔ **通常バッファには介入しない。** そちらは xterm の `Viewport` が
 // `scrollSensitivity` ごと正しく処理しており、壊れていない。
+//
+// ⛔⛔ **マウス報告を要求しているアプリにも介入しない**（Issue #251。判定は
+// `shouldConvertWheelToArrows`）。ここを間違えると**矢印を送るどころか、本来届くはずの
+// マウス報告を握り潰す**。詳細はその関数のコメント。
+
+/**
+ * xterm の `Terminal.buffer.active.type`。
+ *
+ * `alternate` は代替画面バッファ（スクロールバックを持たない）。
+ */
+export type BufferType = 'normal' | 'alternate';
+
+/**
+ * xterm の `Terminal.modes.mouseTrackingMode`。
+ *
+ * `Terminal.ts` の `get modes()` が `coreMouseService.activeProtocol` を写しているだけなので、
+ * プロトコルとの対応は 1:1（`X10` / `VT200` / `DRAG` / `ANY`、未設定なら `none`）。
+ */
+export type MouseTrackingMode = 'none' | 'x10' | 'vt200' | 'drag' | 'any';
+
+/**
+ * ホイールイベントを**含む**マウスプロトコル（`CoreMouseService.ts` の `DEFAULT_PROTOCOLS`）。
+ *
+ * ⚠ **`x10` は含まない。** `X10` の `events` は `DOWN` だけで、ホイールを報告しない。
+ */
+const MOUSE_MODES_WITH_WHEEL: readonly MouseTrackingMode[] = ['vt200', 'drag', 'any'];
+
+/**
+ * このホイールイベントを矢印キーへ変換して**よい**か。
+ *
+ * ⭐ **`useTerminal` のカスタムハンドラは、この関数が `true` を返すときだけ介入する。**
+ * `false` のときは `true`（＝「処理していない」）を xterm へ返し、既定の経路に任せる。
+ *
+ * ## なぜマウス報告の有無を見るのか（#238 の注意書きの訂正）
+ *
+ * PR #238 は「マウス報告 ON ならカスタムハンドラにはそもそも来ないので、
+ * `mouseTrackingMode` を自前で見るな」と書いていた。**これは誤り。**
+ * xterm.js 6.0.0 の `CoreBrowserTerminal.ts` には wheel の経路が2本ある。
+ *
+ * | 経路 | 走る条件 | カスタムハンドラ |
+ * |---|---|---|
+ * | 要素の `wheel` リスナー | `requestedEvents.wheel` が無い（マウス報告 OFF / `x10`） | 呼ぶ |
+ * | `eventListeners.wheel` -> `sendEvent()` | マウス報告 ON でホイールを含むプロトコル | **`case 'wheel':` の冒頭で呼び、`false` なら報告を送らず return する** |
+ *
+ * つまりマウス報告 ON でも**必ず呼ばれる**。そこで無条件に `false` を返していたため、
+ * **Claude Code が要求していた SGR マウス報告が1つも PTY へ届かず**、代わりに矢印が
+ * 最大 `rows` 本流れていた。CLI 側は同方向の矢印を 100ms 以内に 8 本以上受け取ると
+ * 「ホイールが矢印を送っている」と判定し、`use PgUp/PgDn to scroll` を出す。
+ *
+ * ## なぜ `none` と `x10` では変換を続けるのか
+ *
+ * #238 が心配していた「wheel を要求しないモードで xterm 既定の**矢印1個**に落ちて
+ * かえって悪化する」は本物。ホイールを含むプロトコルだけを外せば、`less` / `vim`
+ * （`set mouse=` 無し）での改善はそのまま残る。
+ */
+export function shouldConvertWheelToArrows(
+  bufferType: BufferType,
+  mouseTrackingMode: MouseTrackingMode,
+): boolean {
+  // 通常バッファは xterm の Viewport が正しく処理している。触らない。
+  if (bufferType !== 'alternate') return false;
+  // アプリ自身がホイールを欲しがっているなら、こちらは何もしない。
+  if (MOUSE_MODES_WITH_WHEEL.includes(mouseTrackingMode)) return false;
+  return true;
+}
 
 /**
  * `WheelEvent.deltaMode` の値。

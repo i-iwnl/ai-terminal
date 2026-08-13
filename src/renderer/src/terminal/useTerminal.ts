@@ -23,7 +23,11 @@ import { subscribePty } from './ptyStream';
 import { shouldSendResize, type ResizeDims } from './resizeGate';
 import { shouldActivateLink } from './linkActivation';
 import { searchSeedFromSelection } from './searchSeed';
-import { arrowScrollSequence, consumeWheelScroll } from './wheelScroll';
+import {
+  arrowScrollSequence,
+  consumeWheelScroll,
+  shouldConvertWheelToArrows,
+} from './wheelScroll';
 
 /** unicode-graphemes アドオンが登録する Unicode バージョン文字列 */
 const GRAPHEME_UNICODE_VERSION = '15-graphemes';
@@ -261,18 +265,18 @@ export function useTerminal(
     // xterm 6.0.0 は同じ場面で矢印を1個しか送らず、tmux ラップが既定の AI タブでは
     // 1ノッチ回しても1行しか進まない（退化の詳細と根拠は `wheelScroll.ts` の冒頭）。
     //
-    // 呼ばれる位置が効いている。xterm の wheel リスナーは
-    //   1. `requestedEvents.wheel`（マウス報告 ON）なら**何もせず return**
-    //   2. このカスタムハンドラ（false を返せばここで打ち切り）
-    //   3. スクロールバックが無いバッファなら矢印1個を送る
-    // の順。つまり **tmux mouse on / vim `set mouse=a` のようにアプリ側がホイールを
-    // 自分で欲しがっている場面では、そもそもここへ来ない**。マウス報告の有無を
-    // 自前で判定する必要はなく、判定してしまうと 1 と 3 の隙間（wheel を要求しない
-    // x10 モード等）で xterm 既定の「矢印1個」に落ちて逆に悪化する。
+    // ⛔ **このハンドラは「マウス報告 ON でも呼ばれる」**（Issue #251）。
+    // xterm の wheel の経路は2本あり、マウス報告 ON のときに走る
+    // `eventListeners.wheel -> sendEvent()` は `case 'wheel':` の冒頭でここを呼び、
+    // **false を返すとマウス報告を送らずに return する**。介入してよい条件の判定は
+    // `shouldConvertWheelToArrows` が唯一の正（#238 の「自前で mouseTrackingMode を
+    // 見るな」という注意書きは前提が誤っていた。訂正の全文は同関数のコメント）。
     term.attachCustomWheelEventHandler((event) => {
-      // 通常バッファは xterm の Viewport が正しく処理している。触らない。
+      // 通常バッファ、およびアプリ自身がホイールを要求している場面には介入しない。
       // `hasScrollback` は公開 API に無いので、等価な `buffer.active.type` で見る。
-      if (term.buffer.active.type !== 'alternate') return true;
+      if (!shouldConvertWheelToArrows(term.buffer.active.type, term.modes.mouseTrackingMode)) {
+        return true;
+      }
 
       const container = containerRef.current;
       if (!container) return true;
