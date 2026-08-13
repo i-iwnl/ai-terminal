@@ -15,6 +15,8 @@ import {
   DELTA_MODE_PIXEL,
   arrowScrollSequence,
   consumeWheelScroll,
+  shouldConvertWheelToArrows,
+  type MouseTrackingMode,
   type WheelGeometry,
   type WheelInput,
 } from '../../src/renderer/src/terminal/wheelScroll';
@@ -32,6 +34,45 @@ function wheel(overrides: Partial<WheelInput> = {}): WheelInput {
     ...overrides,
   };
 }
+
+describe('shouldConvertWheelToArrows', () => {
+  // xterm の `Terminal.modes.mouseTrackingMode` が取りうる値の全列挙。
+  // 増えたらここで型エラーになるので、新しいモードを黙って取りこぼさない。
+  const ALL_MODES: readonly MouseTrackingMode[] = ['none', 'x10', 'vt200', 'drag', 'any'];
+
+  describe('マウス報告がホイールを含むモード（Issue #251 の本体）', () => {
+    // ⭐ ここが緩むと、矢印を送るだけでなく**マウス報告そのものを握り潰す**。
+    // claude / gemini は起動時に必ず `?1000h ?1002h ?1003h ?1006h` を出すので、
+    // AI タブのホイールが CLI に一切届かなくなる（CLI 側は矢印の連打を
+    // arrow-burst と判定して「use PgUp/PgDn to scroll」を出す）。
+    it.each(['vt200', 'drag', 'any'] as const)('%s では介入しない', (mode) => {
+      expect(shouldConvertWheelToArrows('alternate', mode)).toBe(false);
+    });
+  });
+
+  describe('マウス報告がホイールを含まないモード（#238 の改善を残す）', () => {
+    // `x10` の events は DOWN だけ。ここまで除外すると xterm 既定の「矢印1個」に
+    // 落ちて、#238 が直した「1ノッチ1行しか進まない」へ逆戻りする。
+    it.each(['none', 'x10'] as const)('%s では代替画面バッファで変換する', (mode) => {
+      expect(shouldConvertWheelToArrows('alternate', mode)).toBe(true);
+    });
+  });
+
+  describe('通常バッファ', () => {
+    it.each(ALL_MODES)('%s でも、どのモードでも介入しない', (mode) => {
+      expect(shouldConvertWheelToArrows('normal', mode)).toBe(false);
+    });
+  });
+
+  it('変換するのは「代替画面 かつ ホイールを含まないモード」の組み合わせだけ', () => {
+    const converting = ALL_MODES.flatMap((mode) =>
+      (['normal', 'alternate'] as const)
+        .filter((buffer) => shouldConvertWheelToArrows(buffer, mode))
+        .map((buffer) => `${buffer}/${mode}`),
+    );
+    expect(converting.sort()).toEqual(['alternate/none', 'alternate/x10']);
+  });
+});
 
 describe('consumeWheelScroll', () => {
   describe('マウスホイール（DOM_DELTA_PIXEL・減衰なし）', () => {

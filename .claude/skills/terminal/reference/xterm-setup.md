@@ -132,18 +132,41 @@ tmux でラップするため、**AI タブは必ず代替画面バッファ**�
 対処は `term.attachCustomWheelEventHandler()`（`useTerminal.ts`）。判定は
 `wheelScroll.ts` の純粋関数で、単体テストが「1イベント = 矢印1個」への逆戻りを検出する。
 
-**呼ばれる位置に意味がある。** xterm の wheel リスナーは
+### ⛔⛔ カスタムハンドラは「マウス報告 ON でも呼ばれる」（#251 で訂正）
 
-1. `requestedEvents.wheel`（マウス報告 ON）なら**何もせず return**
-2. カスタムハンドラ（`false` を返せば打ち切り）
-3. スクロールバックが無いバッファなら矢印1個を送る
+**ここに「マウス報告 ON なら来ないので `mouseTrackingMode` を自前で見るな」と
+書いてあったが、誤りだった。** その記述のせいで claude / gemini タブのホイールが
+**マウス報告ごと握り潰され、矢印キーの連打に化けていた**（#238 -> #251）。
 
-の順。つまり **tmux `mouse on` / vim `set mouse=a` のようにアプリ側がホイールを
-自分で欲しがっている場面には、そもそも来ない。**
+xterm.js 6.0.0 の wheel の経路は**2本ある**。
 
-⛔ **`term.modes.mouseTrackingMode` を自前で見て早期 return しないこと。**
-1 と 3 の隙間（wheel を要求しない `x10` モード等）で xterm 既定の「矢印1個」に落ちて
-**かえって悪化する**。マウス報告の判定は 1 が既に正確にやっている。
+| 経路 | 走る条件 | カスタムハンドラ |
+|---|---|---|
+| 要素の `wheel` リスナー | `requestedEvents.wheel` が無い（マウス報告 OFF / `x10`）。無いときだけ `_customWheelEventHandler` -> スクロールバックが無ければ矢印1個 | 呼ぶ |
+| `eventListeners.wheel` -> `sendEvent()` | マウス報告 ON でホイールを含むプロトコル | **`case 'wheel':` の冒頭で呼び、`false` を返すと報告を送らずに return する** |
+
+```ts
+case 'wheel':
+  if (self._customWheelEventHandler && self._customWheelEventHandler(ev as WheelEvent) === false) {
+    return false;   // ← ここでマウス報告が消える
+  }
+```
+
+**claude / gemini は起動時に必ず `ESC[?1000h ESC[?1002h ESC[?1003h ESC[?1006h` を出す**
+（pty で実測。tmux 経由でも外側の端末まで素通しされる）。つまり AI タブは**常に**
+下の経路に落ちる。CLI 側は同方向の矢印を 100ms 以内に 8 本以上受け取ると
+`Scroll wheel is sending arrow keys · use PgUp/PgDn to scroll` を出す。
+
+**判定は `wheelScroll.ts` の `shouldConvertWheelToArrows` が唯一の正。**
+ホイールを含むプロトコル（`vt200` / `drag` / `any`）では介入しない。
+
+⚠ **ただし `x10` まで除外しないこと。** `X10` の `events` は `DOWN` だけでホイールを
+含まないので、除外すると xterm 既定の「矢印1個」に落ちて**この節の本題ごと逆戻り**する。
+`none` / `x10` では変換を続ける。
+
+⭐ **実機での対照実験（2026-08-13 / claude 2.1.229）**: ガードを外したビルドでは
+ホイール3回で上の通知が出て**入力欄が `History 100/100` に飛んだ**（履歴送りになる）。
+ガードを入れたビルドでは転写が正しくスクロールし、`Jump to bottom` が出た。
 
 ⛔ **`event.preventDefault()` を省かないこと。** xterm はカスタムハンドラが `false` を
 返したとき `cancel()` を呼ばずに抜けるので、抑止はこちらの責任。省くと親要素がスクロールしうる。
