@@ -1872,3 +1872,27 @@ scenarios:
       エスケープが xterm に解釈されてしまい、届いたバイト列を読めない。
       物理量（deltaMode の3種・トラックパッド判定・端数の繰り越し）は Playwright から
       作り分けられないので、そちらの網羅は `test/unit/wheel-scroll.test.ts` が正。
+  - id: S120
+    title: Claude Code セッションから起動しても、タブの子プロセスに親セッションの env を渡さない
+    spec: S120-inherited-agent-env.spec.ts
+    readme: false
+    note: >-
+      #253 の再発防止。**`.app` を Claude Code セッションの中から起動する**（`make install-app`、
+      エージェントに開かせる等）と、親セッションが子プロセス向けに export している env が
+      アプリの `process.env` に焼き付き、`buildPtyEnv` が全タブの子プロセスへ配る。
+      受け取った `claude` は自分を「子セッション」と判定して
+      `~/.claude/sessions/<pid>.json` を書かないため、`claude agents --json` に出ず、
+      一覧にも履歴にも現れない（画面には
+      `Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker` が出る）。
+      ⭐ **ここでしか見られないのは「除去がどこで走るか」。** 何を落とすかの定義は
+      `test/unit/inherited-agent-env.test.ts` が持つが、`src/main/index.ts` の呼び出しを
+      丸ごと消しても単体テストは緑のままで、除去を `ensureLoginShellPath()` より後ろへ
+      動かすと探索シェルが同じ値を再エクスポートして無効化される。その2つを踏める
+      関門はこれだけ。
+      ⭐ **否定側（control）を先に見る。** `AI_TERMINAL_E2E_NODE` が届いていることを
+      同じ spec で先に assert しないと、**env が1つも渡っていない状態でも緑**になる。
+      ⛔ 注入は `harness.ts` の `simulateLaunchedFromAgentSession` で明示的に行い、
+      `...process.env` の継承に任せない。エージェントが `make e2e` を回したときだけ
+      条件が揃う非決定になる（`simulateAppleTerminalHost` と同じ理由）。ハーネスは
+      既定でこのキー群を落としてから env を組み立てるので、他シナリオは
+      誰が回しても同じ前提で走る。

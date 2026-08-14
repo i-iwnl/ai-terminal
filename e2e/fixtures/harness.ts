@@ -287,6 +287,50 @@ export interface LaunchOptions {
    * spec 側は通常なにも書かなくてよい。
    */
   hidden?: boolean;
+  /**
+   * アプリを「Claude Code セッションの中から起動した」状態にする（Issue #253 の再発防止）。
+   *
+   * `.app` を `make install-app` やエージェント経由で起動すると、親セッションが
+   * 子プロセス向けに export している env がアプリに焼き付く。それが PTY へ配られると、
+   * タブの中で起動した `claude` が自分を「子セッション」と判定して
+   * `~/.claude/sessions/<pid>.json` を書かず、一覧にも履歴にも出なくなる。
+   *
+   * ⛔ **`...process.env` の継承に任せないこと。** このリポジトリの E2E は
+   * エージェントが `make e2e` を回すことがあり、**そのときだけ条件が揃う**という
+   * 非決定になる（人が素のターミナルから回すと再現しない = 退行しても green）。
+   * `simulateAppleTerminalHost` と同じ理由で明示注入にしてある。
+   */
+  simulateLaunchedFromAgentSession?: boolean;
+}
+
+/**
+ * `simulateLaunchedFromAgentSession` が注入する env。
+ *
+ * 実機（Claude Code 2.1.232）で観測したキーをそのまま並べる。**値は本物である必要が無い**
+ * ので、資格情報らしきものはダミーに置き換えてある（このファイルは公開リポジトリに入る）。
+ *
+ * ⛔ **`src/main/inherited-agent-env.ts` の一覧を import しない。** 実装を共有すると、
+ * 一覧からキーが1つ落ちたときに**注入側も同時に落ちて green のまま**になる。
+ * テスト側で独立に持つ（`encodeProjectDir` と同じ理由）。
+ */
+const AGENT_SESSION_ENV: Record<string, string> = {
+  CLAUDECODE: '1',
+  CLAUDE_CODE_CHILD_SESSION: '1',
+  CLAUDE_PID: '65984',
+  CLAUDE_CODE_SESSION_ID: 'e2e-parent-session-id',
+  CLAUDE_CODE_BRIDGE_SESSION_ID: 'e2e-parent-bridge-id',
+  CLAUDE_CODE_MESSAGING_SOCKET: '/tmp/cc-socks/65984.sock',
+  CLAUDE_CODE_MESSAGING_TOKEN: 'e2e-dummy-token',
+  CLAUDE_CODE_ENTRYPOINT: 'cli',
+  CLAUDE_CODE_EXECPATH: '/tmp/e2e/claude/versions/2.1.232',
+  CLAUDE_EFFORT: 'high',
+};
+
+/** `AGENT_SESSION_ENV` のキーを落とした env を返す（入力は書き換えない）。 */
+function withoutAgentSessionEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const clean: NodeJS.ProcessEnv = { ...env };
+  for (const key of Object.keys(AGENT_SESSION_ENV)) delete clean[key];
+  return clean;
 }
 
 /**
@@ -535,7 +579,12 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
     ],
     cwd: workDir,
     env: {
-      ...process.env,
+      // ⛔ **まず親セッションの env を落としてから組み立てる。** このリポジトリの E2E は
+      // エージェント（= Claude Code セッションの子）が回すことがあり、素通しすると
+      // `simulateLaunchedFromAgentSession` を指定していないシナリオまで
+      // 「親セッションから起動した」条件で走る。**誰が回したかでシナリオの前提が
+      // 変わる**のを断つ（Issue #253）。注入はこの下で明示的に行う。
+      ...withoutAgentSessionEnv(process.env),
       HOME: home,
       // zsh に上で書いた .zshrc を読ませる
       ZDOTDIR: home,
@@ -549,6 +598,8 @@ export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedAp
       ...(options.simulateAppleTerminalHost
         ? { TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '470.2' }
         : {}),
+      // Claude Code セッションの中から .app を起動した状態を作る（S120）。
+      ...(options.simulateLaunchedFromAgentSession ? AGENT_SESSION_ENV : {}),
       AI_TERMINAL_E2E_FIXTURES: runtimeFixtures,
       // E2E は out/ を electron バイナリで起動するため isPackaged が false になり、
       // アプリの既定では保存先が ~/.ai-terminal-dev に化ける（dev/安定版の分離）。
