@@ -17,7 +17,18 @@ import { registerAccessibilityHandlers } from './accessibility';
 import { registerSettingsWindowHandlers } from './settings-window';
 import { attachExternalLinkHandler } from './external-links';
 import { ensureLoginShellPath } from './shell-path';
+import { purgeInheritedAgentSession } from './inherited-agent-env';
 import { applyFullScreenState, trackWindowState, windowStateOptions } from './window-state';
+
+// このアプリを起動したのが Claude Code セッションだった場合（make install-app や、
+// エージェントに開かせた場合）、親セッションの状態を表す env が焼き付いている。
+// 落とさないと全タブの子プロセスに配られ、タブの中で起動した claude が自分を
+// 「子セッション」と判定して一覧にも履歴にも出なくなる（Issue #253）。
+//
+// ⛔ **下の ensureLoginShellPath() より前に置くこと。** 探索シェルは process.env を
+// 継承するので、あとに置くと同じ値を再エクスポートされて無効化される。
+// 理由の全文は inherited-agent-env.ts が唯一の正。
+purgeInheritedAgentSession();
 
 // dev 起動（非パッケージ実行）と安定版 .app の userData を分離する。
 // 同じ productName を共有するため、分けないと同時起動時に localStorage や

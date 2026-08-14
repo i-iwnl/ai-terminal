@@ -581,6 +581,12 @@ node scripts/fix-node-pty.mjs
 
 `claude agents --json` が動くか手元で確認する。この出力形式は CLI のバージョンで変わりうるため、変わった場合は `src/main/agents/claude.ts` の1ファイルだけを直せばよい設計になっている。
 
+**タブの中で起動した claude が、一覧にも履歴にも出ない**
+
+ターミナルの下部に `Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker` と出ていないか確認する。出ていれば、**アプリ自体を Claude Code セッションの中から起動している**（`make install-app` や、AI エージェントに開かせた場合）。親セッションの環境変数がアプリに引き継がれ、タブの中の `claude` が「親セッションの子セッション」として動くため、`claude agents --json` にも履歴にも残らない。
+
+対処済み（[#253](https://github.com/i-iwnl/ai-terminal/issues/253)）だが、**修正前のバージョンでは、アプリを一度終了して Dock / Finder から起動し直すと直る**。
+
 **履歴一覧のタイトルが出ない項目がある**
 
 `ai-title` が生成される前のセッションではタイトルが取れない（実データで約 14%）。その場合は最初のプロンプトの冒頭が代わりに表示される。仕様上の縮退であって不具合ではない。
